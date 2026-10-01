@@ -1,0 +1,182 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 33a773e9f..87cf28f09 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
++    @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
+@@ -176,6 +177,17 @@ public interface OwnerMapper {
+         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+     }
+ 
++    /**
++     * Resolve the owner's capacity-warning flag, treating a missing (null) stored value as
++     * {@code false} so the response always carries an explicit boolean.
++     */
++    default Boolean formatCapacityWarning(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(owner.getCapacityWarning());
++    }
++
+     /**
+      * Derive the owner's contact preference, {@code 'EMAIL'} when an email is present and
+      * {@code 'PHONE'} otherwise (see {@link Owner#contactPreference(String)}).
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 637b186cf..8320988cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -88,6 +88,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "postcode")
+     private String postcode;
+ 
+@@ -250,6 +253,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public String getPostcode() {
+         return this.postcode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bad16257c..159c5f825 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -67,6 +67,14 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /**
++     * Threshold of owners already in an owner's city (compared case-insensitively) at or above which
++     * a newly created owner is flagged with {@code capacityWarning} to signal the city is approaching
++     * the {@link #MAX_OWNERS_PER_CITY} hard limit. A city that already contains between this many and
++     * {@code MAX_OWNERS_PER_CITY - 1} owners warns; reaching {@code MAX_OWNERS_PER_CITY} is rejected.
++     */
++    static final int CAPACITY_WARNING_THRESHOLD = 40;
++
+     /**
+      * Maximum number of owners that may be registered on a single day. Creating an owner on a day
+      * that already has this many owners (counted by {@code registrationDate}) is rejected with
+@@ -321,6 +329,7 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew()) {
+             assertDailyRegistrationLimit(owner);
+             owner.setBulkSignupWarning(computeBulkSignupWarning(owner));
++            owner.setCapacityWarning(computeCapacityWarning(owner));
+         }
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+             owner.setCustomerCode(generateCustomerCode(owner));
+@@ -634,6 +643,26 @@ public class ClinicServiceImpl implements ClinicService {
+         return count > BULK_SIGNUP_WARNING_THRESHOLD;
+     }
+ 
++    /**
++     * Compute whether a newly created owner should carry a capacity warning, i.e. whether its city
++     * (compared case-insensitively) already contains at least {@link #CAPACITY_WARNING_THRESHOLD} but
++     * fewer than {@link #MAX_OWNERS_PER_CITY} owners, signalling the city is approaching its hard
++     * capacity limit. The owner being saved is excluded by id, mirroring the counting done by
++     * {@link #assertCityHasCapacity(Owner)}. A city with no name never warns. Like the city-capacity
++     * rule this reflects the state at creation time, so it is computed once and stored on the owner.
++     */
++    private boolean computeCapacityWarning(Owner owner) {
++        String city = owner.getCity();
++        if (city == null) {
++            return false;
++        }
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2f1f4c348..7bca80008 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_count INTEGER,
+   membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index c946f99cd..13b174384 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_count INTEGER,
+   membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ee7d23ee4..a55c07122 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_count INTEGER,
+   membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 94981e89f..9c796d5cc 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_count INTEGER,
+                                       membership_level INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 62ae8fe5a..7b6aa4a88 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2306,6 +2306,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                A warning flag set when the owner's city (compared
++                case-insensitively) already holds between 40 and 49 owners when
++                this owner is created, signalling the city is approaching its
++                capacity limit of 50. Assigned on create and returned unchanged.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
