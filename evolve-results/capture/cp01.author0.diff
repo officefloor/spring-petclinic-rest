@@ -1,0 +1,156 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 87ace0584..2342f86f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -1,17 +1,14 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import jakarta.validation.Valid;
+ import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.validation.annotation.Validated;
+-import org.springframework.web.bind.annotation.RequestBody;
+ 
+-@Validated
+ public class BuildOwner {
+ 
+-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
++    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         built.set(ownerMapper.toOwner(request));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidException.java
+new file mode 100644
+index 000000000..36da9e35c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidException.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.List;
++
++/**
++ * Thrown by {@link ValidateOwnerFields} when a create request is missing or blank in one or more
++ * required owner fields. Handled globally by {@code OwnerFieldsInvalidExceptionHandler}, which
++ * responds 400 with a JSON body listing the offending field names.
++ */
++public class OwnerFieldsInvalidException extends Exception {
++
++    private final List<String> errors;
++
++    public OwnerFieldsInvalidException(List<String> errors) {
++        super("Missing or blank owner fields: " + errors);
++        this.errors = List.copyOf(errors);
++    }
++
++    public List<String> getErrors() {
++        return errors;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java
+new file mode 100644
+index 000000000..214c23f38
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 400 with a JSON body whose {@code errors} array lists the name of each owner field that
++ * was missing or blank.
++ */
++public class OwnerFieldsInvalidExceptionHandler {
++
++    public void handle(@Parameter OwnerFieldsInvalidException ex,
++            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
++                .body(Map.of("errors", ex.getErrors())));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+new file mode 100644
+index 000000000..c937bcd7b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -0,0 +1,47 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import net.officefloor.plugin.variable.Out;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * Rejects a create request that is missing or blank in any required owner field.
++ *
++ * <p>Runs first in the {@code POST /api/owners} pipeline. It binds the body once (this is the only
++ * step that reads {@code @RequestBody}) and republishes it for {@link BuildOwner}. Each of
++ * firstName, lastName, address, city and telephone must be present and non-blank; any that are not
++ * are collected and reported together via {@link OwnerFieldsInvalidException}.
++ */
++public class ValidateOwnerFields {
++
++    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
++            throws OwnerFieldsInvalidException {
++        List<String> errors = new ArrayList<>();
++        if (isBlank(request.getFirstName())) {
++            errors.add("firstName");
++        }
++        if (isBlank(request.getLastName())) {
++            errors.add("lastName");
++        }
++        if (isBlank(request.getAddress())) {
++            errors.add("address");
++        }
++        if (isBlank(request.getCity())) {
++            errors.add("city");
++        }
++        if (isBlank(request.getTelephone())) {
++            errors.add("telephone");
++        }
++        if (!errors.isEmpty()) {
++            throw new OwnerFieldsInvalidException(errors);
++        }
++        validated.set(request);
++    }
++
++    private static boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerFieldsInvalidException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerFieldsInvalidException.yml
+new file mode 100644
+index 000000000..accab6023
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerFieldsInvalidException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.function.owner.OwnerFieldsInvalidExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4d4b28686..819f25a72 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,11 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++validate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
++  govern: [ transaction ]
++  next: build
++
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
