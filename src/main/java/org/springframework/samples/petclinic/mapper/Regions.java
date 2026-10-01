@@ -46,6 +46,21 @@ public final class Regions {
     }
 
     /**
+     * Derive the locality (canonical region) preferring the postcode. The postcode's region range is
+     * consulted first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only when the postcode is absent
+     * or falls in no known range does the city-to-region table decide. This returns the same region
+     * for known cities but disambiguates cities that share a name.
+     *
+     * @param city     the owner's city; may be {@code null}
+     * @param postcode the owner's postcode; may be {@code null}
+     * @return the canonical region string, or {@code "UNKNOWN"} when neither postcode nor city resolves
+     */
+    public static String localityOf(String city, String postcode) {
+        String byPostcode = regionOfPostcode(postcode);
+        return byPostcode != null ? byPostcode : localityOf(city);
+    }
+
+    /**
      * Derive the locality (canonical region) for a city.
      *
      * @param city the owner's city; may be {@code null}
@@ -53,5 +68,29 @@ public final class Regions {
      */
     public static String localityOf(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * The region whose postcode range contains the given postcode, or {@code null} when the postcode
+     * is absent, non-numeric, or falls in no known range.
+     */
+    private static String regionOfPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 }
