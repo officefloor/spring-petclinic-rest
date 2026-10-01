@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index e86e79283..6758c3697 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.service.CityAtCapacityException;
+ import org.springframework.samples.petclinic.service.DailyRegistrationLimitException;
+ import org.springframework.samples.petclinic.service.DuplicateIdentityException;
++import org.springframework.samples.petclinic.service.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -59,6 +60,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the same identity already exists";
+     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+     private static final String ERROR_DAILY_LIMIT = "The maximum number of owners has already been registered today";
++    private static final String ERROR_FUTURE_REGISTRATION_DATE = "The registration date may not be later than the current date";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -170,6 +172,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException}, raised when an owner is saved with a supplied
++     * {@code registrationDate} later than the current server date, by returning a 400 Bad Request status.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        logger.warn("Future registration date at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_FUTURE_REGISTRATION_DATE);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index d718617da..2fa8da0dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -285,6 +285,7 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        assertRegistrationDateNotInFuture(owner);
+         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
+         if (owner.isNew()) {
+             assertDailyRegistrationLimit(owner);
+@@ -382,6 +383,19 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Enforce that the owner's registration date is not later than the current server date, throwing
++     * {@link FutureRegistrationDateException} when it is. A registration date may not be in the
++     * future; a date defaulted to {@link LocalDate#now()} is never in the future, so this check is a
++     * harmless no-op for that case.
++     */
++    private void assertRegistrationDateNotInFuture(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(registrationDate);
++        }
++    }
++
+     /**
+      * Roll a registration date forward to the next business day. A date that falls on a Saturday or
+      * Sunday is advanced to the following Monday; a weekday is returned unchanged. This is applied to
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/service/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..d11835f14
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/FutureRegistrationDateException.java
+@@ -0,0 +1,32 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an owner is saved with a supplied {@code registrationDate} that is later than the
++ * current server date. A registration date may not be in the future. Mapped to an HTTP 400 Bad
++ * Request response by the web layer.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    public FutureRegistrationDateException(LocalDate registrationDate) {
++        super("The registration date " + registrationDate + " may not be later than the current date");
++    }
++
++}
