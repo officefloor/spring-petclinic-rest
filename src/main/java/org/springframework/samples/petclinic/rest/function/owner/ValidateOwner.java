@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -11,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerEmailInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerFieldsMissingException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerPostcodeInvalidException;
+import org.springframework.samples.petclinic.rest.escalation.OwnerRegistrationDateFutureException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneInvalidException;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -47,7 +49,8 @@ public class ValidateOwner {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsMissingException, OwnerTelephoneInvalidException,
-            OwnerEmailInvalidException, OwnerPostcodeInvalidException {
+            OwnerEmailInvalidException, OwnerPostcodeInvalidException,
+            OwnerRegistrationDateFutureException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -91,6 +94,13 @@ public class ValidateOwner {
                     || !Regions.postcodeMatchesCity(request.getCity(), postcode)) {
                 throw new OwnerPostcodeInvalidException(postcode);
             }
+        }
+
+        // Registration may be supplied but never dated in the future: a value later than the
+        // server's current date is rejected with a 400.
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new OwnerRegistrationDateFutureException(registrationDate);
         }
 
         validated.set(request);
