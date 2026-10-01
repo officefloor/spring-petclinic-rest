@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -43,13 +44,9 @@ public interface OwnerMapper {
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
     }
 
-    /** Fixed city-to-region table; any other city derives locality "UNKNOWN". */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
     @Named("locality")
     default String locality(Owner owner) {
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        return OwnerRegion.regionOf(owner.getCity());
     }
 
     @Named("contactPreference")

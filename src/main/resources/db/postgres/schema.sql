@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       city       TEXT,
                                       telephone  TEXT,
                                       email      TEXT,
+                                      postcode   VARCHAR(4),
                                       registration_date DATE,
                                       customer_code TEXT,
                                       membership_number TEXT,

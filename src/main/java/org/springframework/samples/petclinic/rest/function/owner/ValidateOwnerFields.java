@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
+import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -66,6 +67,13 @@ public class ValidateOwnerFields {
             else {
                 request.setEmail(OwnerEmail.normalize(email));
             }
+        }
+        // Postcode is optional. When present it must be exactly four digits and, for a city with a
+        // known region, fall within that region's postcode range; a city with no known region
+        // accepts any 4-digit postcode. An absent postcode leaves the owner backward-compatible.
+        String postcode = request.getPostcode();
+        if (postcode != null && !OwnerRegion.isPostcodeValid(request.getCity(), postcode)) {
+            errors.add("postcode");
         }
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
