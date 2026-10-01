@@ -2,7 +2,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
 
+import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Rejects a create request once the daily signup limit has been reached.
@@ -17,14 +19,16 @@ public class CheckOwnerDailyLimit {
     /** Maximum number of owners that may be created on a single day; the next owner is rejected. */
     private static final int DAILY_LIMIT = 100;
 
-    public void service(OwnerRepository ownerRepository)
+    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerDailyLimitReachedException {
-        LocalDate today = LocalDate.now();
+        // Count against the business day this owner will actually be registered on. Stored
+        // registration dates are already adjusted, so this buckets owners per adjusted business day.
+        LocalDate businessDay = BusinessDays.effectiveRegistrationDate(request.getRegistrationDate());
         long createdToday = ownerRepository.findAll().stream()
-                .filter(existing -> today.equals(existing.getRegistrationDate()))
+                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
                 .count();
         if (createdToday >= DAILY_LIMIT) {
-            throw new OwnerDailyLimitReachedException(today);
+            throw new OwnerDailyLimitReachedException(businessDay);
         }
     }
 }
