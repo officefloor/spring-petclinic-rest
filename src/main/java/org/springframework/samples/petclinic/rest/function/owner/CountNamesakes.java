@@ -17,15 +17,11 @@ public class CountNamesakes {
         String lastName = owner.getLastName();
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (equalsIgnoreCase(firstName, existing.getFirstName())
-                    && equalsIgnoreCase(lastName, existing.getLastName())) {
+            if (OwnerMatch.equalsIgnoreCase(firstName, existing.getFirstName())
+                    && OwnerMatch.equalsIgnoreCase(lastName, existing.getLastName())) {
                 count++;
             }
         }
         owner.setNamesakeCount(count);
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 }
