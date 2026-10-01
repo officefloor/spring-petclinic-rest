@@ -45,7 +45,7 @@ public class ValidateOwner {
         if (!missing.isEmpty()) {
             throw new OwnerFieldsMissingException(missing);
         }
-        String digits = request.getTelephone().replaceAll("\\D", "");
+        String digits = OwnerTelephone.normalize(request.getTelephone());
         if (digits.length() != 10) {
             throw new OwnerTelephoneInvalidException(request.getTelephone());
         }
