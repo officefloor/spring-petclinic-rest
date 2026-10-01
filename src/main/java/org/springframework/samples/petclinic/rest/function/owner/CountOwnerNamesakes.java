@@ -19,6 +19,9 @@ public class CountOwnerNamesakes {
         String lastName = owner.getLastName();
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the identity check
+            }
             if (equalsIgnoreCase(existing.getFirstName(), firstName)
                     && equalsIgnoreCase(existing.getLastName(), lastName)) {
                 count++;

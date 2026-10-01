@@ -46,6 +46,9 @@ public class FlagOwnerPossibleDuplicate {
                 if (existing.getId() == null || existing.getId().equals(owner.getId())) {
                     continue;
                 }
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue; // soft-deleted owners are ignored by the duplicate check
+                }
                 if (equalsIgnoreCase(existing.getLastName(), lastName)
                         && postcode.equals(existing.getPostcode())
                         && !equalsIgnoreCase(existing.getTelephone(), telephone)) {

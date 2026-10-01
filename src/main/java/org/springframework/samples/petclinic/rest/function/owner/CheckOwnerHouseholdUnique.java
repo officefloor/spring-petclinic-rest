@@ -29,6 +29,9 @@ public class CheckOwnerHouseholdUnique {
             return; // no postcode means no household, so no household duplicate is possible
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the duplicate check
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new OwnerHouseholdDuplicateException(householdId);
             }
