@@ -13,7 +13,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * iterating the repository.
  *
  * <p>Records the household size for reporting; it no longer affects the membership level, which is
- * derived from email presence and {@code namesakeCount} (see {@code MembershipLevel}).
+ * derived from email presence, {@code namesakeCount} and tenure (see {@code MembershipLevel}).
  */
 public class CountHouseholdMembers {
 
