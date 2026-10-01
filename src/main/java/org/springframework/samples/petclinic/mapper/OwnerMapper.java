@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
     @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "membershipTier")
+    @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("displayName")
@@ -40,6 +41,15 @@ public interface OwnerMapper {
         Integer namesakeCount = owner.getNamesakeCount();
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return (namesakeCount != null && namesakeCount == 0 && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
+    /** Fixed city-to-region table; any other city derives locality "UNKNOWN". */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    @Named("locality")
+    default String locality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
     Owner toOwner(OwnerDto ownerDto);
