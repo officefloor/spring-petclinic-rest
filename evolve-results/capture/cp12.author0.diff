@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+new file mode 100644
+index 000000000..3518f5539
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * The single definition of how an owner's {@code address} is normalized. Applied whenever an owner is
++ * created (see {@link ValidateOwner}, which stores and returns the normalized value) and used by every
++ * comparison of addresses (see {@link OwnerHousehold}), so stored values and household matching stay
++ * consistent.
++ *
++ * <p>Normalization: strip surrounding whitespace and collapse internal runs to a single space,
++ * upper-case, then expand common abbreviations token-by-token ({@code ST}→{@code STREET},
++ * {@code RD}→{@code ROAD}, {@code AVE}→{@code AVENUE}). A value that is blank after this is normalized
++ * to the empty string, which {@link ValidateOwner} treats as a missing required field.
++ */
++public final class OwnerAddress {
++
++    /** Whole-token abbreviation expansions, keyed by the upper-cased token. */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET",
++            "RD", "ROAD",
++            "AVE", "AVENUE");
++
++    private OwnerAddress() {
++    }
++
++    public static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        String collapsed = value.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder result = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                result.append(' ');
++            }
++            result.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return result.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+index a1dfff35b..6f6903ab3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+@@ -8,7 +8,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ /**
+  * The identity of an owner's household: its {@code lastName} and {@code address} compared
+  * case-insensitively, with surrounding whitespace stripped and internal runs collapsed to a single
+- * space. Two owners belong to the same household when their {@code OwnerHousehold} values are equal.
++ * space. The {@code address} is additionally run through the shared {@link OwnerAddress} normalization
++ * (upper-casing and expanding abbreviations), so a stored normalized address and a raw one match.
++ * Two owners belong to the same household when their {@code OwnerHousehold} values are equal.
+  *
+  * <p>This is the single definition of "same household" shared by {@link CheckOwnerHouseholdUnique}
+  * (which iterates to reject a second owner joining a household) and {@link AssignHousehold} (which
+@@ -19,7 +21,7 @@ public record OwnerHousehold(String lastName, String address) {
+ 
+     public OwnerHousehold {
+         lastName = normalize(lastName);
+-        address = normalize(address);
++        address = OwnerAddress.normalize(address);
+     }
+ 
+     public static OwnerHousehold of(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index 5b816f90f..8480f0213 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -18,6 +18,11 @@ import org.springframework.web.bind.annotation.RequestBody;
+  * treated as blank — the DTO's {@code @Size(min = 1)} alone would accept it — so this check, not bean
+  * validation, is the authoritative implementation of the required-field rule.
+  *
++ * <p>The address is normalized (see {@link OwnerAddress}) before the required-field check, so an
++ * address that is blank once whitespace is collapsed is rejected as missing. The normalized value is
++ * written back onto the body so the normalized, abbreviation-expanded address is what gets stored,
++ * returned and compared for household matching.
++ *
+  * <p>The telephone is then converted to E.164 form (see {@link OwnerTelephone#toE164(String)}); a
+  * value that cannot form a valid E.164 number is rejected with a 400 via
+  * {@link OwnerTelephoneInvalidException}. The E.164 value is written back onto the body so it is what
+@@ -44,7 +49,8 @@ public class ValidateOwner {
+         if (isBlank(request.getLastName())) {
+             missing.add("lastName");
+         }
+-        if (isBlank(request.getAddress())) {
++        String address = OwnerAddress.normalize(request.getAddress());
++        if (address.isEmpty()) {
+             missing.add("address");
+         }
+         if (isBlank(request.getCity())) {
+@@ -56,6 +62,7 @@ public class ValidateOwner {
+         if (!missing.isEmpty()) {
+             throw new OwnerFieldsMissingException(missing);
+         }
++        request.setAddress(address);
+         String e164 = OwnerTelephone.toE164(request.getTelephone());
+         if (e164 == null) {
+             throw new OwnerTelephoneInvalidException(request.getTelephone());
