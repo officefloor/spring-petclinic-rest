@@ -269,10 +269,13 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Save an owner, enforcing the create-time business rules.
      *
-     * <p>The {@code sharesHousehold} flag is retained only for backward compatibility and is now a
-     * no-op: it formerly bypassed a dedicated duplicate-household check, but duplicate detection is
-     * now expressed solely through {@link #assertIdentityIsUnique(Owner)}, under which members of the
-     * same household with different telephones are always allowed, so the flag has nothing to bypass.
+     * <p>Because the household is keyed on {@code (lastName, postcode)} (see
+     * {@link Owner#householdId(String, String)}), owners sharing a last name and postcode are the
+     * same household. On create, a second owner in an existing household is rejected as a household
+     * duplicate (see {@link #assertHouseholdIsUnique(Owner)}) <em>unless</em> {@code sharesHousehold}
+     * is set, in which case it is accepted as a declared household member. The {@code sharesHousehold}
+     * flag therefore only bypasses that duplicate block; a declared member is also not flagged as a
+     * possible (suspected) duplicate.
      */
     @Override
     @Transactional
@@ -281,6 +284,9 @@ public class ClinicServiceImpl implements ClinicService {
         assertIdentityIsUnique(owner);
         if (owner.isNew()) {
             assertCityHasCapacity(owner);
+            if (!sharesHousehold) {
+                assertHouseholdIsUnique(owner);
+            }
         }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -298,7 +304,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner));
         }
         if (owner.isNew()) {
-            assignPossibleDuplicate(owner);
+            assignPossibleDuplicate(owner, sharesHousehold);
         }
         ownerRepository.save(owner);
         if (isCreate) {
@@ -341,23 +347,31 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Flag a newly created owner as a possible (soft) duplicate of an existing owner. A hard
      * duplicate (an owner reusing an existing normalized telephone) has already been rejected by
-     * {@link #assertIdentityIsUnique(Owner)} before this runs, so this detects the weaker overlap: an
-     * existing owner that shares this owner's last name (compared case-insensitively with collapsed
-     * whitespace, see {@link Owner#normalizeHousehold(String)}) and postcode but has a <em>different</em>
-     * normalized telephone. When such an owner exists, {@code possibleDuplicate} is set {@code true} and
+     * {@link #assertIdentityIsUnique(Owner)}, and an undeclared household duplicate by
+     * {@link #assertHouseholdIsUnique(Owner)}, before this runs. This detects the weaker overlap: an
+     * existing owner that shares this owner's household id (same last name and postcode, see
+     * {@link Owner#householdId(String, String)}) but has a <em>different</em> normalized telephone.
+     * When such an owner exists, {@code possibleDuplicate} is set {@code true} and
      * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match);
      * otherwise {@code possibleDuplicate} is set {@code false} and {@code possibleDuplicateOf} left unset.
+     *
+     * <p>A declared household member ({@code sharesHousehold} set) is never a suspected duplicate: it
+     * deliberately joins an existing household, so it is left unflagged.
      */
-    private void assignPossibleDuplicate(Owner owner) {
-        String lastName = Owner.normalizeHousehold(owner.getLastName());
-        String postcode = owner.getPostcode();
+    private void assignPossibleDuplicate(Owner owner, boolean sharesHousehold) {
+        if (sharesHousehold) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return;
+        }
+        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
         String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
         Integer match = null;
-        if (lastName != null && postcode != null) {
+        if (householdId != null) {
             match = ownerRepository.findAll().stream()
                 .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
-                .filter(existing -> lastName.equals(Owner.normalizeHousehold(existing.getLastName())))
-                .filter(existing -> postcode.equals(existing.getPostcode()))
+                .filter(existing -> householdId.equals(
+                    Owner.householdId(existing.getLastName(), existing.getPostcode())))
                 .filter(existing -> !Objects.equals(normalizedTelephone,
                     Owner.normalizeTelephone(existing.getTelephone())))
                 .map(Owner::getId)
@@ -394,7 +408,31 @@ public class ClinicServiceImpl implements ClinicService {
             .anyMatch(normalizedTelephone::equals);
         if (duplicate) {
             throw new DuplicateIdentityException(Owner.identityKey(
-                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()));
+                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
+        }
+    }
+
+    /**
+     * Enforce that no <em>other</em> owner already belongs to this owner's household, throwing
+     * {@link DuplicateIdentityException} if one does. The household is keyed on {@code (lastName,
+     * postcode)} (see {@link Owner#householdId(String, String)}), so owners sharing a last name and
+     * postcode are the same household and a second such owner is a household duplicate. The owner
+     * being saved is excluded by id, and an owner with no derivable household id (missing last name
+     * or postcode) places no constraint. Callers bypass this check for a declared household member
+     * ({@code sharesHousehold} set).
+     */
+    private void assertHouseholdIsUnique(Owner owner) {
+        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
+        if (householdId == null) {
+            return;
+        }
+        boolean duplicate = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .map(existing -> Owner.householdId(existing.getLastName(), existing.getPostcode()))
+            .anyMatch(householdId::equals);
+        if (duplicate) {
+            throw new DuplicateIdentityException(Owner.identityKey(
+                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
         }
     }
 

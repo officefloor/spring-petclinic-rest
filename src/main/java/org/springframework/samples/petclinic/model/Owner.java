@@ -336,23 +336,22 @@ public class Owner extends Person {
     /**
      * Compute the stable identifier shared by all owners in the same household, i.e. with the same
      * last name (compared case-insensitively with collapsed whitespace, see
-     * {@link #normalizeHousehold(String)}) and the same normalized address (see
-     * {@link #normalizeAddress(String)}). The value is deterministic in those two fields, so two
-     * owners who share a household are assigned the same id. It is formatted {@code 'HH-<HEX12>'}
-     * where {@code HEX12} is the first twelve upper-cased hex characters of the SHA-256 digest of
-     * the normalized last name and address.
+     * {@link #normalizeHousehold(String)}) and the same postcode. The value is deterministic in
+     * those two fields, so two owners who share a last name and postcode are assigned the same id
+     * automatically. It is formatted {@code 'HH-<HEX12>'} where {@code HEX12} is the first twelve
+     * upper-cased hex characters of the SHA-256 digest of
+     * {@code normalizedLastName + '|' + postcode}.
      *
      * @param lastName the owner's last name, possibly {@code null}
-     * @param address the owner's address, possibly {@code null}
+     * @param postcode the owner's postcode, possibly {@code null}
      * @return the household id, or {@code null} if either field is {@code null}
      */
-    public static String householdId(String lastName, String address) {
+    public static String householdId(String lastName, String postcode) {
         String normalizedLastName = normalizeHousehold(lastName);
-        String normalizedAddress = normalizeAddress(address);
-        if (normalizedLastName == null || normalizedAddress == null) {
+        if (normalizedLastName == null || postcode == null) {
             return null;
         }
-        String key = normalizedLastName + "\n" + normalizedAddress;
+        String key = normalizedLastName + "|" + postcode;
         return "HH-" + sha256Hex(key).substring(0, 12).toUpperCase();
     }
 
@@ -429,13 +428,13 @@ public class Owner extends Person {
      * @param telephone the owner's raw telephone, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
      * @param lastName the owner's last name, possibly {@code null}
-     * @param address the owner's address, possibly {@code null}
+     * @param postcode the owner's postcode, possibly {@code null}
      * @return the identity key, never {@code null}
      */
-    public static String identityKey(String telephone, String email, String lastName, String address) {
+    public static String identityKey(String telephone, String email, String lastName, String postcode) {
         String normalizedTelephone = normalizeTelephone(telephone);
         String normalizedEmail = normalizeEmail(email);
-        String household = householdId(lastName, address);
+        String household = householdId(lastName, postcode);
         return (normalizedTelephone == null ? "" : normalizedTelephone)
             + "|" + (normalizedEmail == null ? "" : normalizedEmail)
             + "|" + (household == null ? "" : household);

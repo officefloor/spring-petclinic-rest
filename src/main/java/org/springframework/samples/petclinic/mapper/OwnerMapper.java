@@ -54,14 +54,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's household id, the stable identifier shared by all owners who live in the
-     * same household (see {@link Owner#householdId(String, String)}).
+     * Compute the owner's household id, the stable identifier shared by all owners in the same
+     * household, i.e. with the same last name and postcode (see {@link Owner#householdId(String, String)}).
      */
     default String formatHouseholdId(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.householdId(owner.getLastName(), owner.getAddress());
+        return Owner.householdId(owner.getLastName(), owner.getPostcode());
     }
 
     /**
@@ -129,7 +129,7 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
+        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode());
     }
 
     /**
