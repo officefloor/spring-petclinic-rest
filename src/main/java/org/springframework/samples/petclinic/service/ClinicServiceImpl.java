@@ -239,11 +239,30 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        if (owner.isNew()) {
+            if (owner.getCustomerCode() == null) {
+                owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+            }
+            if (owner.getNamesakeCount() == null) {
+                owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+            }
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Count the existing owners (before this create) that share the given first and last name,
+     * compared case-insensitively, as required by the read-only {@code namesakeCount} field.
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        if (firstName == null || lastName == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(owner -> firstName.equalsIgnoreCase(owner.getFirstName())
+                && lastName.equalsIgnoreCase(owner.getLastName()))
+            .count();
     }
 
     /**
