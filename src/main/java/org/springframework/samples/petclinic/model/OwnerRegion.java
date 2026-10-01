@@ -35,9 +35,12 @@ public final class OwnerRegion {
     private OwnerRegion() {
     }
 
-    /** The canonical region for {@code city}, or {@link #UNKNOWN} when the city is not in the table. */
+    /**
+     * The canonical region for {@code city}, or {@link #UNKNOWN} when the city is {@code null} or not
+     * in the table. (The backing {@code Map.of} rejects a null key, so null is handled explicitly.)
+     */
     public static String regionOf(String city) {
-        return CITY_REGION.getOrDefault(city, UNKNOWN);
+        return city == null ? UNKNOWN : CITY_REGION.getOrDefault(city, UNKNOWN);
     }
 
     /**
