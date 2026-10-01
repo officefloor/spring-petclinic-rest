@@ -281,6 +281,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         boolean isCreate = owner.isNew();
+        assertEmailDomainAllowed(owner);
         assertIdentityIsUnique(owner);
         if (owner.isNew()) {
             assertCityHasCapacity(owner);
@@ -381,6 +382,18 @@ public class ClinicServiceImpl implements ClinicService {
         }
         owner.setPossibleDuplicate(match != null);
         owner.setPossibleDuplicateOf(match);
+    }
+
+    /**
+     * Enforce that the owner's email domain is not on the disposable-domain blocklist, throwing
+     * {@link DisposableEmailDomainException} when it is. The blocklist check is the single source
+     * of truth in {@link Owner#isDisposableEmailDomain(String)}; an owner with no email places no
+     * constraint.
+     */
+    private void assertEmailDomainAllowed(Owner owner) {
+        if (Owner.isDisposableEmailDomain(owner.getEmail())) {
+            throw new DisposableEmailDomainException(owner.getEmail());
+        }
     }
 
     /**

@@ -194,6 +194,36 @@ public class Owner extends Person {
     }
 
     /**
+     * Disposable email domains that are not accepted for an owner. Compared case-insensitively
+     * against the domain part of the owner's email (see {@link #isDisposableEmailDomain(String)}).
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
+    /**
+     * Check whether an email's domain is on the disposable-domain blocklist. The domain is the text
+     * after the last {@code '@'}, compared case-insensitively against {@link #DISPOSABLE_EMAIL_DOMAINS}.
+     * This is the single source of truth for which email domains are rejected, shared by any
+     * persistence path. A {@code null} or empty email, or one with no {@code '@'}, is not disposable.
+     *
+     * @param email the owner's email, possibly {@code null}
+     * @return {@code true} if the email's domain is on the blocklist, {@code false} otherwise
+     */
+    public static boolean isDisposableEmailDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+    }
+
+    /**
      * Normalize a telephone to its canonical E.164 stored form. This is the single source of
      * truth for how a telephone is compared and persisted, so inputs that differ only in
      * formatting (spaces, dashes, brackets) are treated as the same number.
