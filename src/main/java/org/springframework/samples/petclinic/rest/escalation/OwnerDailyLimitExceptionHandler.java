@@ -1,22 +1,20 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
-import java.util.List;
-import java.util.Map;
-
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 429 (Too Many Requests) with a JSON body whose {@code errors} array names
- * {@code registrationDate} when the maximum number of owners have already been created today.
+ * Responds 429 (Too Many Requests) with an RFC7807 {@code application/problem+json} body
+ * when the maximum number of owners have already been created today.
  */
 public class OwnerDailyLimitExceptionHandler {
 
     public void handle(@Parameter OwnerDailyLimitException ex,
-            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
-        Map<String, Object> body = Map.of("errors", List.of("registrationDate"));
-        response.send(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        response.send(ProblemDetails.response(ex, HttpStatus.TOO_MANY_REQUESTS,
+                "The maximum number of owners for today has already been reached"));
     }
 }
