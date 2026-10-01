@@ -12,8 +12,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * itself. The owner is still unsaved, so it is counted by the trailing {@code + 1} rather than by
  * iterating the repository.
  *
- * <p>Records the household size for reporting; it no longer affects the membership level, which is
- * derived from email presence, {@code namesakeCount} and tenure (see {@code MembershipLevel}).
+ * <p>The recorded household size feeds the membership points: a household of 3 or more members
+ * earns points toward the level, alongside email presence, {@code namesakeCount} and tenure (see
+ * {@code MembershipLevel}).
  */
 public class CountHouseholdMembers {
 

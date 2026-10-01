@@ -4,52 +4,104 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric membership level, assigned on create.
+ * Derives an owner's membership standing, assigned on create.
  *
- * <p>The level starts at 1, gains 1 when an email is present and gains 1 when the owner's
- * {@code namesakeCount} is 0 (the name was unique on create). These pre-tenure factors are held at or
- * below {@link #PRE_TENURE_MAX} (3) by a guard, so email presence and a unique name carry an owner no
- * higher than level 3 on their own. Level 4 is reserved for tenure and is awarded only once an owner
- * has been registered for more than {@link #TENURE_DAYS_FOR_MAX} (365) days; a newly created owner has
- * zero tenure, so it never exceeds level 3.
+ * <p>A points total is accumulated from four factors, starting at 0:
+ * <ul>
+ *   <li>+{@link #POINTS_EMAIL} (2) when an email is present;</li>
+ *   <li>+{@link #POINTS_UNIQUE_NAME} (1) when the owner's {@code namesakeCount} is 0 (the name was
+ *       unique on create);</li>
+ *   <li>+{@link #POINTS_HOUSEHOLD} (2) for a household of {@link #HOUSEHOLD_SIZE_FOR_POINTS} (3) or
+ *       more members;</li>
+ *   <li>+{@link #POINTS_TENURE} (3) when the owner has been registered for more than
+ *       {@link #TENURE_DAYS_FOR_POINTS} (365) days.</li>
+ * </ul>
  *
- * <p>This replaces the former string membership tier and is the single source of truth for the
- * computation shared by {@code OwnerMapper} (the {@code membershipLevel} response field) and the
- * create audit line.
+ * <p>The points total maps to a numeric level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or
+ * more.
+ *
+ * <p>This is the single source of truth for the computation shared by {@code OwnerMapper} (the
+ * {@code membershipPoints} and {@code membershipLevel} response fields) and the create audit line.
  */
 public final class MembershipLevel {
 
     /** The highest level this rule awards. */
     public static final int MAX = 4;
 
-    /** Guard ceiling for the pre-tenure factors (email, unique name) before the tenure bump. */
-    public static final int PRE_TENURE_MAX = 3;
+    /** Points added when the owner has an email. */
+    public static final int POINTS_EMAIL = 2;
 
-    /** An owner must have been registered for more than this many days to be eligible for level 4. */
-    public static final long TENURE_DAYS_FOR_MAX = 365;
+    /** Points added when the owner's name was unique on create ({@code namesakeCount} is 0). */
+    public static final int POINTS_UNIQUE_NAME = 1;
+
+    /** Points added for a household of {@link #HOUSEHOLD_SIZE_FOR_POINTS} or more members. */
+    public static final int POINTS_HOUSEHOLD = 2;
+
+    /** Points added when the owner's tenure exceeds {@link #TENURE_DAYS_FOR_POINTS} days. */
+    public static final int POINTS_TENURE = 3;
+
+    /** A household needs at least this many members to earn {@link #POINTS_HOUSEHOLD}. */
+    public static final int HOUSEHOLD_SIZE_FOR_POINTS = 3;
+
+    /** An owner must have been registered for more than this many days to earn {@link #POINTS_TENURE}. */
+    public static final long TENURE_DAYS_FOR_POINTS = 365;
 
     private MembershipLevel() {
     }
 
     /**
-     * Compute the membership level for an owner.
+     * Compute the membership points for an owner.
      *
-     * @param owner the owner; its {@code email}, {@code namesakeCount} and tenure drive the result
+     * @param owner the owner; its {@code email}, {@code namesakeCount}, {@code householdMemberCount}
+     *              and tenure drive the result
+     * @return the points total, 0 or greater
+     */
+    public static int points(Owner owner) {
+        int points = 0;
+        if (owner.hasEmail()) {
+            points += POINTS_EMAIL;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += POINTS_UNIQUE_NAME;
+        }
+        if (owner.getHouseholdMemberCount() != null
+                && owner.getHouseholdMemberCount() >= HOUSEHOLD_SIZE_FOR_POINTS) {
+            points += POINTS_HOUSEHOLD;
+        }
+        if (tenureDays(owner) > TENURE_DAYS_FOR_POINTS) {
+            points += POINTS_TENURE;
+        }
+        return points;
+    }
+
+    /**
+     * Compute the membership level for an owner by mapping its {@link #points(Owner) points}.
+     *
+     * @param owner the owner
      * @return the level, between 1 and {@link #MAX} inclusive
      */
     public static int of(Owner owner) {
-        int level = 1;
-        if (owner.hasEmail()) {
-            level++;
+        return levelForPoints(points(owner));
+    }
+
+    /**
+     * Map a points total to a membership level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or
+     * more.
+     *
+     * @param points the points total
+     * @return the level, between 1 and {@link #MAX} inclusive
+     */
+    public static int levelForPoints(int points) {
+        if (points >= 6) {
+            return 4;
         }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+        if (points >= 4) {
+            return 3;
         }
-        level = Math.min(level, PRE_TENURE_MAX); // guard: pre-tenure factors cannot reach level 4
-        if (tenureDays(owner) > TENURE_DAYS_FOR_MAX) {
-            level++;
+        if (points >= 2) {
+            return 2;
         }
-        return Math.min(level, MAX);
+        return 1;
     }
 
     /**
