@@ -35,6 +35,32 @@ public final class OwnerRegion {
     }
 
     /**
+     * The locality for an owner, preferring the postcode: when {@code postcode} is a 4-digit value
+     * inside a known region's range that region wins, disambiguating cities that share a name.
+     * Otherwise (postcode absent, malformed, or in no known range) this falls back to the
+     * city-to-region table, which still returns {@link #UNKNOWN} for an unknown city.
+     */
+    public static String localityOf(String city, String postcode) {
+        String byPostcode = regionForPostcode(postcode);
+        return byPostcode != null ? byPostcode : regionOf(city);
+    }
+
+    /** The region whose inclusive range contains {@code postcode}, or {@code null} when none does. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether {@code postcode} is acceptable for {@code city}. A postcode must be exactly four
      * digits; a city whose region is known must additionally fall within that region's inclusive
      * range, while a city with no known region accepts any 4-digit postcode.

@@ -46,7 +46,7 @@ public interface OwnerMapper {
 
     @Named("locality")
     default String locality(Owner owner) {
-        return OwnerRegion.regionOf(owner.getCity());
+        return OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
     }
 
     @Named("contactPreference")
