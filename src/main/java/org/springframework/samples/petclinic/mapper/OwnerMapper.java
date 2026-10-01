@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+    @Mapping(target = "riskFlag", expression = "java(formatRiskFlag(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "deleted", expression = "java(formatDeleted(owner))")
     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
@@ -255,6 +256,19 @@ public interface OwnerMapper {
             return null;
         }
         return owner.isDeleted();
+    }
+
+    /**
+     * Resolve the owner's risk flag, {@code true} when the owner warrants a manual risk review
+     * because it is a possible duplicate, its email domain is disposable-adjacent, or its city is
+     * over its soft capacity (see {@link Owner#riskFlag()}). Treats a missing (null) owner as
+     * {@code null} so the field is omitted, otherwise always carries an explicit boolean.
+     */
+    default Boolean formatRiskFlag(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.riskFlag();
     }
 
     @Mapping(target = "householdCount", ignore = true)

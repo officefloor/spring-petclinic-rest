@@ -346,6 +346,85 @@ public class Owner extends Person {
     }
 
     /**
+     * Check whether an email's domain is <em>disposable-adjacent</em>: related to a known disposable
+     * domain without being exactly on the blocklist. The domain is the text after the last {@code '@'},
+     * compared case-insensitively. It is disposable-adjacent when its registrable base label (the label
+     * immediately before the final TLD label, see {@link #registrableBase(String)}) equals that of a
+     * domain on {@link #DISPOSABLE_EMAIL_DOMAINS} — this catches the same provider under a different TLD
+     * (e.g. {@code mailinator.net}) and subdomains of a disposable domain (e.g. {@code inbox.tempmail.com})
+     * — while a domain that is itself exactly on the blocklist is <em>not</em> counted here (it is a hard
+     * disposable domain, see {@link #isDisposableEmailDomain(String)}, and is rejected outright). A
+     * {@code null} or empty email, one with no {@code '@'}, or a bare domain with no registrable base is
+     * not disposable-adjacent.
+     *
+     * @param email the owner's email, possibly {@code null}
+     * @return {@code true} if the email's domain is disposable-adjacent, {@code false} otherwise
+     */
+    public static boolean isDisposableAdjacentEmailDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        if (domain.isEmpty() || DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            return false;
+        }
+        String base = registrableBase(domain);
+        if (base == null) {
+            return false;
+        }
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (base.equals(registrableBase(disposable))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Resolve a domain's registrable base label: the dot-separated label immediately before the final
+     * TLD label (e.g. {@code mailinator.com} and {@code inbox.mailinator.com} both yield
+     * {@code mailinator}). This is the shared primitive behind the disposable-adjacent comparison in
+     * {@link #isDisposableAdjacentEmailDomain(String)}, so an exact-TLD match is not required.
+     *
+     * @param domain the lower-cased domain, never {@code null}
+     * @return the registrable base label, or {@code null} when the domain has fewer than two labels
+     */
+    private static String registrableBase(String domain) {
+        int lastDot = domain.lastIndexOf('.');
+        if (lastDot <= 0) {
+            return null;
+        }
+        int prevDot = domain.lastIndexOf('.', lastDot - 1);
+        return domain.substring(prevDot + 1, lastDot);
+    }
+
+    /**
+     * Resolve this owner's {@code riskFlag}: whether the owner warrants a manual risk review. It is
+     * {@code true} when any of three conditions holds, and {@code false} otherwise:
+     * <ul>
+     *   <li>the owner is a possible duplicate ({@link #getPossibleDuplicate()} is {@code true}),</li>
+     *   <li>the owner's email domain is disposable-adjacent (see
+     *       {@link #isDisposableAdjacentEmailDomain(String)}), or</li>
+     *   <li>the owner's city is over its soft capacity — the {@code capacityWarning} band
+     *       ({@link #getCapacityWarning()} is {@code true}), i.e. the city was at or above the
+     *       capacity-warning threshold when the owner was created.</li>
+     * </ul>
+     * A {@code null} stored {@code possibleDuplicate} or {@code capacityWarning} is read as
+     * {@code false}.
+     *
+     * @return {@code true} if any risk condition holds, {@code false} otherwise
+     */
+    public boolean riskFlag() {
+        return Boolean.TRUE.equals(this.possibleDuplicate)
+            || isDisposableAdjacentEmailDomain(this.email)
+            || Boolean.TRUE.equals(this.capacityWarning);
+    }
+
+    /**
      * Normalize a telephone to its canonical E.164 stored form. This is the single source of
      * truth for how a telephone is compared and persisted, so inputs that differ only in
      * formatting (spaces, dashes, brackets) are treated as the same number.
