@@ -15,9 +15,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * acknowledged member rather than a suspected duplicate; see {@link CheckPossibleDuplicate}). An owner
  * with no postcode has no household to key on and is left with a {@code null} {@code householdId}.
  *
- * <p>The {@code householdId} is a component of the owner's
- * {@link org.springframework.samples.petclinic.model.OwnerIdentity} key and is the single value that
- * duplicate detection and the household-size count ({@link CountHouseholdMembers}) key off.
+ * <p>The {@code householdId} is the value the household-size steps — {@link CountHouseholdMembers} and
+ * {@link CapMembershipLevel} — key off. It is <em>not</em> part of the owner's
+ * {@link org.springframework.samples.petclinic.model.OwnerIdentity} key, and duplicate detection (both
+ * the hard {@code identityKey} check and the soft {@code soundex(lastName) + postcode} match) no longer
+ * keys off it.
  */
 public class AssignHousehold {
 

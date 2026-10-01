@@ -1,11 +1,9 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Sha256;
 
 /**
  * The identity of an owner's household, keyed on its {@code lastName} and {@code postcode}. The last
@@ -19,16 +17,19 @@ import org.springframework.samples.petclinic.model.Owner;
  * donor-owner hand-off. An owner with no postcode has no household to key on, so its
  * {@code householdId} is {@code null}.
  *
- * <p>This is the single definition of "same household" shared by {@link AssignHousehold} (which stamps
- * the computed id onto the new owner) and the steps that key off it — {@link CountHouseholdMembers},
- * {@link CapMembershipLevel} and {@link CheckPossibleDuplicate}. Changing the keying rule — e.g.
- * including city or normalizing the postcode differently — happens here, once.
+ * <p>This is the single definition of the {@code householdId}, shared by {@link AssignHousehold}
+ * (which stamps the computed id onto the new owner) and the household-size steps that key off it —
+ * {@link CountHouseholdMembers} and {@link CapMembershipLevel}. Changing how the id is keyed — e.g.
+ * including city or normalizing the last name differently — happens here, once. (The soft-duplicate
+ * match in {@link CheckPossibleDuplicate} is a <em>separate</em> similarity rule on
+ * {@code soundex(lastName) + postcode} and does not go through this id, though it reuses this class's
+ * {@link #normalizePostcode(String)} so the postcode rule stays shared.)
  */
 public record OwnerHousehold(String lastName, String postcode) {
 
     public OwnerHousehold {
         lastName = normalizeLastName(lastName);
-        postcode = postcode == null ? "" : postcode.strip();
+        postcode = normalizePostcode(postcode);
     }
 
     public static OwnerHousehold of(Owner owner) {
@@ -44,7 +45,7 @@ public record OwnerHousehold(String lastName, String postcode) {
         if (postcode.isEmpty()) {
             return null;
         }
-        return sha256hex(lastName + "|" + postcode).substring(0, 12);
+        return Sha256.hex(lastName + "|" + postcode).substring(0, 12);
     }
 
     /** Lower-cases and collapses whitespace so the household key ignores case and incidental spacing. */
@@ -55,20 +56,9 @@ public record OwnerHousehold(String lastName, String postcode) {
         return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
-    private static String sha256hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+    /** Strips surrounding whitespace so a postcode-keyed match ignores incidental spacing; the single
+     *  postcode-normalization rule, reused by {@link CheckPossibleDuplicate}. A {@code null} becomes "". */
+    static String normalizePostcode(String value) {
+        return value == null ? "" : value.strip();
     }
 }

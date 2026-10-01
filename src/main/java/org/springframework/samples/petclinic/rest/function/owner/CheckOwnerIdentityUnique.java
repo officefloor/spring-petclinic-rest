@@ -7,16 +7,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityDuplicateException;
 
 /**
- * The exact-identity duplicate-detection step of {@code POST /api/owners}. Runs after
- * {@link AssignHousehold} (so the owner's {@code householdId} — part of the identity key — is set) and
- * before {@link SaveOwner}. Rejects the create with a 409 via
- * {@link OwnerIdentityDuplicateException} when the new owner's whole derived {@code identityKey} equals
- * an existing owner's.
+ * The exact-identity duplicate-detection step of {@code POST /api/owners}. Runs before
+ * {@link SaveOwner} and rejects the create with a 409 via {@link OwnerIdentityDuplicateException} when
+ * the new owner's derived {@code identityKey} — the {@code SHA-256} of normalized telephone, email and
+ * {@code soundex(lastName)} — equals an existing (non-deleted) owner's.
  *
- * <p>This replaces the former separate telephone, email and household checks: all three are now
- * expressed through the one {@link OwnerIdentity} key. Because the normalized telephone is part of the
- * key, two members of the same household (same {@code householdId}) with different telephones have
- * different keys and are both allowed — only an exact full-key match is a duplicate. The new owner is
+ * <p>This is the single duplicate check: the former separate telephone, email and household checks are
+ * all expressed through the one {@link OwnerIdentity} key. Because the normalized telephone is part of
+ * the key, two owners with the same last name and postcode but different telephones have different keys
+ * and are both allowed here — they are instead flagged as a soft match by
+ * {@link CheckPossibleDuplicate}; only an exact full-key match is a hard duplicate. The new owner is
  * still unsaved, so it is not among the owners iterated here and cannot match itself.
  */
 public class CheckOwnerIdentityUnique {
