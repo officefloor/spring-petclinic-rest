@@ -70,7 +70,7 @@ public class Owner extends Person {
     }
 
     public void setAddress(String address) {
-        this.address = address;
+        this.address = normalizeAddress(address);
     }
 
     public String getCity() {
@@ -176,6 +176,47 @@ public class Owner extends Person {
     }
 
     /**
+     * Common street-type abbreviations expanded by {@link #normalizeAddress(String)}, keyed by the
+     * upper-cased abbreviation.
+     */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
+    /**
+     * Normalize an address to its canonical stored form. Leading and trailing whitespace is
+     * trimmed, internal runs of whitespace are collapsed to a single space, the text is upper-cased,
+     * and common street-type abbreviations are expanded as whole words ({@code ST}->{@code STREET},
+     * {@code RD}->{@code ROAD}, {@code AVE}->{@code AVENUE}). This is the single source of truth for
+     * how an address is persisted and compared, so inputs that differ only in letter case, spacing
+     * or abbreviation are treated as the same address. Applied by {@link #setAddress(String)} so
+     * every persistence path (create and update, mapper or hand-copied) stores the same canonical
+     * value. The transform is idempotent: a normalized address normalizes to itself.
+     *
+     * @param address the raw address, possibly {@code null}
+     * @return the normalized form, or {@code null} if the input was {@code null}
+     */
+    public static String normalizeAddress(String address) {
+        if (address == null) {
+            return null;
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase();
+        if (collapsed.isEmpty()) {
+            return collapsed;
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder normalized = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                normalized.append(' ');
+            }
+            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return normalized.toString();
+    }
+
+    /**
      * Normalize a household field (such as last name or address) to its canonical form for
      * duplicate-household comparison. Leading and trailing whitespace is trimmed, internal runs
      * of whitespace are collapsed to a single space, and the result is lower-cased, so inputs
@@ -193,8 +234,9 @@ public class Owner extends Person {
 
     /**
      * Compute the stable identifier shared by all owners in the same household, i.e. with the same
-     * last name and address compared case-insensitively with collapsed whitespace (see
-     * {@link #normalizeHousehold(String)}). The value is deterministic in those two fields, so two
+     * last name (compared case-insensitively with collapsed whitespace, see
+     * {@link #normalizeHousehold(String)}) and the same normalized address (see
+     * {@link #normalizeAddress(String)}). The value is deterministic in those two fields, so two
      * owners who share a household are assigned the same id. It is formatted {@code 'HH-<HEX12>'}
      * where {@code HEX12} is the first twelve upper-cased hex characters of the SHA-256 digest of
      * the normalized last name and address.
@@ -205,7 +247,7 @@ public class Owner extends Person {
      */
     public static String householdId(String lastName, String address) {
         String normalizedLastName = normalizeHousehold(lastName);
-        String normalizedAddress = normalizeHousehold(address);
+        String normalizedAddress = normalizeAddress(address);
         if (normalizedLastName == null || normalizedAddress == null) {
             return null;
         }

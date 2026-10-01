@@ -287,21 +287,22 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Enforce that no <em>other</em> owner already shares this owner's household, i.e. has the same
-     * last name and the same address compared case-insensitively with collapsed whitespace (see
-     * {@link Owner#normalizeHousehold(String)}), throwing {@link DuplicateHouseholdException} if one
+     * last name (compared case-insensitively with collapsed whitespace, see
+     * {@link Owner#normalizeHousehold(String)}) and the same normalized address (see
+     * {@link Owner#normalizeAddress(String)}), throwing {@link DuplicateHouseholdException} if one
      * does. The owner being saved is excluded by id. Callers skip this check when the request opted
      * in with {@code sharesHousehold}.
      */
     private void assertHouseholdIsUnique(Owner owner) {
         String lastName = Owner.normalizeHousehold(owner.getLastName());
-        String address = Owner.normalizeHousehold(owner.getAddress());
+        String address = Owner.normalizeAddress(owner.getAddress());
         if (lastName == null || address == null) {
             return;
         }
         boolean duplicate = ownerRepository.findAll().stream()
             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
             .anyMatch(existing -> lastName.equals(Owner.normalizeHousehold(existing.getLastName()))
-                && address.equals(Owner.normalizeHousehold(existing.getAddress())));
+                && address.equals(Owner.normalizeAddress(existing.getAddress())));
         if (duplicate) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
