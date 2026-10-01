@@ -23,14 +23,13 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -257,7 +256,7 @@ public class ClinicServiceImpl implements ClinicService {
                 : LocalDate.now();
             owner.setRegistrationDate(toBusinessDay(effectiveDate));
             if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+                owner.setCustomerCode(generateCustomerCode(owner));
             }
             if (owner.getNamesakeCount() == null) {
                 owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -282,24 +281,24 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a customer code formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
-     * is the upper-cased first three letters of the owner's city, {@code LAST3} the
-     * upper-cased first three letters of the owner's last name and {@code NNNN} a per-city,
-     * 4-digit zero-padded sequence equal to one more than the current number of owners
-     * already in that city (e.g. {@code 'LON-SMI-0007'}).
+     * Build a customer code formatted {@code '<REGION>-<HASH8>'}, where {@code REGION} is the
+     * canonical region derived from the owner's postcode (falling back to the city-to-region
+     * table, then {@code 'UNKNOWN'}, as resolved by {@link LocalityResolver}) and {@code HASH8}
+     * is the first 8 upper-case hexadecimal characters of the SHA-256 digest over the owner's
+     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). There
+     * is no sequence number: identity is fully determined by the region and the telephone/last
+     * name hash.
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String cityName = city == null ? "" : city;
-        String city3 = cityName.substring(0, Math.min(3, cityName.length())).toUpperCase();
-        String name = lastName == null ? "" : lastName;
-        String last3 = name.substring(0, Math.min(3, name.length())).toUpperCase();
-        long sequence = countOwnersInCity(cityName) + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String generateCustomerCode(Owner owner) {
+        String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        return region + "-" + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
     }
 
     /**
      * Count the existing owners whose city matches the given city, compared case-insensitively,
-     * used to derive the per-city sequence of the customer code.
+     * used by the per-city capacity rule ({@link #isCityAtCapacity}).
      */
     private long countOwnersInCity(String city) {
         if (city == null) {
@@ -371,16 +370,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public String householdIdFor(String lastName, String address) throws DataAccessException {
         String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdAddress(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(32);
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
-        }
+        return Sha256Hex.upperHexPrefix(key, 16);
     }
 
     /**

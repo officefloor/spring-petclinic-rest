@@ -67,10 +67,11 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where
-     * {@code customerCode} is the owner's customer code and {@code YY} is the last two
-     * digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}), as required
-     * by the API's read-only {@code membershipNumber} field. Returns {@code null} when
-     * either the customer code or registration date is absent.
+     * {@code customerCode} is the owner's {@code '<REGION>-<HASH8>'} customer code and
+     * {@code YY} is the last two digits of the registration date's year (e.g.
+     * {@code 'NSW-1A2B3C4D-M26'}), as required by the API's read-only
+     * {@code membershipNumber} field. Returns {@code null} when either the customer code
+     * or registration date is absent.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -125,12 +126,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality, as required by the API's read-only {@code locality}
-     * field: the canonical region resolved by the postcode range first
-     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), falling back
-     * to the fixed city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
-     * {@code Brisbane -> QLD}) when the postcode is absent or in no known range, or
-     * {@code 'UNKNOWN'} when neither resolves a region.
+     * Derives an owner's locality, as required by the API's read-only {@code locality} field:
+     * the {@code REGION} segment of the owner's {@code '<REGION>-<HASH8>'} customer code, so the
+     * locality is read from the same region-and-hash identity that the customer code encodes.
+     * When no customer code is present (e.g. an owner that predates the code), the region is
+     * resolved directly from the postcode (falling back to the city-to-region table, else
+     * {@code 'UNKNOWN'}), which yields the same region the code would have carried.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -139,6 +140,13 @@ public interface OwnerMapper {
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
         }
         return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
     }
