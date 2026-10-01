@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.RequestBody;
  * treated as blank — the DTO's {@code @Size(min = 1)} alone would accept it — so this check, not bean
  * validation, is the authoritative implementation of the required-field rule.
  *
- * <p>The telephone is then normalized by stripping every non-digit character and must contain
- * exactly ten digits; otherwise the create is rejected with a 400 via
- * {@link OwnerTelephoneInvalidException}. The normalized ten-digit value is written back onto the
- * body so it is what gets stored and returned.
+ * <p>The telephone is then converted to E.164 form (see {@link OwnerTelephone#toE164(String)}); a
+ * value that cannot form a valid E.164 number is rejected with a 400 via
+ * {@link OwnerTelephoneInvalidException}. The E.164 value is written back onto the body so it is what
+ * gets stored and returned.
  *
  * <p>Email is optional. When absent (null) it is left untouched. When present it must be a
  * syntactically valid address; otherwise the create is rejected with a 400 via
@@ -56,11 +56,11 @@ public class ValidateOwner {
         if (!missing.isEmpty()) {
             throw new OwnerFieldsMissingException(missing);
         }
-        String digits = OwnerTelephone.normalize(request.getTelephone());
-        if (digits.length() != 10) {
+        String e164 = OwnerTelephone.toE164(request.getTelephone());
+        if (e164 == null) {
             throw new OwnerTelephoneInvalidException(request.getTelephone());
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
 
         String email = request.getEmail();
         if (email != null) {

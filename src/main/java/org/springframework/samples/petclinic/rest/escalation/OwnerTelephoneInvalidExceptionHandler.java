@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Responds 400 with a JSON body whose {@code errors} array names {@code telephone} when the
- * submitted telephone does not reduce to exactly ten digits.
+ * submitted telephone cannot be converted to a valid E.164 number.
  */
 public class OwnerTelephoneInvalidExceptionHandler {
 
