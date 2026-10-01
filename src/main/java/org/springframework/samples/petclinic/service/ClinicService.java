@@ -60,43 +60,24 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 
 	/**
-	 * Returns {@code true} if any owner already uses the given telephone number. The argument and every
-	 * stored value are compared in their normalized (digits-only) form, so differently formatted but
-	 * equivalent numbers collide. Enforces the "unique telephone" invariant for every owner write path.
+	 * Returns {@code true} if the given owner's derived identity key equals that of another owner,
+	 * i.e. the create would introduce a duplicate. The identity key
+	 * ({@link Owner#getIdentityKey()}) is {@code normalizedTelephone + '|' + (email or empty) + '|' +
+	 * (householdId or empty)} and is the single, consolidated criterion for duplicate detection:
+	 * only an exact whole-key match counts. Because the telephone is part of the key, two members of
+	 * the same household (same {@code householdId}) with different telephones have distinct keys and
+	 * are both allowed. Enforces the "no duplicate identity key" invariant on owner creation.
 	 *
-	 * @param telephone the telephone number to look for (in any format)
-	 * @return whether the normalized telephone is already in use by an owner
+	 * @param owner the (not yet persisted) owner whose identity key to check
+	 * @return whether an existing owner already has the same identity key
 	 */
-	boolean isTelephoneInUse(String telephone) throws DataAccessException;
-
-	/**
-	 * Returns {@code true} if any owner already uses the given email address. The argument and every
-	 * stored value are compared in their lower-cased form, so differently cased but equivalent
-	 * addresses collide. Enforces the "unique email" invariant on owner creation.
-	 *
-	 * @param email the email address to look for (in any casing)
-	 * @return whether the lower-cased email is already in use by an owner
-	 */
-	boolean isEmailInUse(String email) throws DataAccessException;
-
-	/**
-	 * Returns {@code true} if another owner already has both the given last name and address. The
-	 * last name and address are compared case-insensitively with runs of whitespace collapsed to a
-	 * single space (and surrounding whitespace trimmed), so differently cased or spaced but
-	 * equivalent values collide. Enforces the "one household per last name + address" invariant on
-	 * owner creation.
-	 *
-	 * @param lastName the last name to look for
-	 * @param address the address to look for
-	 * @return whether an existing owner shares the same normalized last name and address
-	 */
-	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
+	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
 	 * Returns a stable, shared household identifier derived from the given last name and address.
-	 * The inputs are normalized the same way as {@link #isHouseholdInUse(String, String)}
-	 * (trimmed, runs of whitespace collapsed, lower-cased) before hashing, so every owner in the
-	 * same household (same last name + address) deterministically receives the identical value.
+	 * The inputs are normalized (trimmed, runs of whitespace collapsed, lower-cased) before hashing,
+	 * so every owner in the same household (same last name + address) deterministically receives the
+	 * identical value. This household id forms the final component of each owner's identity key.
 	 *
 	 * @param lastName the last name of the household
 	 * @param address the address of the household

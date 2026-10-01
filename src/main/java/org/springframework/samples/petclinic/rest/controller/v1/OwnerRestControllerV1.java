@@ -111,20 +111,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        if (sharesHousehold) {
+            owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
         }
-        if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (this.clinicService.isEmailInUse(owner.getEmail())) {
+        // All duplicate detection is consolidated into the single derived identity key: reject only
+        // when the new owner's whole identity key (telephone|email|householdId) matches an existing one.
+        if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (sharesHousehold) {
-            owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
         }
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",

@@ -149,6 +149,24 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's derived identity key, {@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * (householdId or empty)}. This single key is the sole criterion for duplicate detection on
+     * creation: a new owner is rejected with 409 only when its whole identity key equals an existing
+     * owner's. Because the telephone is part of the key, two members of the same household (same
+     * {@code householdId}) with different telephones have distinct identity keys and are both
+     * allowed; only an exact full-key match is a duplicate. The telephone and email components are
+     * already held in their normalized forms (canonical E.164 and lower-cased) on every write path,
+     * so the key is comparable across owners. Not persisted: it is computed from the current fields.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephoneOrEmpty = this.telephone == null ? "" : this.telephone;
+        String emailOrEmpty = this.email == null ? "" : this.email;
+        String householdOrEmpty = this.householdId == null ? "" : this.householdId;
+        return telephoneOrEmpty + "|" + emailOrEmpty + "|" + householdOrEmpty;
+    }
+
+    /**
      * Stamp the owner's registration date with the server's current date on first
      * persist when none was supplied, so the default applies on every create path.
      */

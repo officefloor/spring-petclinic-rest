@@ -23,8 +23,6 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
-import org.springframework.samples.petclinic.util.InvalidTelephoneException;
-import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -361,43 +359,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isTelephoneInUse(String telephone) throws DataAccessException {
-        String normalized = normalizeTelephone(telephone);
-        if (normalized == null) {
-            return false;
-        }
+    public boolean isIdentityKeyInUse(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
-            .map(owner -> normalizeTelephone(owner.getTelephone()))
-            .anyMatch(normalized::equals);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isEmailInUse(String email) throws DataAccessException {
-        String normalized = normalizeEmail(email);
-        if (normalized == null) {
-            return false;
-        }
-        return ownerRepository.findAll().stream()
-            .map(owner -> normalizeEmail(owner.getEmail()))
-            .anyMatch(normalized::equals);
-    }
-
-    private static String normalizeEmail(String email) {
-        return email == null ? null : email.toLowerCase(Locale.ROOT);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
-        String normalizedLastName = normalizeHouseholdValue(lastName);
-        String normalizedAddress = normalizeHouseholdAddress(address);
-        if (normalizedLastName.isEmpty() || normalizedAddress.isEmpty()) {
-            return false;
-        }
-        return ownerRepository.findAll().stream()
-            .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdAddress(owner.getAddress())));
+            .filter(existing -> existing != owner)
+            .map(Owner::getIdentityKey)
+            .anyMatch(identityKey::equals);
     }
 
     @Override
@@ -466,22 +433,6 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private Owner decorateWithHouseholdMemberCount(Owner owner) {
         return decorateWithHouseholdMemberCount(owner, owner == null ? List.of() : List.of(owner));
-    }
-
-    /**
-     * Reduces a telephone number to its canonical E.164 form so that differently formatted but
-     * equivalent numbers compare equal. A value already stored that cannot form valid E.164
-     * (e.g. unusual legacy data) falls back to its digits-only form rather than failing lookup.
-     */
-    private static String normalizeTelephone(String telephone) {
-        if (telephone == null) {
-            return null;
-        }
-        try {
-            return TelephoneNormalizer.toE164(telephone);
-        } catch (InvalidTelephoneException ex) {
-            return telephone.replaceAll("\\D", "");
-        }
     }
 
     @Override
