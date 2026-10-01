@@ -71,14 +71,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's membership tier, the derived tier based on the owner's namesake count and
-     * whether an email is present (see {@link Owner#membershipTier(Integer, String)}).
+     * Compute the owner's membership tier, the derived tier based on the owner's household size at
+     * creation, namesake count and whether an email is present
+     * (see {@link Owner#membershipTier(Integer, String, Integer)}).
      */
     default String formatMembershipTier(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail());
+        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize());
     }
 
     /**

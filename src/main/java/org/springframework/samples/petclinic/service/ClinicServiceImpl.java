@@ -291,6 +291,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        if (owner.isNew() && owner.getHouseholdSize() == null) {
+            owner.setHouseholdSize(countHouseholdMembers(owner));
+        }
         ownerRepository.save(owner);
         if (isCreate) {
             AUDIT.info("owner created id={} customerCode={} registrationDate={}",
@@ -315,6 +318,26 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Count the members of this owner's household as it stands immediately after this create, i.e.
+     * the existing owners that share this owner's household id (see
+     * {@link Owner#householdId(String, String)}) plus this owner itself. The owner being saved is
+     * excluded from the existing-owner scan by id so it is counted exactly once. This value is
+     * deterministic given the current data, so it is computed once at creation time and stored and
+     * then drives the {@code 'GOLD'} membership tier (3 or more members).
+     */
+    private Integer countHouseholdMembers(Owner owner) {
+        String householdId = Owner.householdId(owner.getLastName(), owner.getAddress());
+        if (householdId == null) {
+            return 1;
+        }
+        long existing = ownerRepository.findAll().stream()
+            .filter(other -> !Objects.equals(other.getId(), owner.getId()))
+            .filter(other -> householdId.equals(Owner.householdId(other.getLastName(), other.getAddress())))
+            .count();
+        return (int) (existing + 1L);
     }
 
     /**
