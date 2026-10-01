@@ -238,7 +238,23 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (owner.isNew() && owner.getCustomerCode() == null) {
+            owner.setCustomerCode(generateCustomerCode(owner));
+        }
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Build an owner's {@code customerCode} formatted {@code '<LAST3>-<NNNN>'}, where
+     * {@code LAST3} is the upper-cased first three letters of the last name and {@code NNNN}
+     * is a global, 4-digit zero-padded sequence equal to one more than the current number of
+     * owners (e.g. {@code 'SMI-0007'}).
+     */
+    private String generateCustomerCode(Owner owner) {
+        String lastName = owner.getLastName();
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+        long sequence = ownerRepository.findAll().size() + 1L;
+        return String.format("%s-%04d", last3, sequence);
     }
 
     /**

@@ -47,6 +47,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
