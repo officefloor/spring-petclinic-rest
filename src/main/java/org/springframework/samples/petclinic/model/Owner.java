@@ -45,6 +45,12 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -94,6 +100,37 @@ public class Owner extends Person {
 
     public void setAddress(String address) {
         this.address = normalizeAddress(address);
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = normalizeAddress(addressLine1);
+    }
+
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = normalizeAddress(addressLine2);
+    }
+
+    /**
+     * Populate the persisted composed {@link #address} from the structured and flat address fields
+     * just before the owner is written. Invoked by JPA as a lifecycle callback on insert and update
+     * so the stored {@code address} is always the canonical composition (see
+     * {@link #composeAddress(String, String, String)}): the structured {@code addressLine1} /
+     * {@code addressLine2} when present, otherwise the flat value already held in {@code address}.
+     * The address setters stay trivial — each just stores its own normalized field — and the
+     * derivation lives in one place that runs regardless of the order the fields were set.
+     */
+    @PrePersist
+    @PreUpdate
+    void composeStoredAddress() {
+        this.address = composeAddress(this.addressLine1, this.addressLine2, this.address);
     }
 
     public String getCity() {
@@ -406,6 +443,55 @@ public class Owner extends Person {
             normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return normalized.toString();
+    }
+
+    /**
+     * Compose an owner's canonical {@code address} from the two accepted input forms, preferring the
+     * structured fields over the flat value. When a non-blank {@code addressLine1} is present the
+     * result is that line, with a single space and {@code addressLine2} appended when the second line
+     * is present; otherwise the flat {@code address} value is used. All three arguments are expected
+     * to already be normalized (see {@link #normalizeAddress(String)}). This is the single source of
+     * truth for how an owner's address is read, so every consumer (the stored value and the response)
+     * sees the structured fields when present and the flat value as the backward-compatible fallback.
+     *
+     * @param addressLine1 the normalized first structured line, possibly {@code null} or blank
+     * @param addressLine2 the normalized optional second structured line, possibly {@code null} or blank
+     * @param flatAddress the normalized flat address, possibly {@code null}
+     * @return the composed address, or the flat value / {@code null} when no structured line is present
+     */
+    public static String composeAddress(String addressLine1, String addressLine2, String flatAddress) {
+        if (isPresent(addressLine1)) {
+            if (isPresent(addressLine2)) {
+                return addressLine1 + " " + addressLine2;
+            }
+            return addressLine1;
+        }
+        return flatAddress;
+    }
+
+    /**
+     * Whether an address field supplies a usable value, i.e. is non-{@code null} and not blank. This
+     * is the shared "presence" rule behind both {@link #composeAddress(String, String, String)} and
+     * {@link #hasAddress(String, String)}, so they agree on what counts as a supplied address field.
+     *
+     * @param value the address field, possibly {@code null}
+     * @return {@code true} if the value is present and non-blank
+     */
+    private static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    /**
+     * Check whether an owner supplies a postal address in at least one accepted form: a non-blank
+     * structured {@code addressLine1}, or a non-blank flat {@code address}. This is the single source
+     * of truth for the address presence rule, shared by the DTO validation and any persistence path.
+     *
+     * @param addressLine1 the structured first line, possibly {@code null}
+     * @param address the flat address, possibly {@code null}
+     * @return {@code true} if either form supplies a non-blank value, {@code false} otherwise
+     */
+    public static boolean hasAddress(String addressLine1, String address) {
+        return isPresent(addressLine1) || isPresent(address);
     }
 
     /**
