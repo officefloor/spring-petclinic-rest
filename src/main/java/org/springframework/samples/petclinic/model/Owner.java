@@ -27,7 +27,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -652,10 +651,46 @@ public class Owner extends Person {
     }
 
     /**
+     * The month in which the fiscal year starts (1 July). Dates on or after this month belong to
+     * the fiscal year named for the following calendar year.
+     */
+    private static final int FISCAL_YEAR_START_MONTH = 7;
+
+    /**
+     * Resolve the fiscal-year number for a date, where the fiscal year starts on 1 July and is
+     * named for the calendar year in which it ends. A date in July&ndash;December belongs to the
+     * fiscal year of the next calendar year; a date in January&ndash;June belongs to the fiscal
+     * year of its own calendar year.
+     *
+     * @param date the date to resolve, never {@code null}
+     * @return the fiscal-year number (a four-digit calendar year)
+     */
+    private static int fiscalYearNumber(LocalDate date) {
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Compute an owner's {@code fiscalYear}, the fiscal year of a date formatted {@code 'FY<YY>'}
+     * where {@code YY} is the last two digits of the fiscal-year number (see
+     * {@link #fiscalYearNumber(LocalDate)}). The fiscal year starts on 1 July, so a date of
+     * {@code 2026-08-01} yields {@code 'FY27'} and {@code 2026-03-01} yields {@code 'FY26'}.
+     *
+     * @param date the date to derive the fiscal year from, possibly {@code null}
+     * @return the fiscal year, or {@code null} if {@code date} is {@code null}
+     */
+    public static String fiscalYear(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearNumber(date) % 100);
+    }
+
+    /**
      * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
      * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
-     * is the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}). The
-     * value is deterministic in those two fields.
+     * is the last two digits of the registration date's fiscal year (see
+     * {@link #fiscalYear(LocalDate)}), e.g. {@code 'NSW-1A2B3C4D-M27'}. The value is deterministic
+     * in those two fields.
      *
      * @param customerCode the owner's customer code, possibly {@code null}
      * @param registrationDate the owner's registration date, possibly {@code null}
@@ -665,16 +700,17 @@ public class Owner extends Person {
         if (customerCode == null || registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, fiscalYearNumber(registrationDate) % 100);
     }
 
     /**
      * Compute an owner's {@code membershipPoints}, the derived points score assigned on create. The
      * score starts at 0, gains 2 when an email is present, gains 1 when {@code namesakeCount} is 0,
      * gains 2 when the owner belongs to a household of 3 or more members (see {@code householdCount}),
-     * and gains 3 when the owner's tenure is more than 365 days (the tenure being the number of days
-     * from {@code registrationDate} to today). Because a newly created owner has zero tenure, the
-     * tenure points accrue only once the owner has been a member for over a year.
+     * and gains 3 when the owner's tenure is more than one fiscal year (the tenure being the number
+     * of elapsed fiscal years from {@code registrationDate} to today, see
+     * {@link #fiscalYear(LocalDate)}). Because a newly created owner has zero tenure, the tenure
+     * points accrue only once the owner has been a member for more than a full fiscal year.
      *
      * @param namesakeCount the owner's namesake count, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
@@ -695,7 +731,7 @@ public class Owner extends Person {
             points += 2;
         }
         if (registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+            && fiscalYearNumber(LocalDate.now()) - fiscalYearNumber(registrationDate) > 1) {
             points += 3;
         }
         return points;

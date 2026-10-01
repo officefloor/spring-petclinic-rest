@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -78,6 +79,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.householdId(owner.getLastName(), owner.getPostcode());
+    }
+
+    /**
+     * Compute the owner's fiscal year, the 'FY&lt;YY&gt;' value derived from the
+     * business-day-adjusted registration date (see {@link Owner#fiscalYear(java.time.LocalDate)}).
+     */
+    default String formatFiscalYear(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.fiscalYear(owner.getRegistrationDate());
     }
 
     /**
