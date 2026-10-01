@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
@@ -247,6 +248,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
+            LocalDate effectiveDate = owner.getRegistrationDate() != null
+                ? owner.getRegistrationDate()
+                : LocalDate.now();
+            owner.setRegistrationDate(toBusinessDay(effectiveDate));
             if (owner.getCustomerCode() == null) {
                 owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
             }
@@ -310,11 +315,29 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean isDailyRegistrationAtCapacity() throws DataAccessException {
-        LocalDate today = LocalDate.now();
+        LocalDate businessDay = toBusinessDay(LocalDate.now());
         long registeredToday = ownerRepository.findAll().stream()
-            .filter(owner -> today.equals(owner.getRegistrationDate()))
+            .filter(owner -> businessDay.equals(owner.getRegistrationDate()))
             .count();
         return registeredToday >= DAILY_CAPACITY;
+    }
+
+    /**
+     * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced
+     * to the following Monday, while a weekday is returned unchanged. Applied to the effective
+     * registration date (whether supplied or defaulted to the server date) so that the stored
+     * {@code registrationDate}, every value derived from it (such as the membership number's year
+     * segment) and the per-day create-limit all use the adjusted business day.
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (day == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
     }
 
     @Override
