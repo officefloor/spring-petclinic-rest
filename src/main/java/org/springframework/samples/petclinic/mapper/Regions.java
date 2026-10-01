@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Map;
 
+import org.springframework.samples.petclinic.model.CustomerCode;
+
 /**
  * City-to-region lookup backing the {@code locality} field produced by
  * {@link OwnerMapper#toOwnerDto}. The table pins each known city to its canonical region string; any
@@ -22,8 +24,10 @@ public final class Regions {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
-    /** The locality returned for a city absent from {@link #CITY_REGION}. */
-    public static final String UNKNOWN = "UNKNOWN";
+    /** The locality returned for a city absent from {@link #CITY_REGION}. Points at the single
+     *  {@link CustomerCode#UNKNOWN_REGION} definition so the region baked into a customer code and the
+     *  region/locality derived here share one sentinel. */
+    public static final String UNKNOWN = CustomerCode.UNKNOWN_REGION;
 
     private Regions() {
     }
@@ -58,6 +62,20 @@ public final class Regions {
     public static String localityOf(String city, String postcode) {
         String byPostcode = regionOfPostcode(postcode);
         return byPostcode != null ? byPostcode : localityOf(city);
+    }
+
+    /**
+     * Derive the region code purely from the postcode. This is the {@code REGION} component of an
+     * owner's {@code <REGION>-<HASH8>} customer code: the region whose range contains the postcode, or
+     * {@link #UNKNOWN} when the postcode is absent, non-numeric, or falls in no known range. Unlike
+     * {@link #localityOf(String, String)} it never falls back to the city.
+     *
+     * @param postcode the owner's postcode; may be {@code null}
+     * @return the canonical region string, or {@code "UNKNOWN"} when the postcode resolves to no region
+     */
+    public static String regionForPostcode(String postcode) {
+        String region = regionOfPostcode(postcode);
+        return region != null ? region : UNKNOWN;
     }
 
     /**
