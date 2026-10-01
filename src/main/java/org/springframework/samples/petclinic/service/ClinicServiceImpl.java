@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -263,6 +264,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         if (owner.isNew()) {
             assertDailyRegistrationLimit(owner);
         }
@@ -379,6 +381,27 @@ public class ClinicServiceImpl implements ClinicService {
         if (count >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(city);
         }
+    }
+
+    /**
+     * Roll a registration date forward to the next business day. A date that falls on a Saturday or
+     * Sunday is advanced to the following Monday; a weekday is returned unchanged. This is applied to
+     * the effective registration date (whether supplied in the request or defaulted to the server
+     * date) so that every value derived from it&mdash;such as the membership number's year segment
+     * and the daily create-limit counting&mdash;uses the adjusted business day.
+     */
+    private static LocalDate rollToBusinessDay(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
     }
 
     /**
