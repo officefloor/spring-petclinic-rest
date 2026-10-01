@@ -629,6 +629,32 @@ public class Owner extends Person {
     }
 
     /**
+     * Fixed region-to-timezone table used by {@link #timezone(String)} to resolve an owner's IANA
+     * timezone name from its canonical region ({@code NSW}->{@code Australia/Sydney},
+     * {@code VIC}->{@code Australia/Melbourne}, {@code QLD}->{@code Australia/Brisbane}). A region
+     * not in this table (including {@code 'UNKNOWN'}) has no timezone.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
+     * Derive an owner's {@code timezone}, the IANA timezone name for the owner's locality/region,
+     * from the fixed {@link #REGION_TIMEZONE} table ({@code NSW}->{@code Australia/Sydney},
+     * {@code VIC}->{@code Australia/Melbourne}, {@code QLD}->{@code Australia/Brisbane}). The region
+     * is the owner's {@code locality} (see {@link #locality(String)}), itself the {@code REGION}
+     * segment of the customer code. A region not in the table (including {@code 'UNKNOWN'}) has no
+     * timezone and yields {@code null}.
+     *
+     * @param customerCode the owner's customer code, possibly {@code null}
+     * @return the IANA timezone name, or {@code null} when the owner's region has no mapped timezone
+     */
+    public static String timezone(String customerCode) {
+        return REGION_TIMEZONE.get(locality(customerCode));
+    }
+
+    /**
      * Resolve the canonical region for a city from the fixed {@link #CITY_REGION} table. A city not
      * in the table (including {@code null}) resolves to {@code 'UNKNOWN'}.
      *

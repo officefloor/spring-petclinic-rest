@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
@@ -110,6 +111,18 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.locality(owner.getCustomerCode());
+    }
+
+    /**
+     * Compute the owner's timezone, the IANA timezone name derived from the owner's locality/region
+     * via the fixed region-to-timezone table (see {@link Owner#timezone(String)}). Returns
+     * {@code null} when the owner's region has no mapped timezone, so the field is omitted.
+     */
+    default String formatTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.timezone(owner.getCustomerCode());
     }
 
     /**
