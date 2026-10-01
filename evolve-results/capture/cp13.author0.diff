@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 53a5599dd..2e4fe3e33 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -62,6 +62,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -121,6 +124,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     /**
+      * Stamp the owner's registration date with the server's current date on first
+      * persist when none was supplied, so the default applies on every create path.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 03cf62c20..55867dfe4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -239,13 +239,32 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+-        if (owner.isNew() && owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++        if (owner.isNew()) {
++            if (owner.getCustomerCode() == null) {
++                owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++            }
++            if (owner.getNamesakeCount() == null) {
++                owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
++            }
+         }
+         ownerRepository.save(owner);
+ 
+     }
+ 
++    /**
++     * Count the existing owners (before this create) that share the given first and last name,
++     * compared case-insensitively, as required by the read-only {@code namesakeCount} field.
++     */
++    private int countNamesakes(String firstName, String lastName) {
++        if (firstName == null || lastName == null) {
++            return 0;
++        }
++        return (int) ownerRepository.findAll().stream()
++            .filter(owner -> firstName.equalsIgnoreCase(owner.getFirstName())
++                && lastName.equalsIgnoreCase(owner.getLastName()))
++            .count();
++    }
++
+     /**
+      * Build a customer code formatted {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the
+      * upper-cased first three letters of the owner's last name and {@code NNNN} is a global,
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a3ba7e5a4..f87b94b3d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 82939cbc2..99297e64f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 82270213a..47fe418cc 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
++  namesake_count INT(4),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9e4c96e64..9558f20cf 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+-                                      household_id VARCHAR(64)
++                                      household_id VARCHAR(64),
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1be1a19a0..57c223c5d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2131,6 +2131,16 @@ components:
+               type: string
+               example: 'A1B2C3D4E5F6A1B2'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of owners that already existed, at the time this owner was created,
++                sharing the same first name and last name (compared case-insensitively).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
