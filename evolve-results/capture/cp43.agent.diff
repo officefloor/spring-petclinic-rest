@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index dc6859a78..e362acaef 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.checkDigit(owner.getCustomerCode()))")
+-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.of(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+new file mode 100644
+index 000000000..b26a32c66
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Single source of truth for an owner's {@code membershipNumber}: the derived value the owner response
++ * carries and the create audit line records. The number is {@code <customerCode>-M<YY>}, where
++ * {@code YY} is the two-digit year of the owner's registration date.
++ *
++ * <p>This is a model-level derivation of an {@link Owner} (like {@link MembershipLevel} and
++ * {@link OwnerIdentity}): it is consumed both by the response mapper and by the create pipeline's
++ * audit step, so it lives in the model layer rather than beside the pipeline functions.
++ */
++public final class MembershipNumber {
++
++    private MembershipNumber() {
++    }
++
++    /** The {@code membershipNumber} of a persisted or in-flight owner, computed from its stored fields. */
++    public static String of(Owner owner) {
++        return owner.getCustomerCode() + "-M"
++                + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 9a20120f6..564c91949 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,20 +5,22 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
++import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Runs after {@link SaveOwner} on {@code POST /api/owners}, once the owner has been persisted and
+  * assigned an id. Emits an audit line via the dedicated {@code AUDIT} logger carrying the new owner's
+- * id, customerCode, registrationDate and membership level.
++ * id, customerCode, registrationDate, membership level and membership number.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Created owner id={} customerCode={} registrationDate={} membershipLevel={}",
++        AUDIT.info(
++                "Created owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                MembershipLevel.of(owner));
++                MembershipLevel.of(owner), MembershipNumber.of(owner));
+     }
+ }
