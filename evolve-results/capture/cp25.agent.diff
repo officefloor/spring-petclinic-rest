@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 22aab24b3..9188d4b98 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -117,6 +117,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (this.clinicService.isEmailInUse(owner.getEmail())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 3c2cd92b5..b030e8354 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -69,6 +69,16 @@ public interface ClinicService {
+ 	 */
+ 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} if any owner already uses the given email address. The argument and every
++	 * stored value are compared in their lower-cased form, so differently cased but equivalent
++	 * addresses collide. Enforces the "unique email" invariant on owner creation.
++	 *
++	 * @param email the email address to look for (in any casing)
++	 * @return whether the lower-cased email is already in use by an owner
++	 */
++	boolean isEmailInUse(String email) throws DataAccessException;
++
+ 	/**
+ 	 * Returns {@code true} if another owner already has both the given last name and address. The
+ 	 * last name and address are compared case-insensitively with runs of whitespace collapsed to a
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 99395f893..015999b34 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -371,6 +371,22 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(normalized::equals);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isEmailInUse(String email) throws DataAccessException {
++        String normalized = normalizeEmail(email);
++        if (normalized == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .map(owner -> normalizeEmail(owner.getEmail()))
++            .anyMatch(normalized::equals);
++    }
++
++    private static String normalizeEmail(String email) {
++        return email == null ? null : email.toLowerCase(Locale.ROOT);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
