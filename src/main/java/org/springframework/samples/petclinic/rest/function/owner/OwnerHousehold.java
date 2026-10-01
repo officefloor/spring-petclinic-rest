@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256;
 
@@ -12,9 +13,11 @@ import org.springframework.samples.petclinic.model.Sha256;
  * household. Two owners belong to the same household when their {@link #householdId()} values are equal.
  *
  * <p>The {@code householdId} is <em>deterministic</em>: the first 12 hex characters of
- * {@code SHA-256(normalizedLastName + '|' + postcode)}. Owners with the same last name and postcode
- * therefore share it automatically, with no bookkeeping or minting — there is no longer any
- * donor-owner hand-off. An owner with no postcode has no household to key on, so its
+ * {@code SHA-256(V2 + '|' + normalizedLastName + '|' + postcode)}, where {@code V2} is the fixed
+ * {@linkplain org.springframework.samples.petclinic.model.IdentityVersion#TAG identity-version tag} mixed
+ * in so every version-2 id differs from the version-1 id for the same household. Owners with the same
+ * last name and postcode therefore share it automatically, with no bookkeeping or minting — there is no
+ * longer any donor-owner hand-off. An owner with no postcode has no household to key on, so its
  * {@code householdId} is {@code null}.
  *
  * <p>This is the single definition of the {@code householdId}, shared by {@link AssignHousehold}
@@ -38,14 +41,14 @@ public record OwnerHousehold(String lastName, String postcode) {
 
     /**
      * The deterministic household identifier: the first 12 hex characters of
-     * {@code SHA-256(normalizedLastName + '|' + postcode)}, or {@code null} when there is no postcode
-     * to key the household on.
+     * {@code SHA-256(V2 + '|' + normalizedLastName + '|' + postcode)}, or {@code null} when there is no
+     * postcode to key the household on.
      */
     public String householdId() {
         if (postcode.isEmpty()) {
             return null;
         }
-        return Sha256.hex(lastName + "|" + postcode).substring(0, 12);
+        return Sha256.hex(IdentityVersion.TAG + "|" + lastName + "|" + postcode).substring(0, 12);
     }
 
     /** Lower-cases and collapses whitespace so the household key ignores case and incidental spacing. */

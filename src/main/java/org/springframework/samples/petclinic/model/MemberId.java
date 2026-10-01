@@ -21,19 +21,22 @@ import java.security.NoSuchAlgorithmException;
  * <li>{@code CHK} - a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
  *
- * <p>The format is assembled by {@link #format(String, String, String)} and the region read back by
- * {@link #region(String)}; both sit here so the ordering and the check-digit scope live as one matched
- * pair. There is no separator between components, so {@link #region(String)} recovers the region as the
- * leading run of non-digit characters (the fiscal year that follows is always digits).
+ * <p>The format is assembled by {@link #format(String, String, String)}, which embeds the region, fiscal
+ * year, hash and check digit in that order with no separator. The region component itself is supplied by
+ * the caller (under {@linkplain IdentityVersion identity version 2} it is the version-tagged region from
+ * {@link org.springframework.samples.petclinic.mapper.Regions#regionForPostcodeV2(String)}); the
+ * user-facing {@code locality}, {@code timezone} and owner segment are derived as the plain region from
+ * the postcode (see {@link org.springframework.samples.petclinic.mapper.Regions#regionForPostcode(String)})
+ * rather than read back out of the member id.
  */
 public final class MemberId {
 
     /** The single character separating a de-duplication suffix from the base member id. */
     private static final char SEPARATOR = '-';
 
-    /** The region string used when a postcode (or a stored member id) resolves to no known region. The
-     *  canonical definition of this sentinel, which {@code Regions.UNKNOWN} also points at so the region
-     *  a member id is built with and the region read back out can never diverge. */
+    /** The region string used when a postcode resolves to no known region. The canonical definition of
+     *  this sentinel, which {@code Regions.UNKNOWN} also points at so the region a member id is built with
+     *  and the region/locality derived elsewhere share one value. */
     public static final String UNKNOWN_REGION = "UNKNOWN";
 
     private MemberId() {
@@ -84,27 +87,6 @@ public final class MemberId {
         }
         String last = lastName == null ? "" : lastName;
         return sha256UpperHex(normalizedTelephone + last).substring(0, 8);
-    }
-
-    /**
-     * Read the {@code REGION} component back out of a member id: the leading run of non-digit
-     * characters, before the two-digit fiscal year. This is the single source of truth for the
-     * {@code locality} response field, so the locality an owner reports is exactly the region baked into
-     * its identity.
-     *
-     * @param memberId the member id; may be {@code null}
-     * @return the region prefix, or {@link #UNKNOWN_REGION} when the member id is {@code null} or starts
-     *         with no region (its first character is already a digit)
-     */
-    public static String region(String memberId) {
-        if (memberId == null) {
-            return UNKNOWN_REGION;
-        }
-        int i = 0;
-        while (i < memberId.length() && !Character.isDigit(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? UNKNOWN_REGION : memberId.substring(0, i);
     }
 
     /**

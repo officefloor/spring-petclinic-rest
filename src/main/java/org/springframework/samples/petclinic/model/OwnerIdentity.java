@@ -22,6 +22,11 @@ import java.util.Locale;
  * incidental telephone formatting or email casing still match: the telephone is run through
  * {@link OwnerTelephone#toE164(String)}, the email is lower-cased, and the last name is reduced to its
  * {@link Soundex} code. A {@code null} component contributes the empty string.
+ *
+ * <p>Under {@linkplain IdentityVersion identity version 2} the hash additionally mixes in the fixed
+ * {@link IdentityVersion#TAG version tag} as a leading component, so every version-2 key differs from
+ * the version-1 key for the same owner. Both the submitted and the stored owner are hashed with the tag,
+ * so duplicate detection stays an exact comparison.
  */
 public final class OwnerIdentity {
 
@@ -36,6 +41,6 @@ public final class OwnerIdentity {
         }
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String lastNameCode = Soundex.encode(owner.getLastName());
-        return Sha256.hex(normalizedTelephone + "|" + email + "|" + lastNameCode);
+        return Sha256.hex(IdentityVersion.TAG + "|" + normalizedTelephone + "|" + email + "|" + lastNameCode);
     }
 }

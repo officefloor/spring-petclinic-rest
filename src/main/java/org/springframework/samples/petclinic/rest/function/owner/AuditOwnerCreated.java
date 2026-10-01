@@ -16,8 +16,9 @@ import org.springframework.samples.petclinic.model.OwnerPrimaryIdentifier;
  * Runs after {@link SaveOwner} on {@code POST /api/owners}, once the owner has been persisted and
  * assigned an id. Emits the human-readable audit line via the dedicated {@code AUDIT} logger, and then
  * an immutable structured {@link OwnerCreatedEvent} serialized to JSON on the same logger. The event
- * carries a process-wide monotonically increasing {@code seq}, the owner id and the owner's current
- * {@link OwnerPrimaryIdentifier primary identifier} (the unified member id).
+ * carries a process-wide monotonically increasing {@code seq}, the owner id, the owner's current
+ * {@link OwnerPrimaryIdentifier primary identifier} (the unified, version-2 member id) and the audit
+ * {@code schemaVersion} of 2.
  */
 public class AuditOwnerCreated {
 

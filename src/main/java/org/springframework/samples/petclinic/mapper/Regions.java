@@ -86,6 +86,21 @@ public final class Regions {
     }
 
     /**
+     * The region code baked <em>inside</em> an owner's version-2 {@code memberId}: the plain
+     * {@link #regionForPostcode(String) region} with the fixed
+     * {@link org.springframework.samples.petclinic.model.IdentityVersion#TAG identity-version tag} mixed
+     * in, e.g. {@code NSWV2} (or {@code UNKNOWNV2}). The tag lives only here, inside the identifier, so
+     * the member id differs from its version-1 form; it never reaches the user-facing {@code locality},
+     * {@code timezone} or owner segment, which keep the plain region from {@link #regionForPostcode}.
+     *
+     * @param postcode the owner's postcode; may be {@code null}
+     * @return the plain region followed by the version tag
+     */
+    public static String regionForPostcodeV2(String postcode) {
+        return regionForPostcode(postcode) + org.springframework.samples.petclinic.model.IdentityVersion.TAG;
+    }
+
+    /**
      * Derive the locality (canonical region) for a city.
      *
      * @param city the owner's city; may be {@code null}
