@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "household_count")
     private Integer householdCount;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -209,6 +212,21 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * The owner's stored {@code membershipLevel}, the create-time membership level after the
+     * household level ceiling has been applied (see
+     * {@link org.springframework.samples.petclinic.service.ClinicService#saveOwner(Owner, boolean)}).
+     * A {@code null} stored value means no capped level was recorded, in which case the level is
+     * recomputed from {@code membershipPoints}.
+     */
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {
@@ -755,6 +773,25 @@ public class Owner extends Person {
             return 2;
         }
         return 1;
+    }
+
+    /**
+     * Resolve this owner's effective {@code membershipLevel}: the capped value stored on the owner
+     * when present (the create-time level after the household ceiling has been applied, see
+     * {@link #getMembershipLevel()}), otherwise the level recomputed from the owner's membership
+     * points (see {@link #membershipLevel(int)} and
+     * {@link #membershipPoints(Integer, String, Integer, LocalDate)}). This is the single source of
+     * truth for how a stored level is read back, deferred to by both the create-time household-ceiling
+     * computation and the read-side DTO mapping so they always agree.
+     *
+     * @return the stored capped level when present, otherwise the level derived from membership points
+     */
+    public int effectiveMembershipLevel() {
+        if (this.membershipLevel != null) {
+            return this.membershipLevel;
+        }
+        return membershipLevel(membershipPoints(this.namesakeCount, this.email,
+            this.householdCount, this.registrationDate));
     }
 
     /**

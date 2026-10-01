@@ -279,11 +279,16 @@ public class ClinicServiceImpl implements ClinicService {
      *
      * <p>Because the household is keyed on {@code (lastName, postcode)} (see
      * {@link Owner#householdId(String, String)}), owners sharing a last name and postcode are the
-     * same household. On create, a second owner in an existing household is rejected as a household
-     * duplicate (see {@link #assertHouseholdIsUnique(Owner)}) <em>unless</em> {@code sharesHousehold}
-     * is set, in which case it is accepted as a declared household member. The {@code sharesHousehold}
-     * flag therefore only bypasses that duplicate block; a declared member is also not flagged as a
-     * possible (suspected) duplicate.
+     * same household. Duplicate rejection on create is expressed solely through the identity key:
+     * {@link #assertIdentityIsUnique(Owner)} rejects an owner that reuses an existing normalized
+     * telephone, and consistent with that check's contract two members of the same household with
+     * different telephones have different identity keys and are both allowed. An undeclared household
+     * member sharing an existing household is therefore created but flagged as a possible (suspected)
+     * duplicate, whereas a declared household member ({@code sharesHousehold} set) is left unflagged;
+     * {@code sharesHousehold} now governs only that flagging. This keeps the sole {@code POST /api/owners}
+     * duplicate rule in one place and lets household members coexist, which the household
+     * membership-level ceiling (see {@link #computeMembershipLevel(Owner)}) relies on to compare a new
+     * owner against the existing members.
      */
     @Override
     @Transactional
@@ -293,9 +298,6 @@ public class ClinicServiceImpl implements ClinicService {
         assertIdentityIsUnique(owner);
         if (owner.isNew()) {
             assertCityHasCapacity(owner);
-            if (!sharesHousehold) {
-                assertHouseholdIsUnique(owner);
-            }
         }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -315,6 +317,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getHouseholdCount() == null) {
             owner.setHouseholdCount(countHouseholdMembers(owner));
         }
+        if (owner.isNew() && owner.getMembershipLevel() == null) {
+            owner.setMembershipLevel(computeMembershipLevel(owner));
+        }
         if (owner.isNew()) {
             assignPossibleDuplicate(owner, sharesHousehold);
         }
@@ -322,9 +327,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (isCreate) {
             String membershipNumber = Owner.membershipNumber(owner.getCustomerCode(),
                 owner.getRegistrationDate());
-            int membershipLevel = Owner.membershipLevel(Owner.membershipPoints(
-                owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdCount(),
-                owner.getRegistrationDate()));
+            int membershipLevel = owner.effectiveMembershipLevel();
             AUDIT.info("owner created id={} customerCode={} registrationDate={} "
                     + "membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -369,6 +372,41 @@ public class ClinicServiceImpl implements ClinicService {
                 Owner.householdId(existing.getLastName(), existing.getPostcode())))
             .count();
         return (int) others + 1;
+    }
+
+    /**
+     * Compute a newly created owner's {@code membershipLevel} after applying the household level
+     * ceiling, the value stored on the owner so every later read returns the capped level. The
+     * owner's own uncapped level is first derived from its membership points (see
+     * {@link Owner#membershipLevel(int)} and
+     * {@link Owner#membershipPoints(Integer, String, Integer, java.time.LocalDate)}). The ceiling is
+     * then one above the current maximum {@code membershipLevel} among the owner's existing household
+     * members&mdash;other owners sharing its household id (same last name and postcode, see
+     * {@link Owner#householdId(String, String)}), excluding soft-deleted owners and the owner itself.
+     * Each level (the owner's own uncapped level and each member's) is read through
+     * {@link Owner#effectiveMembershipLevel()}, the single resolver shared with the read-side mapping.
+     * The returned level is the smaller of the uncapped level and that ceiling. When the owner has no
+     * derivable household id or no existing household member, no ceiling applies and the uncapped
+     * level is returned.
+     */
+    private Integer computeMembershipLevel(Owner owner) {
+        int uncapped = owner.effectiveMembershipLevel();
+        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
+        if (householdId == null) {
+            return uncapped;
+        }
+        Integer maxHouseholdLevel = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(
+                Owner.householdId(existing.getLastName(), existing.getPostcode())))
+            .map(Owner::effectiveMembershipLevel)
+            .max(Integer::compareTo)
+            .orElse(null);
+        if (maxHouseholdLevel == null) {
+            return uncapped;
+        }
+        return Math.min(uncapped, maxHouseholdLevel + 1);
     }
 
     /**
@@ -481,31 +519,6 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> !existing.isDeleted())
             .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
             .anyMatch(normalizedTelephone::equals);
-        if (duplicate) {
-            throw new DuplicateIdentityException(Owner.identityKey(
-                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
-        }
-    }
-
-    /**
-     * Enforce that no <em>other</em> owner already belongs to this owner's household, throwing
-     * {@link DuplicateIdentityException} if one does. The household is keyed on {@code (lastName,
-     * postcode)} (see {@link Owner#householdId(String, String)}), so owners sharing a last name and
-     * postcode are the same household and a second such owner is a household duplicate. The owner
-     * being saved is excluded by id, and an owner with no derivable household id (missing last name
-     * or postcode) places no constraint. Callers bypass this check for a declared household member
-     * ({@code sharesHousehold} set).
-     */
-    private void assertHouseholdIsUnique(Owner owner) {
-        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
-        if (householdId == null) {
-            return;
-        }
-        boolean duplicate = ownerRepository.findAll().stream()
-            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
-            .filter(existing -> !existing.isDeleted())
-            .map(existing -> Owner.householdId(existing.getLastName(), existing.getPostcode()))
-            .anyMatch(householdId::equals);
         if (duplicate) {
             throw new DuplicateIdentityException(Owner.identityKey(
                 owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));

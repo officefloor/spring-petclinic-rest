@@ -130,14 +130,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's membership level, mapped from the owner's membership points
-     * (see {@link Owner#membershipLevel(int)}).
+     * Resolve the owner's membership level through {@link Owner#effectiveMembershipLevel()}, the
+     * single resolver shared with the create-time household-ceiling computation: the capped value
+     * stored on the owner when present (the create-time level after the household ceiling has been
+     * applied), otherwise the level recomputed from the owner's membership points.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.membershipLevel(formatMembershipPoints(owner));
+        return owner.effectiveMembershipLevel();
     }
 
     /**
@@ -256,6 +258,7 @@ public interface OwnerMapper {
     }
 
     @Mapping(target = "householdCount", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
@@ -263,6 +266,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdCount", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
