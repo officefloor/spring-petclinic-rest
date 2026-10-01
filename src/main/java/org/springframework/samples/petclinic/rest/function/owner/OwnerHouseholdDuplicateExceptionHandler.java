@@ -6,12 +6,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 Conflict when a create request's derived {@code identityKey} already belongs to
- * another owner.
+ * Responds 409 Conflict when a create request would be a second owner in an existing household.
  */
-public class OwnerIdentityDuplicateExceptionHandler {
+public class OwnerHouseholdDuplicateExceptionHandler {
 
-    public void handle(@Parameter OwnerIdentityDuplicateException ex,
+    public void handle(@Parameter OwnerHouseholdDuplicateException ex,
             ObjectResponse<ResponseEntity<String>> response) {
         response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
     }

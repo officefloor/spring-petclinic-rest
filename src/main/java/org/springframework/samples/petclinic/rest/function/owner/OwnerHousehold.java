@@ -5,19 +5,17 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Single source of truth for the owner-household identity rule. Two owners count as the same
- * household when their last names match (compared case-insensitively, whitespace collapsed) and
- * their addresses match in their normalized form (see {@link OwnerAddress#normalize}: whitespace
- * collapsed, upper-cased, common abbreviations expanded). This class owns both the comparison
- * ({@link #sameHousehold}, built on {@link #normalize}) and the derivation of the stable shared
- * {@link #householdId} that identifies a household.
+ * Single source of truth for the owner-household identity rule. A household is keyed on
+ * {@code (lastName, postcode)}: two owners whose normalized last names match and whose postcodes are
+ * equal belong to the same household and therefore share the same {@link #householdId}. The id is
+ * <em>deterministic</em> — it is computed purely from those two values, so every owner that joins a
+ * household arrives at the same id independently, without coordinating through the database.
  *
- * <p>Used by {@link AssignOwnerHousehold} to find the household's existing members and to compute
- * the id they share, and by {@link OwnerIdentity} to derive the household segment of an owner's
- * identity key — so the definition of "same household" lives here and nowhere else.
+ * <p>Used by {@link AssignOwnerHousehold} to stamp the id onto a new owner, by
+ * {@link CheckOwnerHouseholdUnique} to detect a second owner in the same household, and by
+ * {@link OwnerIdentity} to derive the household segment of an owner's identity key — so the
+ * definition of "same household" lives here and nowhere else.
  */
 final class OwnerHousehold {
 
@@ -36,27 +34,20 @@ final class OwnerHousehold {
     }
 
     /**
-     * Tells whether an existing owner belongs to the household identified by the given last name and
-     * address — the one place that defines what "same household" means. Last names are reduced
-     * through {@link #normalize} and addresses through {@link OwnerAddress#normalize} before
-     * comparison, so differently cased, spaced or abbreviated values that mean the same thing still
-     * match.
+     * Derives the stable household identifier shared by every owner in the same household. Owners
+     * whose normalized last name and postcode match produce the same value, so the id can be computed
+     * independently for each joining owner without coordinating through the database. The value is
+     * the first 12 upper-case hex characters of the SHA-256 of the normalized
+     * {@code "<lastName>|<postcode>"}.
+     *
+     * <p>A household requires a postcode: when the postcode is {@code null} or blank the owner
+     * belongs to no household and this returns {@code null}.
      */
-    static boolean sameHousehold(Owner existing, String lastName, String address) {
-        return normalize(existing.getLastName()).equals(normalize(lastName))
-                && OwnerAddress.normalize(existing.getAddress())
-                        .equals(OwnerAddress.normalize(address));
-    }
-
-    /**
-     * Derives the stable household identifier shared by every owner in the same household. Two
-     * owners whose normalized last name and address match produce the same value, so the id can be
-     * computed independently for each joining owner without coordinating through the database. The
-     * value is {@code "HH-"} followed by the first 12 upper-case hex characters of the SHA-256 of
-     * the normalized {@code "<lastName>|<address>"}.
-     */
-    static String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "|" + OwnerAddress.normalize(address);
+    static String householdId(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String key = normalize(lastName) + "|" + postcode.trim();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
@@ -64,7 +55,7 @@ final class OwnerHousehold {
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
-            return "HH-" + sb;
+            return sb.toString();
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);

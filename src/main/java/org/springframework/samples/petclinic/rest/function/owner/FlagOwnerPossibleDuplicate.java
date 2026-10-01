@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
@@ -9,7 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Runs in the {@code POST /api/owners} pipeline after {@link FlagOwnerBulkSignup} and before
  * {@link SaveOwner}, so the new owner is not yet persisted and therefore not compared against
- * itself. By this point the request has already cleared {@link CheckOwnerIdentityUnique}, so it is
+ * itself. By this point the request has already cleared {@link CheckOwnerHouseholdUnique}, so it is
  * not a <em>hard</em> identity duplicate. A soft match is a weaker signal: an existing owner that
  * shares this owner's last name (case-insensitive) and postcode but carries a <em>different</em>
  * telephone. People who really are distinct but look alike — same family name, same postcode, new
@@ -21,10 +22,20 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@code possibleDuplicateOf} stays null. A postcode is required on both sides for a match — an
  * owner with no postcode never soft-matches. The values are frozen at creation time and returned
  * unchanged on later reads.
+ *
+ * <p>A <em>declared</em> household member — a request that opted in with {@code sharesHousehold: true}
+ * to join an existing household (same last name and postcode) — is never flagged: a declared member
+ * is not a suspected duplicate. Such a request is left with {@code possibleDuplicate = false}.
  */
 public class FlagOwnerPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
+            OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return;
+        }
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();

@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Rejects a create request when the owner's city is already at capacity.
  *
- * <p>Runs after {@link CheckOwnerIdentityUnique} and before {@link BuildOwner}. A city is at
+ * <p>Runs after {@link CheckOwnerHouseholdUnique} and before {@link BuildOwner}. A city is at
  * capacity once it already contains 50 or more owners; the 51st owner in that city is refused.
  * The city is matched exactly. A match throws {@link OwnerCityAtCapacityException}, handled as a
  * 409 Conflict.
