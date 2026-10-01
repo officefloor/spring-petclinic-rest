@@ -1,0 +1,186 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d4fd3cfc1..124cd0c35 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
++    @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -141,6 +142,18 @@ public interface OwnerMapper {
+         return Owner.checkDigit(owner.getCustomerCode());
+     }
+ 
++    /**
++     * Compute the owner's age band, derived from the birth date against the registration date
++     * (see {@link Owner#ageBand(java.time.LocalDate, java.time.LocalDate)}). Returns {@code null}
++     * when no birth date is set, so the field is omitted from the response.
++     */
++    default String formatAgeBand(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Owner.ageBand(owner.getBirthDate(), owner.getRegistrationDate());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 75d9922b8..96586a764 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
++import java.time.Period;
+ import java.util.*;
+ 
+ /**
+@@ -59,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -114,6 +118,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+@@ -591,6 +603,32 @@ public class Owner extends Person {
+         return (email != null && !email.isEmpty()) ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * Derive an owner's {@code ageBand}, the band the owner's age falls into on the registration
++     * date. The age in whole years is the number of completed years between {@code birthDate} and
++     * {@code registrationDate}, and the band is {@code 'MINOR'} when under 18, {@code 'ADULT'} when
++     * 18 to 64 inclusive, and {@code 'SENIOR'} when 65 or older. The value is deterministic in those
++     * two fields and is only defined when both are present.
++     *
++     * @param birthDate the owner's date of birth, possibly {@code null}
++     * @param registrationDate the owner's registration date, possibly {@code null}
++     * @return {@code 'MINOR'}, {@code 'ADULT'} or {@code 'SENIOR'}, or {@code null} when either date
++     *     is {@code null}
++     */
++    public static String ageBand(LocalDate birthDate, LocalDate registrationDate) {
++        if (birthDate == null || registrationDate == null) {
++            return null;
++        }
++        int age = Period.between(birthDate, registrationDate).getYears();
++        if (age < 18) {
++            return "MINOR";
++        }
++        if (age < 65) {
++            return "ADULT";
++        }
++        return "SENIOR";
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ea2fedcec..df7c25ff5 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 9292c2edb..89d84c3b7 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index bd370cf03..fd1e2d02f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1ab82a2a0..5abf6c61a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 724b98845..b0859ddb7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2068,6 +2068,15 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: >-
++            The date of birth of the pet owner, in ISO 'YYYY-MM-DD' format.
++            Optional. When present it is used to derive the owner's ageBand,
++            computed against the registrationDate. Stored and returned unchanged.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2218,6 +2227,16 @@ components:
+               maximum: 9
+               example: 4
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band, derived from birthDate computed against
++                registrationDate: 'MINOR' when under 18, 'ADULT' when 18 to 64,
++                and 'SENIOR' when 65 or older. Present only when a birthDate is
++                set.
++              type: string
++              example: 'ADULT'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
