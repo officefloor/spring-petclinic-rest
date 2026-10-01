@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3cdcd99ba..e9152afc3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.Regions.timezoneOf(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode())))")
++    @Mapping(target = "ownerSegment", expression = "java(OwnerSegment.of(owner))")
+     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
+     @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 000000000..a6c2cbfc0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.CustomerCode;
++import org.springframework.samples.petclinic.model.MembershipLevel;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives the {@code ownerSegment} field produced by {@link OwnerMapper#toOwnerDto}: a coarse
++ * marketing segment formatted {@code <TIER>_<AREA>}, one of {@code PREMIUM_METRO},
++ * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
++ *
++ * <p>{@code TIER} is {@code PREMIUM} when the owner's {@link MembershipLevel#of(Owner) membership
++ * level} is {@link #PREMIUM_FROM} (3) or more, otherwise {@code STANDARD}. {@code AREA} is
++ * {@code METRO} when the owner's {@link CustomerCode#region(String) locality} is a
++ * {@link Regions#isKnownRegion(String) known region} (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    /** Minimum membership level (inclusive) for the {@code PREMIUM} tier; below this is STANDARD. */
++    private static final int PREMIUM_FROM = 3;
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Derive the segment for an owner.
++     *
++     * @param owner the owner; its membership level and locality drive the result
++     * @return the segment, formatted {@code <TIER>_<AREA>}
++     */
++    public static String of(Owner owner) {
++        String tier = MembershipLevel.of(owner) >= PREMIUM_FROM ? "PREMIUM" : "STANDARD";
++        String locality = CustomerCode.region(owner.getCustomerCode());
++        String area = Regions.isKnownRegion(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+index 3e6660f1c..095449710 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+@@ -95,6 +95,19 @@ public final class Regions {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
++    /**
++     * Whether {@code region} is a known, pinned region (NSW, VIC or QLD) rather than the
++     * {@link #UNKNOWN} sentinel or some other value. Backed by the same {@link #REGION_TIMEZONE}
++     * table the other region facts are derived from, so the set of known regions stays single-sourced
++     * here and cannot drift from a copy held elsewhere.
++     *
++     * @param region the canonical region code (e.g. an owner's {@code locality}); may be {@code null}
++     * @return {@code true} when {@code region} is one of the pinned regions
++     */
++    public static boolean isKnownRegion(String region) {
++        return REGION_TIMEZONE.containsKey(region);
++    }
++
+     /**
+      * The IANA timezone name for a region, taken from the pinned region-to-timezone table
+      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c44411148..8e283b629 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2257,6 +2257,12 @@ components:
+               type: string
+               readOnly: true
+               example: '/api/owners/1'
++            ownerSegment:
++              title: Owner segment
++              description: The owner's marketing segment, formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              readOnly: true
++              example: 'STANDARD_METRO'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
