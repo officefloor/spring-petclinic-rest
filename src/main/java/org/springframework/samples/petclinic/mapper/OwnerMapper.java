@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -26,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
+    @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -94,6 +96,23 @@ public interface OwnerMapper {
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
         return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+    }
+
+    /**
+     * Derives an owner's locality, as required by the API's read-only {@code locality}
+     * field: the canonical region from the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), or
+     * {@code 'UNKNOWN'} when the city is not in the table.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatLocality")
+    default String formatLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return LocalityResolver.resolve(owner.getCity());
     }
 
     private static String initial(String name) {
