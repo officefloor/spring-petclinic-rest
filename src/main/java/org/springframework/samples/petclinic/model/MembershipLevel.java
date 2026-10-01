@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.model;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's membership standing, assigned on create.
@@ -13,8 +12,8 @@ import java.time.temporal.ChronoUnit;
  *       unique on create);</li>
  *   <li>+{@link #POINTS_HOUSEHOLD} (2) for a household of {@link #HOUSEHOLD_SIZE_FOR_POINTS} (3) or
  *       more members;</li>
- *   <li>+{@link #POINTS_TENURE} (3) when the owner has been registered for more than
- *       {@link #TENURE_DAYS_FOR_POINTS} (365) days.</li>
+ *   <li>+{@link #POINTS_TENURE} (3) when the owner's tenure exceeds
+ *       {@link #TENURE_FISCAL_YEARS_FOR_POINTS} (1) elapsed fiscal year.</li>
  * </ul>
  *
  * <p>The points total maps to a numeric level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or
@@ -37,14 +36,18 @@ public final class MembershipLevel {
     /** Points added for a household of {@link #HOUSEHOLD_SIZE_FOR_POINTS} or more members. */
     public static final int POINTS_HOUSEHOLD = 2;
 
-    /** Points added when the owner's tenure exceeds {@link #TENURE_DAYS_FOR_POINTS} days. */
+    /** Points added when the owner's tenure exceeds {@link #TENURE_FISCAL_YEARS_FOR_POINTS}. */
     public static final int POINTS_TENURE = 3;
 
     /** A household needs at least this many members to earn {@link #POINTS_HOUSEHOLD}. */
     public static final int HOUSEHOLD_SIZE_FOR_POINTS = 3;
 
-    /** An owner must have been registered for more than this many days to earn {@link #POINTS_TENURE}. */
-    public static final long TENURE_DAYS_FOR_POINTS = 365;
+    /**
+     * An owner's tenure must exceed this many elapsed fiscal years to earn {@link #POINTS_TENURE}.
+     * Tenure is counted in fiscal years (which start on 1 July, see {@link FiscalYear}), not in
+     * 365-day windows.
+     */
+    public static final long TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     private MembershipLevel() {
     }
@@ -68,7 +71,7 @@ public final class MembershipLevel {
                 && owner.getHouseholdMemberCount() >= HOUSEHOLD_SIZE_FOR_POINTS) {
             points += POINTS_HOUSEHOLD;
         }
-        if (tenureDays(owner) > TENURE_DAYS_FOR_POINTS) {
+        if (tenureFiscalYears(owner) > TENURE_FISCAL_YEARS_FOR_POINTS) {
             points += POINTS_TENURE;
         }
         return points;
@@ -105,15 +108,16 @@ public final class MembershipLevel {
     }
 
     /**
-     * Days elapsed since the owner's registration date, or 0 when it is unknown (e.g. a brand-new
-     * owner being created). Never negative for a future registration date.
+     * Fiscal years elapsed since the owner's registration date - the count of 1 July boundaries
+     * crossed between registration and today - or 0 when the registration date is unknown (e.g. a
+     * brand-new owner being created). Never negative for a future registration date.
      */
-    private static long tenureDays(Owner owner) {
+    private static long tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return Math.max(days, 0);
+        long years = FiscalYear.startYearOf(LocalDate.now()) - FiscalYear.startYearOf(registrationDate);
+        return Math.max(years, 0);
     }
 }
