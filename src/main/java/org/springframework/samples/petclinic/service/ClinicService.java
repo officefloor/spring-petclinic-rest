@@ -70,6 +70,16 @@ public interface ClinicService {
 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
 
 	/**
+	 * Returns {@code true} if any owner already uses the given email address. The argument and every
+	 * stored value are compared in their lower-cased form, so differently cased but equivalent
+	 * addresses collide. Enforces the "unique email" invariant on owner creation.
+	 *
+	 * @param email the email address to look for (in any casing)
+	 * @return whether the lower-cased email is already in use by an owner
+	 */
+	boolean isEmailInUse(String email) throws DataAccessException;
+
+	/**
 	 * Returns {@code true} if another owner already has both the given last name and address. The
 	 * last name and address are compared case-insensitively with runs of whitespace collapsed to a
 	 * single space (and surrounding whitespace trimmed), so differently cased or spaced but

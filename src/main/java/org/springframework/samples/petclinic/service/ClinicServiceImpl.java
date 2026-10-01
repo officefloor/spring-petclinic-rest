@@ -373,6 +373,22 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isEmailInUse(String email) throws DataAccessException {
+        String normalized = normalizeEmail(email);
+        if (normalized == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .map(owner -> normalizeEmail(owner.getEmail()))
+            .anyMatch(normalized::equals);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
         String normalizedLastName = normalizeHouseholdValue(lastName);
         String normalizedAddress = normalizeHouseholdAddress(address);
