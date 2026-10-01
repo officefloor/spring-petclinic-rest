@@ -15,16 +15,15 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * <p>Two records are emitted:
  * <ul>
- * <li>a human-readable audit line carrying the owner id, the {@code customerCode}, the
- * {@code registrationDate}, the {@code membershipLevel} and the {@code membershipNumber}; and</li>
+ * <li>a human-readable audit line carrying the owner id, the {@code memberId}, the
+ * {@code registrationDate} and the {@code membershipLevel}; and</li>
  * <li>an immutable structured JSON event
- * {@code {seq, ownerId, customerCode, membershipLevel, event:"OWNER_CREATED"}}, where {@code seq}
+ * {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}, where {@code seq}
  * is a monotonically increasing integer across every create in this process.</li>
  * </ul>
  *
  * <p>The event's identifier is read through {@link OwnerPrimaryIdentifier}, so it always carries the
- * owner's current primary identifier &mdash; the {@code customerCode} today, and whatever replaces
- * it later (the {@code memberId}).
+ * owner's current primary identifier &mdash; the unified {@code memberId}.
  */
 public class AuditOwnerCreated {
 
@@ -36,14 +35,14 @@ public class AuditOwnerCreated {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
         ObjectNode event = JSON.createObjectNode();
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", OwnerPrimaryIdentifier.of(owner));
+        event.put("memberId", OwnerPrimaryIdentifier.of(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(JSON.writeValueAsString(event));

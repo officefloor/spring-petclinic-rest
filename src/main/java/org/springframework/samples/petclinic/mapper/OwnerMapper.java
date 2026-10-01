@@ -8,9 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand;
-import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
-import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
@@ -36,7 +35,6 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "timezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
-    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "ageBand")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "fiscalYear")
     @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "ownerSegment")
@@ -44,17 +42,15 @@ public interface OwnerMapper {
 
     @Named("fiscalYear")
     default String fiscalYear(Owner owner) {
-        return OwnerFiscalYear.label(owner);
+        // The fiscal year is the FY segment of the owner's memberId, falling back to the
+        // business-day-adjusted registrationDate for any owner without a memberId.
+        String label = OwnerMemberId.fiscalYearLabel(owner.getMemberId());
+        return label != null ? label : OwnerFiscalYear.label(owner);
     }
 
     @Named("identityKey")
     default String identityKey(Owner owner) {
         return OwnerIdentity.identityKey(owner);
-    }
-
-    @Named("checkDigit")
-    default Integer checkDigit(Owner owner) {
-        return OwnerCheckDigit.checkDigit(owner);
     }
 
     @Named("ageBand")
@@ -98,9 +94,9 @@ public interface OwnerMapper {
 
     @Named("locality")
     default String locality(Owner owner) {
-        // The locality is the REGION segment of the owner's customerCode (the region-and-hash
-        // identity), falling back to the city/postcode table for any owner without a code.
-        String region = OwnerCustomerCode.region(owner.getCustomerCode());
+        // The locality is the REGION segment of the owner's memberId (the region-and-hash
+        // identity), falling back to the city/postcode table for any owner without an id.
+        String region = OwnerMemberId.region(owner.getMemberId());
         return region != null ? region : OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
     }
 

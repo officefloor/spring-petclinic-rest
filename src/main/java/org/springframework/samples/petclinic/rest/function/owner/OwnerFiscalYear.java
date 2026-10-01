@@ -12,10 +12,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * is the last two digits of that ending year (e.g. a date in October 2026 falls in fiscal year
  * 2027 and so has label {@code FY27}).
  *
- * <p>Every date-derived value that moved to a fiscal-year basis — the {@code fiscalYear} read
- * field, the membership number's year segment, and tenure — resolves through this class so they
- * cannot drift apart. All derive from the already-stored, business-day-adjusted
- * {@code registrationDate}.
+ * <p>Every value that moved to a fiscal-year basis resolves through this class so they cannot drift
+ * apart: the {@code memberId}'s {@code FY} segment is formatted with {@link #yy(LocalDate)} and read
+ * back into the {@code fiscalYear} field with {@link #label(String)}, and tenure derives from
+ * {@link #elapsedFiscalYears}. All start from the already-stored, business-day-adjusted
+ * {@code registrationDate}. The {@code FY<YY>} label format lives only here.
  */
 public final class OwnerFiscalYear {
 
@@ -42,7 +43,25 @@ public final class OwnerFiscalYear {
 
     /** The {@code FY<YY>} label for a date (e.g. {@code FY27} for October 2026). */
     public static String label(LocalDate date) {
-        return String.format("FY%02d", fiscalYear(date) % 100);
+        return label(yy(date));
+    }
+
+    /**
+     * The two-digit {@code YY} fiscal-year segment for a date — the last two digits of its fiscal
+     * year, zero-padded (e.g. {@code 27} for October 2026). This is the {@code FY} segment embedded in
+     * the {@code memberId}.
+     */
+    public static String yy(LocalDate date) {
+        return String.format("%02d", fiscalYear(date) % 100);
+    }
+
+    /**
+     * The {@code FY<YY>} label for a two-digit {@code YY} fiscal-year segment (e.g. {@code FY27} for
+     * {@code "27"}), or {@code null} when the segment is absent. The one place the {@code FY} prefix
+     * is applied, so the date-based path and the {@code memberId} read-back share a single format.
+     */
+    public static String label(String yy) {
+        return yy == null ? null : "FY" + yy;
     }
 
     /**

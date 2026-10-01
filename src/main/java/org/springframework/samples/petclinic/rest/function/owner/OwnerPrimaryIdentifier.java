@@ -6,10 +6,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * Single source of truth for an owner's <em>primary identifier</em> &mdash; the one value that
  * uniquely names the owner to the outside world.
  *
- * <p>Today that is the {@code customerCode}. When the {@code customerCode} is later unified into
- * the {@code memberId}, only this method changes to return the {@code memberId}; every consumer
- * (such as the {@code OWNER_CREATED} audit event emitted by {@link AuditOwnerCreated}) then carries
- * the new identifier without being touched.
+ * <p>That is the {@code memberId} — the unified {@code <REGION><FY><HASH8><CHK>} identifier that
+ * replaced the former {@code customerCode} and {@code membershipNumber}. Every consumer (such as the
+ * {@code OWNER_CREATED} audit event emitted by {@link AuditOwnerCreated}) reads the identifier through
+ * this method, so a future change of identity scheme touches only here.
  */
 public final class OwnerPrimaryIdentifier {
 
@@ -18,6 +18,6 @@ public final class OwnerPrimaryIdentifier {
 
     /** The owner's current primary identifier. */
     public static String of(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }
