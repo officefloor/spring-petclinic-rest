@@ -59,11 +59,12 @@ public class ValidateOwnerFields {
                 request.setTelephone(telephone);
             }
         }
-        // Email is optional. When present it must be syntactically valid; it is normalized to
-        // lower case so it is stored and returned lower-cased.
+        // Email is optional. When present it must be syntactically valid and its domain must not be a
+        // known disposable provider; it is normalized to lower case so it is stored and returned
+        // lower-cased.
         String email = request.getEmail();
         if (email != null) {
-            if (!OwnerEmail.isValid(email)) {
+            if (!OwnerEmail.isValid(email) || OwnerEmail.isDisposable(email)) {
                 errors.add("email");
             }
             else {
