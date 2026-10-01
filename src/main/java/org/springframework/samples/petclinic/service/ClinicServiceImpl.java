@@ -68,6 +68,14 @@ public class ClinicServiceImpl implements ClinicService {
     static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * Threshold of owners already in an owner's city (compared case-insensitively) at or above which
+     * a newly created owner is flagged with {@code capacityWarning} to signal the city is approaching
+     * the {@link #MAX_OWNERS_PER_CITY} hard limit. A city that already contains between this many and
+     * {@code MAX_OWNERS_PER_CITY - 1} owners warns; reaching {@code MAX_OWNERS_PER_CITY} is rejected.
+     */
+    static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Maximum number of owners that may be registered on a single day. Creating an owner on a day
      * that already has this many owners (counted by {@code registrationDate}) is rejected with
      * {@link DailyRegistrationLimitException}.
@@ -321,6 +329,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew()) {
             assertDailyRegistrationLimit(owner);
             owner.setBulkSignupWarning(computeBulkSignupWarning(owner));
+            owner.setCapacityWarning(computeCapacityWarning(owner));
         }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -632,6 +641,26 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return count > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Compute whether a newly created owner should carry a capacity warning, i.e. whether its city
+     * (compared case-insensitively) already contains at least {@link #CAPACITY_WARNING_THRESHOLD} but
+     * fewer than {@link #MAX_OWNERS_PER_CITY} owners, signalling the city is approaching its hard
+     * capacity limit. The owner being saved is excluded by id, mirroring the counting done by
+     * {@link #assertCityHasCapacity(Owner)}. A city with no name never warns. Like the city-capacity
+     * rule this reflects the state at creation time, so it is computed once and stored on the owner.
+     */
+    private boolean computeCapacityWarning(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return false;
+        }
+        long count = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
 
     @Override

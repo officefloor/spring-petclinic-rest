@@ -30,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
@@ -174,6 +175,17 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Resolve the owner's capacity-warning flag, treating a missing (null) stored value as
+     * {@code false} so the response always carries an explicit boolean.
+     */
+    default Boolean formatCapacityWarning(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getCapacityWarning());
     }
 
     /**
