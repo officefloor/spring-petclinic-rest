@@ -56,6 +56,12 @@ public class ClinicServiceImpl implements ClinicService {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. A successful owner create enqueues a welcome notification by
+     * emitting a single line here carrying the new owner's id and member id.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Monotonically increasing sequence number stamped onto each {@link OwnerCreatedEvent}. Shared
      * across all creates so the emitted events form a strictly ordered, gap-free series.
      */
@@ -354,6 +360,8 @@ public class ClinicServiceImpl implements ClinicService {
             OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQ.incrementAndGet(),
                 owner.getId(), owner.primaryIdentifier(), membershipLevel);
             AUDIT.info(objectMapper.writeValueAsString(event));
+            NOTIFY.info("welcome notification enqueued id={} memberId={}",
+                owner.getId(), owner.getMemberId());
         }
     }
 
