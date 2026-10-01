@@ -1,0 +1,175 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 80156a69b..f635b14e1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+@@ -67,10 +68,26 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Normalizes a postal address into a canonical form: surrounding whitespace is trimmed and
++     * internal runs of whitespace collapsed to a single space, the value is upper-cased and common
++     * abbreviations are expanded as whole tokens ({@code ST -> STREET}, {@code RD -> ROAD},
++     * {@code AVE -> AVENUE}). So {@code '  12  main  st '} is stored and returned as
++     * {@code '12 MAIN STREET'}.
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is applied
++     * only where referenced via {@code qualifiedByName}.
++     */
++    @Named("normalizeAddress")
++    default String normalizeAddress(String address) {
++        return AddressNormalizer.normalize(address);
++    }
++
+     /**
+      * Normalizes a telephone number into canonical E.164 form: a leading {@code '+'} and country
+      * code are kept when present, otherwise country code {@code '+61'} is assumed and a single
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 838e3b398..03cf62c20 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.samples.petclinic.util.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ import org.springframework.stereotype.Service;
+@@ -274,19 +275,19 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional(readOnly = true)
+     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
+         String normalizedLastName = normalizeHouseholdValue(lastName);
+-        String normalizedAddress = normalizeHouseholdValue(address);
++        String normalizedAddress = normalizeHouseholdAddress(address);
+         if (normalizedLastName.isEmpty() || normalizedAddress.isEmpty()) {
+             return false;
+         }
+         return ownerRepository.findAll().stream()
+             .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
+-                && normalizedAddress.equals(normalizeHouseholdValue(owner.getAddress())));
++                && normalizedAddress.equals(normalizeHouseholdAddress(owner.getAddress())));
+     }
+ 
+     @Override
+     @Transactional(readOnly = true)
+     public String householdIdFor(String lastName, String address) throws DataAccessException {
+-        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdValue(address);
++        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdAddress(address);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder sb = new StringBuilder(32);
+@@ -311,6 +312,16 @@ public class ClinicServiceImpl implements ClinicService {
+         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Normalizes an address for household comparison by first applying the canonical address
++     * normalization (trim, collapse whitespace, upper-case and expand common abbreviations) and
++     * then the shared household-value normalization, so every address comparison uses the same
++     * normalized form regardless of how the value was originally supplied.
++     */
++    private static String normalizeHouseholdAddress(String address) {
++        return normalizeHouseholdValue(AddressNormalizer.normalize(address));
++    }
++
+     /**
+      * Reduces a telephone number to its canonical E.164 form so that differently formatted but
+      * equivalent numbers compare equal. A value already stored that cannot form valid E.164
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+new file mode 100644
+index 000000000..4be95982e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Normalizes a free-text postal address into a canonical form so that differently
++ * formatted but equivalent addresses are stored, returned and compared consistently.
++ *
++ * <p>The rules are:
++ * <ul>
++ *   <li>surrounding whitespace is trimmed and any internal run of whitespace is
++ *       collapsed to a single space;</li>
++ *   <li>the whole value is upper-cased;</li>
++ *   <li>common abbreviations are expanded as whole tokens: {@code ST -> STREET},
++ *       {@code RD -> ROAD} and {@code AVE -> AVENUE}.</li>
++ * </ul>
++ *
++ * <p>So {@code '  12  main  st '} becomes {@code '12 MAIN STREET'} and
++ * {@code '7 elm ave'} becomes {@code '7 ELM AVENUE'}.
++ */
++public final class AddressNormalizer {
++
++    /** Whole-token abbreviation expansions, keyed by the already upper-cased token. */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Normalize a raw address to its canonical form.
++     *
++     * @param raw the address as supplied by the caller (any format)
++     * @return the normalized address, or {@code null} if {@code raw} is {@code null}.
++     *         A value consisting only of whitespace normalizes to an empty string.
++     */
++    public static String normalize(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String collapsed = raw.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7af46bba1..1be1a19a0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,7 +2011,14 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. It is normalized before being stored and
++            returned: surrounding whitespace is trimmed and internal runs of whitespace
++            collapsed to a single space, the value is upper-cased and common abbreviations are
++            expanded as whole tokens (ST -> STREET, RD -> ROAD, AVE -> AVENUE). So
++            '  12  main  st ' is stored and returned as '12 MAIN STREET'. An address that is
++            blank after normalization is rejected with 400. Household duplicate detection and
++            the shared household id both compare addresses in this normalized form.
+           type: string
+           minLength: 1
+           maxLength: 255
