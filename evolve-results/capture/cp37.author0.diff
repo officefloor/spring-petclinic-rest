@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8b6bdccfb..5f248bca1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
+     @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.model.OwnerTelephone.toDisplay(owner.getTelephone()))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephone.java
+index 5b08ada88..b03e687b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephone.java
+@@ -44,6 +44,35 @@ public final class OwnerTelephone {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Format a stored E.164 telephone for humans: the country code, a space, then the national digits
++     * grouped in threes (e.g. {@code '+61412345678'} → {@code '+61 412 345 678'}). The known country
++     * codes {@code '+61'} and {@code '+1'} are split off their national part; any other value (or one not
++     * in E.164 form) is returned unchanged.
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        String countryCode;
++        if (digits.startsWith("61")) {
++            countryCode = "61";
++        }
++        else if (digits.startsWith("1")) {
++            countryCode = "1";
++        }
++        else {
++            return e164;
++        }
++        String national = digits.substring(countryCode.length());
++        StringBuilder display = new StringBuilder("+").append(countryCode);
++        for (int i = 0; i < national.length(); i += 3) {
++            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return display.toString();
++    }
++
+     /**
+      * Check the national-number length for the known country codes. {@code '+61'} requires 9 national
+      * digits and {@code '+1'} requires 10; other country codes are not length-checked here.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6cbf279c8..4e2552987 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2095,6 +2095,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'G.F.'
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans as the country code, a space, then the national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' stays in E.164 form.
++              type: string
++              readOnly: true
++              example: '+61 412 345 678'
+             customerCode:
+               title: Customer code
+               description: The owner's customer code formatted '<REGION>-<HASH8>', where REGION is the region code derived from the postcode (or 'UNKNOWN' when it resolves to no known region) and HASH8 is the first 8 upper-case hex characters of SHA-256 over (normalizedTelephone + lastName).
