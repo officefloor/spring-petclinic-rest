@@ -7,6 +7,7 @@ import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
@@ -29,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
+    @Mapping(target = "ageBand", source = "owner", qualifiedByName = "ageBand")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("identityKey")
@@ -39,6 +41,11 @@ public interface OwnerMapper {
     @Named("checkDigit")
     default Integer checkDigit(Owner owner) {
         return OwnerCheckDigit.checkDigit(owner);
+    }
+
+    @Named("ageBand")
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        return OwnerAgeBand.ageBand(owner);
     }
 
     @Named("displayName")
