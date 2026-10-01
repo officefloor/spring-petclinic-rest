@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -165,6 +166,18 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getPossibleDuplicate());
+    }
+
+    /**
+     * Format the owner's stored E.164 telephone for human display, as the country code, a space and
+     * the national digits grouped in threes (see {@link Owner#telephoneDisplay(String)}). The raw
+     * {@code telephone} field keeps the unformatted E.164 value.
+     */
+    default String formatTelephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.telephoneDisplay(owner.getTelephone());
     }
 
     Owner toOwner(OwnerDto ownerDto);

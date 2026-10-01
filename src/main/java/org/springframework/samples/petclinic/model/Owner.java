@@ -249,6 +249,55 @@ public class Owner extends Person {
     }
 
     /**
+     * Format a stored E.164 telephone for human display: the country code, a space, then the
+     * national digits grouped left-to-right in blocks of three separated by spaces (e.g.
+     * {@code "+61412345678"} becomes {@code "+61 412 345 678"}). The country code is identified
+     * from the recognized {@link #NATIONAL_NUMBER_LENGTHS} table (longest prefix first); when no
+     * recognized country code matches, the digits after the {@code '+'} are grouped in threes with
+     * no separate country-code segment. This is a display-only transform; the raw E.164 value is
+     * kept unchanged elsewhere.
+     *
+     * @param telephone the stored E.164 telephone, possibly {@code null}
+     * @return the human-formatted telephone, or {@code null} when the input is {@code null}; an
+     *     input that is not a well-formed E.164 number ({@code '+'} followed by digits) is returned
+     *     unchanged
+     */
+    public static String telephoneDisplay(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        if (!telephone.matches("\\+\\d+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        for (String countryCode : NATIONAL_NUMBER_LENGTHS.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                return "+" + countryCode + " " + groupDigits(digits.substring(countryCode.length()));
+            }
+        }
+        return "+" + groupDigits(digits);
+    }
+
+    /**
+     * Group a run of digits left-to-right into blocks of three separated by single spaces, with a
+     * trailing block of one or two digits when the length is not a multiple of three (e.g.
+     * {@code "412345678"} becomes {@code "412 345 678"}).
+     *
+     * @param digits the national digits
+     * @return the space-grouped digits
+     */
+    private static String groupDigits(String digits) {
+        StringBuilder grouped = new StringBuilder(digits.length() + digits.length() / 3);
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Required national-number length (the count of digits after the country code) for each
      * recognized country code, longest country code first so the prefix match is unambiguous.
      */
