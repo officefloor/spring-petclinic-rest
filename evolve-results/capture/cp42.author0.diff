@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9ae32cf7b..dc6859a78 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode()))")
++    @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.Regions.timezoneOf(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode())))")
+     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
+     @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+index eb4f78f4a..3e6660f1c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+@@ -24,6 +24,13 @@ public final class Regions {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. A region absent from this table (including the {@link #UNKNOWN}
++     *  locality) has no known timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     /** The locality returned for a city absent from {@link #CITY_REGION}. Points at the single
+      *  {@link CustomerCode#UNKNOWN_REGION} definition so the region baked into a customer code and the
+      *  region/locality derived here share one sentinel. */
+@@ -88,6 +95,17 @@ public final class Regions {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
++    /**
++     * The IANA timezone name for a region, taken from the pinned region-to-timezone table
++     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
++     *
++     * @param region the canonical region code (e.g. the owner's {@code locality}); may be {@code null}
++     * @return the IANA timezone name, or {@code null} when the region has no pinned timezone
++     */
++    public static String timezoneOf(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++
+     /**
+      * The region whose postcode range contains the given postcode, or {@code null} when the postcode
+      * is absent, non-numeric, or falls in no known range.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 03a42a51b..cbc9f5df4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2145,6 +2145,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            timezone:
++              title: Timezone
++              description: The IANA timezone name derived from the owner's locality via the pinned region-to-timezone table (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or null when the locality has no pinned timezone.
++              type: string
++              readOnly: true
++              example: 'Australia/Sydney'
+             householdId:
+               title: Household ID
+               description: A stable, deterministic identifier for the owner's household, formed as the first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode). Owners with the same lastName and postcode share it automatically. Null when the owner has no postcode (no household to key on).
