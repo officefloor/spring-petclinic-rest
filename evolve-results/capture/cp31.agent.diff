@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d875fe5d6..9c74b459c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
++    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -130,6 +131,17 @@ public interface OwnerMapper {
+         return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
+     }
+ 
++    /**
++     * Compute the owner's check digit, the single Luhn check digit over the digits of the owner's
++     * customer code (see {@link Owner#checkDigit(String)}).
++     */
++    default Integer formatCheckDigit(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Owner.checkDigit(owner.getCustomerCode());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 4d02e41a9..d3695e1ee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -505,6 +505,41 @@ public class Owner extends Person {
+         return value >= range[0] && value <= range[1];
+     }
+ 
++    /**
++     * Compute an owner's {@code checkDigit}, a single Luhn check digit (0-9) over the digits
++     * contained in the {@code customerCode}. Non-digit characters in the code are ignored. The
++     * value is deterministic in the customer code and is the standard Luhn check digit: each
++     * digit is weighted right-to-left, every second digit (starting with the rightmost) is
++     * doubled with digit sums above nine reduced by nine, and the check digit is the amount that
++     * brings the weighted sum up to the next multiple of ten.
++     *
++     * @param customerCode the owner's customer code, possibly {@code null}
++     * @return the Luhn check digit from 0 to 9, or {@code null} if the customer code is {@code null}
++     */
++    public static Integer checkDigit(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Derive an owner's {@code contactPreference}, the preferred channel for contacting the owner.
+      * The value is {@code 'EMAIL'} when an email is present and {@code 'PHONE'} otherwise. The value
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c60171ba8..403741041 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2206,6 +2206,17 @@ components:
+               type: string
+               example: '+61412345678|george.franklin@example.com|HH-3A7F1C9B2E4D'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits
++                contained in the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
