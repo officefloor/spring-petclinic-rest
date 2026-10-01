@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3af7f1b50..ed8d44c2b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (this.clinicService.isCityAtCapacity(owner.getCity())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         if (sharesHousehold) {
+             owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a3d7eecb0..ab5491940 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -94,6 +94,16 @@ public interface ClinicService {
+ 	 */
+ 	String householdIdFor(String lastName, String address) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} if the given city has already reached its owner capacity, i.e. it already
++	 * contains 50 or more owners (compared case-insensitively, the same way the per-city customer-code
++	 * sequence counts them). Enforces the "at most 50 owners per city" invariant on owner creation.
++	 *
++	 * @param city the city to check
++	 * @return whether the city already contains 50 or more owners
++	 */
++	boolean isCityAtCapacity(String city) throws DataAccessException;
++
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 28727a055..46e5ae99e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -373,6 +373,15 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /** Maximum number of owners allowed per city. */
++    private static final long CITY_CAPACITY = 50L;
++
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isCityAtCapacity(String city) throws DataAccessException {
++        return countOwnersInCity(city) >= CITY_CAPACITY;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
