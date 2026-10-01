@@ -1,0 +1,206 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index caba3ade9..598c39398 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,12 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -197,6 +203,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java
+new file mode 100644
+index 000000000..3733ba1b2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java
+@@ -0,0 +1,55 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags the owner as a <em>possible</em> (soft) duplicate of an existing owner.
++ *
++ * <p>Runs in the {@code POST /api/owners} pipeline after {@link FlagOwnerBulkSignup} and before
++ * {@link SaveOwner}, so the new owner is not yet persisted and therefore not compared against
++ * itself. By this point the request has already cleared {@link CheckOwnerIdentityUnique}, so it is
++ * not a <em>hard</em> identity duplicate. A soft match is a weaker signal: an existing owner that
++ * shares this owner's last name (case-insensitive) and postcode but carries a <em>different</em>
++ * telephone. People who really are distinct but look alike — same family name, same postcode, new
++ * phone — are still created, but flagged for review.
++ *
++ * <p>When such a match is found, {@code possibleDuplicate} is set to {@code true} and
++ * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match, so the
++ * result is deterministic); otherwise {@code possibleDuplicate} is {@code false} and
++ * {@code possibleDuplicateOf} stays null. A postcode is required on both sides for a match — an
++ * owner with no postcode never soft-matches. The values are frozen at creation time and returned
++ * unchanged on later reads.
++ */
++public class FlagOwnerPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++
++        Integer matchId = null;
++        if (postcode != null && !postcode.isBlank()) {
++            for (Owner existing : ownerRepository.findAll()) {
++                if (existing.getId() == null || existing.getId().equals(owner.getId())) {
++                    continue;
++                }
++                if (equalsIgnoreCase(existing.getLastName(), lastName)
++                        && postcode.equals(existing.getPostcode())
++                        && !equalsIgnoreCase(existing.getTelephone(), telephone)) {
++                    if (matchId == null || existing.getId() < matchId) {
++                        matchId = existing.getId();
++                    }
++                }
++            }
++        }
++
++        owner.setPossibleDuplicate(matchId != null);
++        owner.setPossibleDuplicateOf(matchId);
++    }
++
++    private static boolean equalsIgnoreCase(String a, String b) {
++        return a == null ? b == null : a.equalsIgnoreCase(b);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index fbf03082c..94f3e85b4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   namesake_count INTEGER,
+   membership_level INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d72da4f97..c8ae42f12 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,7 +52,9 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   namesake_count INTEGER,
+   membership_level INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 390bbae6d..d1fafea85 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index b2a523109..79d01f25d 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       namesake_count INTEGER,
+                                       membership_level INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 1a21cf5c9..9a9d1fc35 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -58,6 +58,11 @@ assignMembershipLevel:
+ flagBulkSignup:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagOwnerBulkSignup
+   govern: [ transaction ]
++  next: flagPossibleDuplicate
++
++flagPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagOwnerPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 836f7b995..4167e6e3f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2181,6 +2181,26 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Whether, at creation, this owner shared an existing owner's last name and postcode
++                while carrying a different telephone (a soft match that is not a hard identity
++                duplicate). Such an owner is still created but flagged. Assigned at creation and
++                never changed afterwards.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner soft-matched at creation (same last name and
++                postcode, different telephone). Present only when 'possibleDuplicate' is true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
