@@ -24,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
+    @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -55,6 +56,24 @@ public interface OwnerMapper {
             return null;
         }
         return initial(owner.getFirstName()) + initial(owner.getLastName());
+    }
+
+    /**
+     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where
+     * {@code customerCode} is the owner's customer code and {@code YY} is the last two
+     * digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}), as required
+     * by the API's read-only {@code membershipNumber} field. Returns {@code null} when
+     * either the customer code or registration date is absent.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatMembershipNumber")
+    default String formatMembershipNumber(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
     private static String initial(String name) {
