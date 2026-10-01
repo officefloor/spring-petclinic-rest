@@ -9,14 +9,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 with a JSON body whose {@code errors} array names {@code telephone} when the
- * normalized telephone being created is already used by another owner.
+ * Responds 409 with a JSON body whose {@code errors} array names {@code identityKey} when the owner
+ * being created has the same derived {@code identityKey} as an existing owner.
  */
-public class OwnerTelephoneDuplicateExceptionHandler {
+public class OwnerIdentityDuplicateExceptionHandler {
 
-    public void handle(@Parameter OwnerTelephoneDuplicateException ex,
+    public void handle(@Parameter OwnerIdentityDuplicateException ex,
             ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
-        Map<String, Object> body = Map.of("errors", List.of("telephone"));
+        Map<String, Object> body = Map.of("errors", List.of("identityKey"));
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(body));
     }
 }

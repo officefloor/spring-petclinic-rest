@@ -1,11 +1,10 @@
-package org.springframework.samples.petclinic.rest.function.owner;
+package org.springframework.samples.petclinic.model;
 
 /**
- * Single source of truth for the "E.164 telephone" concept shared by the create pipeline:
- * {@link ValidateOwner} converts the submitted value to E.164 before storing it, and
- * {@link CheckOwnerTelephoneUnique} converts stored owner values the same way when comparing for
- * duplicates. Keeping the rule here ensures the value that gets stored and the value compared for
- * uniqueness can never silently diverge.
+ * Single source of truth for the "E.164 telephone" concept: the validating step converts a submitted
+ * value to E.164 before it is stored, and the derived {@link OwnerIdentity} normalizes stored values
+ * the same way when forming an owner's identity key. Keeping the rule here ensures the value that gets
+ * stored and the value compared for identity can never silently diverge.
  */
 public final class OwnerTelephone {
 

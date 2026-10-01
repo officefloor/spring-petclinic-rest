@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
     @Mapping(target = "locality", expression = "java(Regions.localityOf(owner.getCity()))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
+    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
+import org.springframework.samples.petclinic.model.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerEmailInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerFieldsMissingException;
