@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
@@ -47,8 +46,7 @@ public class Owner extends Person {
 
     @Column(name = "telephone")
     @NotEmpty
-    @Digits(fraction = 0, integer = 10)
-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be in E.164 form (a '+' followed by 8 to 15 digits)")
     private String telephone;
 
     @Column(name = "email")
@@ -115,15 +113,52 @@ public class Owner extends Person {
     }
 
     /**
-     * Normalize a telephone to its digits only. This is the single source of truth for how
-     * a telephone is compared and persisted, so inputs that differ only in formatting (spaces,
-     * dashes, parentheses) are treated as the same number.
+     * Normalize a telephone to its canonical E.164 stored form. This is the single source of
+     * truth for how a telephone is compared and persisted, so inputs that differ only in
+     * formatting (spaces, dashes, brackets) are treated as the same number.
+     *
+     * <p>The rules are:
+     * <ul>
+     *   <li>spaces, dashes and brackets are stripped;</li>
+     *   <li>a leading {@code '+'} and its country code are kept as given;</li>
+     *   <li>otherwise country code {@code '+61'} is assumed and a single leading {@code '0'}
+     *       is dropped from the national digits;</li>
+     *   <li>the result must have 8 to 15 digits after the {@code '+'}.</li>
+     * </ul>
+     * For example {@code "0412 345 678"} becomes {@code "+61412345678"}. Already-normalized
+     * values are returned unchanged.
      *
      * @param telephone the raw telephone, possibly {@code null}
-     * @return the digits-only form, or {@code null} if the input was {@code null}
+     * @return the E.164 form, or {@code null} if the input is {@code null} or cannot form a
+     *     valid E.164 number
      */
     public static String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        if (telephone == null) {
+            return null;
+        }
+        String trimmed = telephone.trim();
+        boolean hasCountryCode = trimmed.startsWith("+");
+        // Strip spaces, dashes and brackets; a leading '+' (if any) is left in place.
+        String stripped = trimmed.replaceAll("[\\s\\-()]", "");
+        if (hasCountryCode) {
+            stripped = stripped.substring(1);
+        }
+        if (!stripped.matches("\\d+")) {
+            return null;
+        }
+        String digits;
+        if (hasCountryCode) {
+            digits = stripped;
+        } else {
+            if (stripped.startsWith("0")) {
+                stripped = stripped.substring(1);
+            }
+            digits = "61" + stripped;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
+            return null;
+        }
+        return "+" + digits;
     }
 
     protected Set<Pet> getPetsInternal() {

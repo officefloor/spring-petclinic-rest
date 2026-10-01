@@ -10,7 +10,7 @@ import java.lang.annotation.*;
 @Documented
 public @interface TelephoneValidation {
 
-    String message() default "Telephone must contain exactly 10 digits after removing non-digit characters";
+    String message() default "Telephone must be a valid E.164 number (8 to 15 digits after the '+', assuming '+61' when no country code is given)";
 
     Class<?>[] groups() default {};
 

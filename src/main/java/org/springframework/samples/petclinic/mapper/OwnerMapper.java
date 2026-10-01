@@ -50,7 +50,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** Normalize a telephone to its digits only, matching {@code TelephoneValidator}. */
+    /** Normalize a telephone to its canonical E.164 form, matching {@code TelephoneValidator}. */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
         return Owner.normalizeTelephone(telephone);
