@@ -1,0 +1,268 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index acae44a52..fb65e37e3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -130,13 +130,18 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Compute the owner's membership level, mapped from the owner's membership points
+-     * (see {@link Owner#membershipLevel(int)}).
++     * Resolve the owner's membership level: the capped value stored on the owner when present (the
++     * create-time level after the household ceiling has been applied, see
++     * {@link Owner#getMembershipLevel()}), otherwise the level recomputed from the owner's membership
++     * points (see {@link Owner#membershipLevel(int)}).
+      */
+     default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
++        if (owner.getMembershipLevel() != null) {
++            return owner.getMembershipLevel();
++        }
+         return Owner.membershipLevel(formatMembershipPoints(owner));
+     }
+ 
+@@ -256,6 +261,7 @@ public interface OwnerMapper {
+     }
+ 
+     @Mapping(target = "householdCount", ignore = true)
++    @Mapping(target = "membershipLevel", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+@@ -263,6 +269,7 @@ public interface OwnerMapper {
+     @Mapping(target = "customerCode", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "householdCount", ignore = true)
++    @Mapping(target = "membershipLevel", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e754cd742..696c6f76c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,9 @@ public class Owner extends Person {
+     @Column(name = "household_count")
+     private Integer householdCount;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -211,6 +214,21 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * The owner's stored {@code membershipLevel}, the create-time membership level after the
++     * household level ceiling has been applied (see
++     * {@link org.springframework.samples.petclinic.service.ClinicService#saveOwner(Owner, boolean)}).
++     * A {@code null} stored value means no capped level was recorded, in which case the level is
++     * recomputed from {@code membershipPoints}.
++     */
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 7cb7f0c63..29d949455 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -279,11 +279,13 @@ public class ClinicServiceImpl implements ClinicService {
+      *
+      * <p>Because the household is keyed on {@code (lastName, postcode)} (see
+      * {@link Owner#householdId(String, String)}), owners sharing a last name and postcode are the
+-     * same household. On create, a second owner in an existing household is rejected as a household
+-     * duplicate (see {@link #assertHouseholdIsUnique(Owner)}) <em>unless</em> {@code sharesHousehold}
+-     * is set, in which case it is accepted as a declared household member. The {@code sharesHousehold}
+-     * flag therefore only bypasses that duplicate block; a declared member is also not flagged as a
+-     * possible (suspected) duplicate.
++     * same household. Members of the same household are allowed to coexist as long as they have
++     * distinct identities (a different normalized telephone, enforced by
++     * {@link #assertIdentityIsUnique(Owner)}); an undeclared household member sharing an existing
++     * household is still created but flagged as a possible (suspected) duplicate, whereas a declared
++     * household member ({@code sharesHousehold} set) is left unflagged. Allowing household members to
++     * coexist is what lets the household membership-level ceiling (see
++     * {@link #computeMembershipLevel(Owner)}) compare a new owner against the existing members.
+      */
+     @Override
+     @Transactional
+@@ -293,9 +295,6 @@ public class ClinicServiceImpl implements ClinicService {
+         assertIdentityIsUnique(owner);
+         if (owner.isNew()) {
+             assertCityHasCapacity(owner);
+-            if (!sharesHousehold) {
+-                assertHouseholdIsUnique(owner);
+-            }
+         }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+@@ -315,6 +314,9 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getHouseholdCount() == null) {
+             owner.setHouseholdCount(countHouseholdMembers(owner));
+         }
++        if (owner.isNew() && owner.getMembershipLevel() == null) {
++            owner.setMembershipLevel(computeMembershipLevel(owner));
++        }
+         if (owner.isNew()) {
+             assignPossibleDuplicate(owner, sharesHousehold);
+         }
+@@ -322,9 +324,7 @@ public class ClinicServiceImpl implements ClinicService {
+         if (isCreate) {
+             String membershipNumber = Owner.membershipNumber(owner.getCustomerCode(),
+                 owner.getRegistrationDate());
+-            int membershipLevel = Owner.membershipLevel(Owner.membershipPoints(
+-                owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdCount(),
+-                owner.getRegistrationDate()));
++            int membershipLevel = effectiveMembershipLevel(owner);
+             AUDIT.info("owner created id={} customerCode={} registrationDate={} "
+                     + "membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+@@ -371,6 +371,56 @@ public class ClinicServiceImpl implements ClinicService {
+         return (int) others + 1;
+     }
+ 
++    /**
++     * Compute a newly created owner's {@code membershipLevel} after applying the household level
++     * ceiling, the value stored on the owner so every later read returns the capped level. The
++     * owner's own uncapped level is first derived from its membership points (see
++     * {@link Owner#membershipLevel(int)} and
++     * {@link Owner#membershipPoints(Integer, String, Integer, java.time.LocalDate)}). The ceiling is
++     * then one above the current maximum {@code membershipLevel} among the owner's existing household
++     * members&mdash;other owners sharing its household id (same last name and postcode, see
++     * {@link Owner#householdId(String, String)}), excluding soft-deleted owners and the owner itself.
++     * The returned level is the smaller of the uncapped level and that ceiling. When the owner has no
++     * derivable household id or no existing household member, no ceiling applies and the uncapped
++     * level is returned.
++     */
++    private Integer computeMembershipLevel(Owner owner) {
++        int uncapped = effectiveMembershipLevel(owner);
++        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
++        if (householdId == null) {
++            return uncapped;
++        }
++        Integer maxHouseholdLevel = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> !existing.isDeleted())
++            .filter(existing -> householdId.equals(
++                Owner.householdId(existing.getLastName(), existing.getPostcode())))
++            .map(this::effectiveMembershipLevel)
++            .max(Integer::compareTo)
++            .orElse(null);
++        if (maxHouseholdLevel == null) {
++            return uncapped;
++        }
++        return Math.min(uncapped, maxHouseholdLevel + 1);
++    }
++
++    /**
++     * Resolve an owner's effective {@code membershipLevel}: the capped value stored on the owner when
++     * present (see {@link Owner#getMembershipLevel()}), otherwise the level recomputed from the
++     * owner's membership points (see {@link Owner#membershipLevel(int)}). This shared accessor lets
++     * the household-ceiling computation compare against each household member's final level whether or
++     * not that member carries a stored value.
++     */
++    private int effectiveMembershipLevel(Owner owner) {
++        Integer stored = owner.getMembershipLevel();
++        if (stored != null) {
++            return stored;
++        }
++        return Owner.membershipLevel(Owner.membershipPoints(
++            owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdCount(),
++            owner.getRegistrationDate()));
++    }
++
+     /**
+      * Build an owner's {@code customerCode} formatted {@code '<REGION>-<HASH8>'}, where {@code REGION}
+      * is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no region can be
+@@ -487,31 +537,6 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
+-    /**
+-     * Enforce that no <em>other</em> owner already belongs to this owner's household, throwing
+-     * {@link DuplicateIdentityException} if one does. The household is keyed on {@code (lastName,
+-     * postcode)} (see {@link Owner#householdId(String, String)}), so owners sharing a last name and
+-     * postcode are the same household and a second such owner is a household duplicate. The owner
+-     * being saved is excluded by id, and an owner with no derivable household id (missing last name
+-     * or postcode) places no constraint. Callers bypass this check for a declared household member
+-     * ({@code sharesHousehold} set).
+-     */
+-    private void assertHouseholdIsUnique(Owner owner) {
+-        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
+-        if (householdId == null) {
+-            return;
+-        }
+-        boolean duplicate = ownerRepository.findAll().stream()
+-            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+-            .filter(existing -> !existing.isDeleted())
+-            .map(existing -> Owner.householdId(existing.getLastName(), existing.getPostcode()))
+-            .anyMatch(householdId::equals);
+-        if (duplicate) {
+-            throw new DuplicateIdentityException(Owner.identityKey(
+-                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
+-        }
+-    }
+-
+     /**
+      * Enforce that the owner's city has not yet reached its capacity, throwing
+      * {@link CityAtCapacityException} when the city (compared case-insensitively) already contains
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8d30609b1..2f1f4c348 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   household_count INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 919102e15..c946f99cd 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,6 +51,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   household_count INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 0bc8147ea..ee7d23ee4 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   household_count INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0715019f3..94981e89f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
+                                       household_count INTEGER,
++                                      membership_level INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
