@@ -294,6 +294,21 @@ public class Owner extends Person {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
     }
 
+    /**
+     * Build an owner's {@code membershipTier}, the derived tier based on the owner's namesake count
+     * and whether an email is present. The value is {@code 'SILVER'} when {@code namesakeCount} is 0
+     * and an email is present, and {@code 'BRONZE'} otherwise. The value is deterministic in those
+     * two fields.
+     *
+     * @param namesakeCount the owner's namesake count, possibly {@code null}
+     * @param email the owner's email, possibly {@code null}
+     * @return {@code 'SILVER'} or {@code 'BRONZE'}
+     */
+    public static String membershipTier(Integer namesakeCount, String email) {
+        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isEmpty();
+        return silver ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

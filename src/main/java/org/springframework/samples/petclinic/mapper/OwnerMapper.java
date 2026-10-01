@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -65,6 +66,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate());
+    }
+
+    /**
+     * Compute the owner's membership tier, the derived tier based on the owner's namesake count and
+     * whether an email is present (see {@link Owner#membershipTier(Integer, String)}).
+     */
+    default String formatMembershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail());
     }
 
     Owner toOwner(OwnerDto ownerDto);
