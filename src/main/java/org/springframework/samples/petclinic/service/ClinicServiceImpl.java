@@ -48,6 +48,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     static final int MAX_OWNERS_PER_CITY = 50;
 
+    /**
+     * Maximum number of owners that may be registered on a single day. Creating an owner on a day
+     * that already has this many owners (counted by {@code registrationDate}) is rejected with
+     * {@link DailyRegistrationLimitException}.
+     */
+    static final int MAX_OWNERS_PER_DAY = 100;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -256,6 +263,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (owner.isNew()) {
+            assertDailyRegistrationLimit(owner);
+        }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
         }
@@ -368,6 +378,26 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
         if (count >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(city);
+        }
+    }
+
+    /**
+     * Enforce that the owner's registration day has not yet reached its capacity, throwing
+     * {@link DailyRegistrationLimitException} when {@link #MAX_OWNERS_PER_DAY} or more owners are
+     * already registered on that day (counted by {@code registrationDate}). The owner being saved
+     * is excluded by id.
+     */
+    private void assertDailyRegistrationLimit(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return;
+        }
+        long count = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        if (count >= MAX_OWNERS_PER_DAY) {
+            throw new DailyRegistrationLimitException(registrationDate);
         }
     }
 

@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.service.CityAtCapacityException;
+import org.springframework.samples.petclinic.service.DailyRegistrationLimitException;
 import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
@@ -59,6 +60,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+    private static final String ERROR_DAILY_LIMIT = "The maximum number of owners has already been registered today";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -166,6 +168,27 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyRegistrationLimitException}, raised when a new owner is created on a day
+     * that already has the maximum number of owners registered (counted by {@code registrationDate}),
+     * by returning a 429 Too Many Requests status.
+     *
+     * @param e The {@link DailyRegistrationLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status
+     */
+    @ExceptionHandler(DailyRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyRegistrationLimitException(DailyRegistrationLimitException e, HttpServletRequest request) {
+        logger.warn("Daily registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT);
         return ResponseEntity.status(status).body(detail);
     }
 
