@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDate;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
@@ -49,6 +50,9 @@ public class ClinicServiceImpl implements ClinicService {
 
     /** Maximum number of owners allowed per city. */
     private static final long CITY_CAPACITY = 50L;
+
+    /** Maximum number of owners that may be created on a single day (by registration date). */
+    private static final long DAILY_CAPACITY = 100L;
 
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
@@ -301,6 +305,16 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean isCityAtCapacity(String city) throws DataAccessException {
         return countOwnersInCity(city) >= CITY_CAPACITY;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isDailyRegistrationAtCapacity() throws DataAccessException {
+        LocalDate today = LocalDate.now();
+        long registeredToday = ownerRepository.findAll().stream()
+            .filter(owner -> today.equals(owner.getRegistrationDate()))
+            .count();
+        return registeredToday >= DAILY_CAPACITY;
     }
 
     @Override

@@ -101,6 +101,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (this.clinicService.isDailyRegistrationAtCapacity()) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);

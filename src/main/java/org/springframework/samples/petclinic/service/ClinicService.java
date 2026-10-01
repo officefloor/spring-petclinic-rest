@@ -104,6 +104,15 @@ public interface ClinicService {
 	 */
 	boolean isCityAtCapacity(String city) throws DataAccessException;
 
+	/**
+	 * Returns {@code true} if 100 or more owners have already been registered today, i.e. the number
+	 * of owners whose {@code registrationDate} equals the server's current date has reached the daily
+	 * create limit. Enforces the "at most 100 owners created per day" invariant on owner creation.
+	 *
+	 * @return whether 100 or more owners already carry today's registration date
+	 */
+	boolean isDailyRegistrationAtCapacity() throws DataAccessException;
+
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
