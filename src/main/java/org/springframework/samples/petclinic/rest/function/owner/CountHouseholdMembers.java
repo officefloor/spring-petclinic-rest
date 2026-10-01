@@ -12,8 +12,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * itself. The owner is still unsaved, so it is counted by the trailing {@code + 1} rather than by
  * iterating the repository.
  *
- * <p>Drives the {@code GOLD} membership tier: a household with 3 or more members is GOLD (see
- * {@code OwnerMapper}).
+ * <p>Records the household size for reporting; it no longer affects the membership level, which is
+ * derived from email presence and {@code namesakeCount} (see {@code MembershipLevel}).
  */
 public class CountHouseholdMembers {
 
