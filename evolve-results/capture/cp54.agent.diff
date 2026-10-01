@@ -1,0 +1,216 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6483ccb03..12f5991e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -90,6 +90,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "deleted")
+     private boolean deleted;
+ 
+@@ -249,6 +252,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public boolean isDeleted() {
+         return this.deleted;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+index 375d3e33b..62fdcd601 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+@@ -1,5 +1,6 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import net.officefloor.plugin.variable.Out;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -11,14 +12,24 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerCityCapacityEx
+  * {@link OwnerCityCapacityException} when the owner's city already contains the maximum number of
+  * owners ({@value #MAX_OWNERS_PER_CITY}); the city is compared case-insensitively with surrounding
+  * whitespace trimmed. The new owner is still unsaved, so it is not counted against the limit.
++ *
++ * <p>The count of existing owners in the city is published as the {@link CityOwnerCount}-qualified
++ * variable and reused later by {@link CheckOwnerCityCapacityWarning} for the approaching-capacity
++ * warning, so the two share one scan and one count and cannot disagree.
+  */
+ public class CheckOwnerCityCapacity {
+ 
+     /** A city may hold at most this many owners; the create of one more is rejected. */
+     static final int MAX_OWNERS_PER_CITY = 50;
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws OwnerCityCapacityException {
++    /**
++     * At or above this many existing owners in the city (but still below {@link #MAX_OWNERS_PER_CITY}),
++     * the create is allowed but flagged as approaching capacity.
++     */
++    static final int WARN_OWNERS_PER_CITY = 40;
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
++            @CityOwnerCount Out<Integer> cityOwnerCount) throws OwnerCityCapacityException {
+         String city = request.getCity();
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+@@ -26,6 +37,7 @@ public class CheckOwnerCityCapacity {
+                 count++;
+             }
+         }
++        cityOwnerCount.set(count);
+         if (count >= MAX_OWNERS_PER_CITY) {
+             throw new OwnerCityCapacityException(city, count);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacityWarning.java
+new file mode 100644
+index 000000000..c1689b0cc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacityWarning.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Runs after {@link BuildOwner} and before {@link SaveOwner} on {@code POST /api/owners}. Records the
++ * new owner's {@code capacityWarning}: it is {@code true} when the owner's city already holds between
++ * {@value CheckOwnerCityCapacity#WARN_OWNERS_PER_CITY} and {@value CheckOwnerCityCapacity#MAX_OWNERS_PER_CITY}
++ * minus one existing owners (i.e. 40-49), approaching the hard capacity limit of
++ * {@value CheckOwnerCityCapacity#MAX_OWNERS_PER_CITY} enforced by {@link CheckOwnerCityCapacity}; otherwise
++ * {@code false}.
++ *
++ * <p>The city count is the very value {@link CheckOwnerCityCapacity} already computed earlier in this
++ * pipeline, handed over through the {@link CityOwnerCount}-qualified variable (the owner is still
++ * unsaved when either step runs, so the count is identical at both). Reusing the one count means the
++ * warning and the hard rejection cannot drift.
++ */
++public class CheckOwnerCityCapacityWarning {
++
++    public void service(@Val Owner owner, @CityOwnerCount @Val Integer cityOwnerCount) {
++        int count = cityOwnerCount;
++        owner.setCapacityWarning(count >= CheckOwnerCityCapacity.WARN_OWNERS_PER_CITY
++                && count < CheckOwnerCityCapacity.MAX_OWNERS_PER_CITY);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityOwnerCount.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityOwnerCount.java
+new file mode 100644
+index 000000000..28f642505
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityOwnerCount.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import static java.lang.annotation.ElementType.PARAMETER;
++import static java.lang.annotation.RetentionPolicy.RUNTIME;
++
++import java.lang.annotation.Documented;
++import java.lang.annotation.Retention;
++import java.lang.annotation.Target;
++
++import net.officefloor.plugin.clazz.Qualifier;
++
++/**
++ * Qualifies the per-city existing-owner count published by {@link CheckOwnerCityCapacity} and read by
++ * {@link CheckOwnerCityCapacityWarning}, so the single scan the hard-limit check already performs is
++ * reused for the approaching-capacity warning rather than recomputed.
++ */
++@Documented
++@Retention(RUNTIME)
++@Target(PARAMETER)
++@Qualifier
++public @interface CityOwnerCount {
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 198aecf3a..ee2ba1264 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 736afc575..d8d2f7a0a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,6 +56,7 @@ CREATE TABLE owners (
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e8a639e0c..4a6441c20 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_level_cap INT,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INT,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e08808459..c802e1d51 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      capacity_warning BOOLEAN,
+                                       deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index b289afb28..b67aef99a 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -22,6 +22,11 @@ checkDailyLimit:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: flagCityCapacityWarning
++
++flagCityCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerCityCapacityWarning
++  govern: [ transaction ]
+   next: assignCode
+ 
+ assignCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1fb9f7240..c44411148 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2220,6 +2220,12 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            capacityWarning:
++              title: Capacity warning
++              description: True when, at the time this owner was created, its city already held between 40 and 49 other owners (approaching the hard capacity limit of 50, beyond which a create is rejected with 409); otherwise false. Set at creation time and retained.
++              type: boolean
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: Whether this owner has been soft-deleted. A newly created owner is false; DELETE /api/owners/{id} flags it true while retaining the record, after which the create endpoint's duplicate/identity checks ignore this owner.
