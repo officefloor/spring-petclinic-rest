@@ -12,9 +12,10 @@ import java.util.Locale;
  * <em>deterministic</em> — it is computed purely from those two values, so every owner that joins a
  * household arrives at the same id independently, without coordinating through the database.
  *
- * <p>Used by {@link AssignOwnerHousehold} to stamp the id onto a new owner and by
- * {@link OwnerIdentity} to derive the household segment of an owner's identity key — so the
- * definition of "same household" lives here and nowhere else.
+ * <p>Used by {@link AssignOwnerHousehold} to stamp the id onto a new owner (which later steps read
+ * for household size, membership-level capping and the like) — so the definition of "same
+ * household" lives here and nowhere else. It is no longer part of the owner identity key; see
+ * {@link OwnerIdentity}.
  */
 final class OwnerHousehold {
 

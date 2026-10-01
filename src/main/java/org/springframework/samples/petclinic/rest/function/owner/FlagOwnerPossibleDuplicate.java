@@ -10,10 +10,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Runs in the {@code POST /api/owners} pipeline after {@link FlagOwnerBulkSignup} and before
  * {@link SaveOwner}, so the new owner is not yet persisted and therefore not compared against
- * itself. A soft match is a weaker signal: an existing owner that
- * shares this owner's last name (case-insensitive) and postcode but carries a <em>different</em>
- * telephone. People who really are distinct but look alike — same family name, same postcode, new
- * phone — are still created, but flagged for review.
+ * itself. A soft match is a weaker signal than the hard-duplicate {@link CheckOwnerDuplicateIdentity
+ * identity-key} rule: an existing owner whose {@link OwnerIdentity identity key} <em>differs</em>
+ * (so it is not a hard duplicate) yet whose last name sounds alike ({@link OwnerSoundex#soundex
+ * same Soundex code}) and whose postcode is equal. People who really are distinct but look alike —
+ * phonetically similar family name, same postcode, different phone or email — are still created, but
+ * flagged for review.
  *
  * <p>When such a match is found, {@code possibleDuplicate} is set to {@code true} and
  * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match, so the
@@ -35,9 +37,9 @@ public class FlagOwnerPossibleDuplicate {
             owner.setPossibleDuplicateOf(null);
             return;
         }
-        String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
+        String soundex = OwnerSoundex.soundex(owner.getLastName());
+        String identityKey = OwnerIdentity.identityKey(owner);
 
         Integer matchId = null;
         if (postcode != null && !postcode.isBlank()) {
@@ -48,9 +50,11 @@ public class FlagOwnerPossibleDuplicate {
                 if (Boolean.TRUE.equals(existing.getDeleted())) {
                     continue; // soft-deleted owners are ignored by the duplicate check
                 }
-                if (equalsIgnoreCase(existing.getLastName(), lastName)
-                        && postcode.equals(existing.getPostcode())
-                        && !equalsIgnoreCase(existing.getTelephone(), telephone)) {
+                if (identityKey.equals(OwnerIdentity.identityKey(existing))) {
+                    continue; // a matching identity key is the hard-duplicate case, not a soft match
+                }
+                if (soundex.equals(OwnerSoundex.soundex(existing.getLastName()))
+                        && postcode.equals(existing.getPostcode())) {
                     if (matchId == null || existing.getId() < matchId) {
                         matchId = existing.getId();
                     }
@@ -60,9 +64,5 @@ public class FlagOwnerPossibleDuplicate {
 
         owner.setPossibleDuplicate(matchId != null);
         owner.setPossibleDuplicateOf(matchId);
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 }
