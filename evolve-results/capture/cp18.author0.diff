@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 18177da26..7531a2a73 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
++import org.springframework.samples.petclinic.service.CityAtCapacityException;
+ import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+@@ -57,6 +58,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
+     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
++    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -147,6 +149,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityAtCapacityException}, raised when a new owner is created whose city already
++     * contains the maximum number of owners, by returning a 409 Conflict status.
++     *
++     * @param e The {@link CityAtCapacityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(CityAtCapacityException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
++        logger.warn("City at capacity at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/service/CityAtCapacityException.java
+new file mode 100644
+index 000000000..9faec4dea
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CityAtCapacityException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown when a new owner is created whose city (compared case-insensitively) already contains
++ * {@link org.springframework.samples.petclinic.service.ClinicServiceImpl#MAX_OWNERS_PER_CITY} or
++ * more owners. Mapped to an HTTP 409 Conflict response by the web layer.
++ */
++public class CityAtCapacityException extends RuntimeException {
++
++    public CityAtCapacityException(String city) {
++        super("The city '" + city + "' already contains the maximum number of owners");
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index a3505d9c2..09a6985a8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -42,6 +42,12 @@ import java.util.function.Supplier;
+ @Service
+ public class ClinicServiceImpl implements ClinicService {
+ 
++    /**
++     * Maximum number of owners allowed in a single city. Creating an owner in a city that already
++     * contains this many owners is rejected with {@link CityAtCapacityException}.
++     */
++    static final int MAX_OWNERS_PER_CITY = 50;
++
+     private final PetRepository petRepository;
+     private final VetRepository vetRepository;
+     private final OwnerRepository ownerRepository;
+@@ -241,6 +247,9 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional
+     public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+         assertTelephoneIsUnique(owner);
++        if (owner.isNew()) {
++            assertCityHasCapacity(owner);
++        }
+         if (owner.isNew() && !sharesHousehold) {
+             assertHouseholdIsUnique(owner);
+         }
+@@ -343,6 +352,25 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Enforce that the owner's city has not yet reached its capacity, throwing
++     * {@link CityAtCapacityException} when the city (compared case-insensitively) already contains
++     * {@link #MAX_OWNERS_PER_CITY} or more owners. The owner being saved is excluded by id.
++     */
++    private void assertCityHasCapacity(Owner owner) {
++        String city = owner.getCity();
++        if (city == null) {
++            return;
++        }
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        if (count >= MAX_OWNERS_PER_CITY) {
++            throw new CityAtCapacityException(city);
++        }
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
