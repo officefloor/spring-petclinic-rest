@@ -1,0 +1,153 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bb599b62e..1894cf0f9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -60,6 +60,7 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
++    @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 07b75643b..841ae444f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -62,6 +62,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -113,6 +116,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     /**
+      * Normalize an email to its canonical stored form, which is lower-cased. This is the single
+      * source of truth for how an email is persisted, so inputs that differ only in letter case
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 15bf6463b..f92819af0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -250,9 +250,31 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+             owner.setCustomerCode(generateCustomerCode(owner));
+         }
++        if (owner.isNew() && owner.getNamesakeCount() == null) {
++            owner.setNamesakeCount(countNamesakes(owner));
++        }
+         ownerRepository.save(owner);
+     }
+ 
++    /**
++     * Count the existing owners that, at the moment this owner is created, share its first name
++     * and last name (both compared case-insensitively). The owner being saved is excluded by id so
++     * it never counts itself. This value is deterministic given the current data, so it is computed
++     * once at creation time and stored.
++     */
++    private Integer countNamesakes(Owner owner) {
++        String firstName = owner.getFirstName();
++        String lastName = owner.getLastName();
++        if (firstName == null || lastName == null) {
++            return 0;
++        }
++        return (int) ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
++                && lastName.equalsIgnoreCase(existing.getLastName()))
++            .count();
++    }
++
+     /**
+      * Build an owner's {@code customerCode} formatted {@code '<LAST3>-<NNNN>'}, where
+      * {@code LAST3} is the upper-cased first three letters of the last name and {@code NNNN}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..8d93bb2fb 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..6e617f644 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..6441f5357 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  namesake_count INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..7bda5307a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 51a44bc0a..a66626d3c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,6 +2123,17 @@ components:
+               type: string
+               example: 'HH-3A7F1C9B2E4D'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of existing owners that, at the moment this owner was
++                created, shared the same first name and last name (compared
++                case-insensitively). Assigned on create and returned unchanged.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
