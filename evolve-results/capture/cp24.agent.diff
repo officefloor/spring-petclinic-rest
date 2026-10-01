@@ -1,0 +1,141 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 206f25a5a..1efad8d94 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,7 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
++    @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+@@ -81,27 +81,28 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives an owner's membership tier, as required by the API's read-only
+-     * {@code membershipTier} field: {@code GOLD} when the owner's household (owners sharing the
+-     * same {@code householdId}) has 3 or more members; otherwise {@code SILVER} when the owner has
+-     * no namesakes ({@code namesakeCount} is 0) and an email address is present, otherwise
+-     * {@code BRONZE}.
++     * Derives an owner's membership level, as required by the API's read-only
++     * {@code membershipLevel} field: starting at 1, plus 1 when an email address is present,
++     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), capped at 3. (Level 4
++     * is reserved for tenure.)
+      *
+      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+-     * applied only where referenced via {@code qualifiedByName}.
++     * applied only where referenced via {@code qualifiedByName} (and when called directly, e.g.
++     * to record the membership level on the create audit line).
+      */
+-    @Named("formatMembershipTier")
+-    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
++    @Named("formatMembershipLevel")
++    default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
+-        if (largeHousehold) {
+-            return OwnerDto.MembershipTierEnum.GOLD;
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
+         }
+-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+-        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 27f6aedef..7f84fcd66 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,7 +68,7 @@ public class Owner extends Person {
+     /**
+      * The current number of owners that belong to this owner's household (owners sharing the same
+      * {@code householdId}, including this one). Not persisted: it is populated from the current data
+-     * whenever the owner is loaded or saved and drives the derived {@code membershipTier}.
++     * whenever the owner is loaded or saved.
+      */
+     @Transient
+     private Integer householdMemberCount;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index dfaaa532d..22aab24b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -124,8 +124,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
+         }
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.formatMembershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 70fe9eaf7..99395f893 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -424,14 +424,11 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Populate each given owner's transient {@code householdMemberCount} with the current number of
+-     * owners that share its {@code householdId}, so the derived {@code membershipTier} reflects the
+-     * household size (3 or more members earns {@code GOLD}). Owners without a household id are left
+-     * at a count of zero.
++     * owners that share its {@code householdId}. Owners without a household id are left at a count
++     * of zero.
+      *
+      * <p>The household sizes are computed in a single pass over the owner table regardless of how
+-     * many owners are being decorated, so decorating a whole page does not re-scan per element. This
+-     * is the single funnel through which every owner-returning read/save path stamps the count, so
+-     * no path can silently drop the {@code GOLD} tier.
++     * many owners are being decorated, so decorating a whole page does not re-scan per element.
+      */
+     private <T> T decorateWithHouseholdMemberCount(T result, Collection<Owner> owners) {
+         if (!owners.isEmpty()) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6871600ee..e3df4b028 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2150,19 +2150,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The pet owner's membership tier: 'GOLD' when the owner's household (owners
+-                sharing the same householdId) has 3 or more members; otherwise 'SILVER' when
+-                the owner has no namesakes (namesakeCount is 0) and an email address is present,
+-                otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++                The pet owner's membership level from 1 to 3, computed on creation: starting
++                at 1, plus 1 when an email address is present, plus 1 when the owner has no
++                namesakes (namesakeCount is 0), capped at 3. (Level 4 is reserved for tenure.)
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
