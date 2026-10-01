@@ -45,6 +45,20 @@ public final class CustomerCode {
     }
 
     /**
+     * Spell a de-duplicated customer code by appending a numeric suffix to {@code base}, joined with the
+     * same {@link #SEPARATOR} as {@link #format(String, String)} so the dedup suffix cannot drift from
+     * the region/hash separator. Used when a computed code collides with an existing owner's: callers try
+     * {@code n} of 2, 3, ... until the result is unique (e.g. {@code NSW-1A2B3C4D-2}).
+     *
+     * @param base the colliding base code to disambiguate
+     * @param n    the suffix number (2 or more)
+     * @return {@code base}, the separator and {@code n}
+     */
+    public static String withSuffix(String base, int n) {
+        return base + SEPARATOR + n;
+    }
+
+    /**
      * Compute the {@code HASH8} component: the first 8 upper-case hex characters of
      * {@code SHA-256(normalizedTelephone + lastName)}, where the telephone is normalized to E.164 form
      * (see {@link OwnerTelephone#toE164(String)}) exactly as the owner's identity key is, so the hash
