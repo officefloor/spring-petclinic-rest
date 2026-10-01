@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(20),
   membership_number VARCHAR(30),
   household_id VARCHAR(64),
+  household_size INTEGER,
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
   INDEX(last_name)

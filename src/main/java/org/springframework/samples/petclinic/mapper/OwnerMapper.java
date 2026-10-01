@@ -38,6 +38,10 @@ public interface OwnerMapper {
 
     @Named("membershipTier")
     default String membershipTier(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            return "GOLD";
+        }
         Integer namesakeCount = owner.getNamesakeCount();
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return (namesakeCount != null && namesakeCount == 0 && hasEmail) ? "SILVER" : "BRONZE";
