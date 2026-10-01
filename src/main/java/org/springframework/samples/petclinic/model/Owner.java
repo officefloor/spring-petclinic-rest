@@ -76,6 +76,18 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * Normalize a telephone to its digits only. This is the single source of truth for how
+     * a telephone is compared and persisted, so inputs that differ only in formatting (spaces,
+     * dashes, parentheses) are treated as the same number.
+     *
+     * @param telephone the raw telephone, possibly {@code null}
+     * @return the digits-only form, or {@code null} if the input was {@code null}
+     */
+    public static String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

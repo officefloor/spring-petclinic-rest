@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -232,8 +233,27 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        assertTelephoneIsUnique(owner);
         ownerRepository.save(owner);
+    }
 
+    /**
+     * Enforce that an owner's normalized telephone is not already used by any <em>other</em>
+     * owner, throwing {@link DuplicateTelephoneException} if it is. The owner being saved is
+     * excluded by id so updating an owner in place does not conflict with itself.
+     */
+    private void assertTelephoneIsUnique(Owner owner) {
+        String normalized = Owner.normalizeTelephone(owner.getTelephone());
+        if (normalized == null) {
+            return;
+        }
+        boolean duplicate = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
+            .anyMatch(normalized::equals);
+        if (duplicate) {
+            throw new DuplicateTelephoneException(normalized);
+        }
     }
 
     @Override

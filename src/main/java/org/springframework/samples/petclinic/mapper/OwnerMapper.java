@@ -31,7 +31,7 @@ public interface OwnerMapper {
     /** Normalize a telephone to its digits only, matching {@code TelephoneValidator}. */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return Owner.normalizeTelephone(telephone);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
