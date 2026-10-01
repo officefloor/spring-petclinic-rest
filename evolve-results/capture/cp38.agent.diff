@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index 981b5fc38..7fbc58615 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -1,12 +1,13 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Locale;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ /**
+  * The owner-email rule for the create pipeline's {@link ValidateOwnerFields}: email is optional, but
+- * when supplied it must be a syntactically valid address, and it is lower-cased before being stored
+- * so it is returned lower-cased.
++ * when supplied it must be a syntactically valid address whose domain is not a known disposable
++ * provider, and it is lower-cased before being stored so it is returned lower-cased.
+  *
+  * <p>Mirrors {@link OwnerTelephone}. As with telephone, only the create path validates and
+  * normalizes programmatically; the update path ({@link ValidateOwner}) leans on the
+@@ -18,6 +19,10 @@ final class OwnerEmail {
+     /** Syntactic check: a non-empty local part, an {@code @}, and a dotted domain, no whitespace. */
+     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
++    /** Disposable email providers whose addresses are rejected. */
++    private static final Set<String> DISPOSABLE_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     private OwnerEmail() {
+     }
+ 
+@@ -25,6 +30,22 @@ final class OwnerEmail {
+         return value != null && EMAIL.matcher(value).matches();
+     }
+ 
++    /**
++     * Whether the address's domain is a known disposable provider (see {@link #DISPOSABLE_DOMAINS}).
++     * Only meaningful for a syntactically {@link #isValid valid} address.
++     */
++    static boolean isDisposable(String value) {
++        if (value == null) {
++            return false;
++        }
++        int at = value.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = value.substring(at + 1).toLowerCase(Locale.ROOT);
++        return DISPOSABLE_DOMAINS.contains(domain);
++    }
++
+     static String normalize(String value) {
+         return value == null ? null : value.toLowerCase(Locale.ROOT);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 3b5490d6c..8e1a22faf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -59,11 +59,12 @@ public class ValidateOwnerFields {
+                 request.setTelephone(telephone);
+             }
+         }
+-        // Email is optional. When present it must be syntactically valid; it is normalized to
+-        // lower case so it is stored and returned lower-cased.
++        // Email is optional. When present it must be syntactically valid and its domain must not be a
++        // known disposable provider; it is normalized to lower case so it is stored and returned
++        // lower-cased.
+         String email = request.getEmail();
+         if (email != null) {
+-            if (!OwnerEmail.isValid(email)) {
++            if (!OwnerEmail.isValid(email) || OwnerEmail.isDisposable(email)) {
+                 errors.add("email");
+             }
+             else {
