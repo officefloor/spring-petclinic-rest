@@ -42,6 +42,12 @@ import java.util.function.Supplier;
 @Service
 public class ClinicServiceImpl implements ClinicService {
 
+    /**
+     * Maximum number of owners allowed in a single city. Creating an owner in a city that already
+     * contains this many owners is rejected with {@link CityAtCapacityException}.
+     */
+    static final int MAX_OWNERS_PER_CITY = 50;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -241,6 +247,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         assertTelephoneIsUnique(owner);
+        if (owner.isNew()) {
+            assertCityHasCapacity(owner);
+        }
         if (owner.isNew() && !sharesHousehold) {
             assertHouseholdIsUnique(owner);
         }
@@ -340,6 +349,25 @@ public class ClinicServiceImpl implements ClinicService {
                 && address.equals(Owner.normalizeAddress(existing.getAddress())));
         if (duplicate) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+    }
+
+    /**
+     * Enforce that the owner's city has not yet reached its capacity, throwing
+     * {@link CityAtCapacityException} when the city (compared case-insensitively) already contains
+     * {@link #MAX_OWNERS_PER_CITY} or more owners. The owner being saved is excluded by id.
+     */
+    private void assertCityHasCapacity(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return;
+        }
+        long count = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (count >= MAX_OWNERS_PER_CITY) {
+            throw new CityAtCapacityException(city);
         }
     }
 
