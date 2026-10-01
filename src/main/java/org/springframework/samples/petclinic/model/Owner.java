@@ -319,18 +319,62 @@ public class Owner extends Person {
             return null;
         }
         String key = normalizedLastName + "\n" + normalizedAddress;
+        return "HH-" + sha256Hex(key).substring(0, 12).toUpperCase();
+    }
+
+    /**
+     * Compute the full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}. This is the
+     * shared primitive behind every hash-derived owner value (the household id and the customer code),
+     * so they all agree on algorithm and encoding.
+     *
+     * @param value the string to digest, never {@code null}
+     * @return the 64-character lower-case hex digest
+     */
+    private static String sha256Hex(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(StandardCharsets.UTF_8));
+                .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 hex.append(String.format("%02x", b));
             }
-            return "HH-" + hex.substring(0, 12).toUpperCase();
+            return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is a standard algorithm required to be present on every JVM.
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Build an owner's {@code customerCode}, the stable owner identity assigned once when the owner is
+     * created. It is formatted {@code '<REGION>-<HASH8>'} where:
+     * <ul>
+     *   <li>{@code REGION} is the region code derived from the postcode (see
+     *       {@link #regionForPostcode(String)}), or {@code 'UNKNOWN'} when the postcode is absent or
+     *       in no known range, and</li>
+     *   <li>{@code HASH8} is the first eight upper-cased hex characters of the SHA-256 digest of the
+     *       normalized telephone (see {@link #normalizeTelephone(String)}) concatenated with the last
+     *       name.</li>
+     * </ul>
+     * The value is deterministic in the postcode, telephone and last name (e.g.
+     * {@code 'NSW-1A2B3C4D'}); it carries no sequence number.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @param telephone the owner's raw telephone, possibly {@code null}
+     * @param lastName the owner's last name, possibly {@code null}
+     * @return the customer code, or {@code null} if the telephone or last name is {@code null}
+     */
+    public static String customerCode(String postcode, String telephone, String lastName) {
+        if (telephone == null || lastName == null) {
+            return null;
+        }
+        String region = regionForPostcode(postcode);
+        if (region == null) {
+            region = "UNKNOWN";
+        }
+        String normalizedTelephone = normalizeTelephone(telephone);
+        String key = (normalizedTelephone == null ? "" : normalizedTelephone) + lastName;
+        return region + "-" + sha256Hex(key).substring(0, 8).toUpperCase();
     }
 
     /**
@@ -366,7 +410,7 @@ public class Owner extends Person {
     /**
      * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
      * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
-     * is the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}). The
+     * is the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}). The
      * value is deterministic in those two fields.
      *
      * @param customerCode the owner's customer code, possibly {@code null}
@@ -402,8 +446,8 @@ public class Owner extends Person {
     }
 
     /**
-     * Fixed city-to-region table used by {@link #locality(String, String)} as the fallback to derive
-     * an owner's locality, keyed by the exact city name.
+     * Fixed city-to-region table used by {@link #regionForCity(String)} to resolve a city's region
+     * for postcode validation, keyed by the exact city name.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
@@ -411,26 +455,21 @@ public class Owner extends Person {
         "Brisbane", "QLD");
 
     /**
-     * Derive an owner's {@code locality}, the canonical region for the owner, preferring the
-     * postcode. The postcode is looked up against the fixed region postcode ranges first
-     * ({@code NSW} 2000-2099, {@code VIC} 3000-3099, {@code QLD} 4000-4099) and, when it falls in a
-     * known range, that region is returned. Only when the postcode is absent or in no known range
-     * does the derivation fall back to the fixed city-to-region table ({@code Sydney}->{@code NSW},
-     * {@code Melbourne}->{@code VIC}, {@code Brisbane}->{@code QLD}). This returns the same region
-     * for a known city with a matching postcode but disambiguates cities that share a name. The
-     * value is deterministic in the postcode and city. When neither resolves a region (including
-     * {@code null} inputs) the locality is {@code 'UNKNOWN'}.
+     * Derive an owner's {@code locality}, the canonical region for the owner, from the {@code REGION}
+     * segment of the owner's {@code customerCode} (see {@link #customerCode(String, String, String)}).
+     * Because the customer code's region is itself derived from the postcode, the locality now shares
+     * the owner's region-and-hash identity: it is the text before the first {@code '-'} of the customer
+     * code. When the owner has no customer code the locality is {@code 'UNKNOWN'}.
      *
-     * @param postcode the owner's postcode, possibly {@code null}
-     * @param city the owner's city, possibly {@code null}
-     * @return the canonical region string, or {@code 'UNKNOWN'} when no region can be derived
+     * @param customerCode the owner's customer code, possibly {@code null}
+     * @return the canonical region string, or {@code 'UNKNOWN'} when no customer code is present
      */
-    public static String locality(String postcode, String city) {
-        String byPostcode = regionForPostcode(postcode);
-        if (byPostcode != null) {
-            return byPostcode;
+    public static String locality(String customerCode) {
+        if (customerCode == null) {
+            return "UNKNOWN";
         }
-        return regionForCity(city);
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? customerCode : customerCode.substring(0, dash);
     }
 
     /**

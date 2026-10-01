@@ -323,29 +323,15 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's {@code customerCode} formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where
-     * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} the
-     * upper-cased first three letters of the last name, and {@code NNNN} a per-city, 4-digit
-     * zero-padded sequence equal to one more than the number of owners already in that city
-     * (e.g. {@code 'LON-SMI-0007'}).
+     * Build an owner's {@code customerCode} formatted {@code '<REGION>-<HASH8>'}, where {@code REGION}
+     * is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no region can be
+     * derived) and {@code HASH8} is the first eight upper-cased hex characters of SHA-256 over the
+     * owner's normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The
+     * value is deterministic in those fields and carries no sequence number (see
+     * {@link Owner#customerCode(String, String, String)}).
      */
     private String generateCustomerCode(Owner owner) {
-        String city = owner.getCity();
-        String city3 = codePrefix(city);
-        String last3 = codePrefix(owner.getLastName());
-        long sequence = ownerRepository.findAll().stream()
-            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
-    }
-
-    /**
-     * Build a {@code customerCode} segment from {@code value}: its first three characters
-     * (fewer if it is shorter), upper-cased.
-     */
-    private static String codePrefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+        return Owner.customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
     }
 
     /**

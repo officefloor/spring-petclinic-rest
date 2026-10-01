@@ -86,15 +86,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's locality, the canonical region derived from the owner by preferring the
-     * postcode range and falling back to the city-to-region table
-     * (see {@link Owner#locality(String, String)}).
+     * Compute the owner's locality, the canonical region taken from the {@code REGION} segment of the
+     * owner's customer code (see {@link Owner#locality(String)}).
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.locality(owner.getPostcode(), owner.getCity());
+        return Owner.locality(owner.getCustomerCode());
     }
 
     /**
