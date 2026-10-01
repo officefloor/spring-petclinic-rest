@@ -382,6 +382,18 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
+    /**
+     * Derive an owner's {@code contactPreference}, the preferred channel for contacting the owner.
+     * The value is {@code 'EMAIL'} when an email is present and {@code 'PHONE'} otherwise. The value
+     * is deterministic in the email.
+     *
+     * @param email the owner's email, possibly {@code null}
+     * @return {@code 'EMAIL'} when an email is present, otherwise {@code 'PHONE'}
+     */
+    public static String contactPreference(String email) {
+        return (email != null && !email.isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

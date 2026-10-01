@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -102,6 +103,17 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Derive the owner's contact preference, {@code 'EMAIL'} when an email is present and
+     * {@code 'PHONE'} otherwise (see {@link Owner#contactPreference(String)}).
+     */
+    default String formatContactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.contactPreference(owner.getEmail());
     }
 
     Owner toOwner(OwnerDto ownerDto);
