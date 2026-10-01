@@ -36,8 +36,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -143,16 +145,17 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findAllOwners() throws DataAccessException {
-        return ownerRepository.findAll();
+        Collection<Owner> owners = ownerRepository.findAll();
+        return decorateWithHouseholdMemberCount(owners, owners);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException {
-        if (lastName != null) {
-            return ownerRepository.findByLastName(lastName, pageable);
-        }
-        return ownerRepository.findAll(pageable);
+        Page<Owner> owners = (lastName != null)
+            ? ownerRepository.findByLastName(lastName, pageable)
+            : ownerRepository.findAll(pageable);
+        return decorateWithHouseholdMemberCount(owners, owners.getContent());
     }
 
     @Override
@@ -218,7 +221,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Owner findOwnerById(int id) throws DataAccessException {
-        return findEntityById(() -> ownerRepository.findById(id));
+        return decorateWithHouseholdMemberCount(findEntityById(() -> ownerRepository.findById(id)));
     }
 
     @Override
@@ -263,7 +266,7 @@ public class ClinicServiceImpl implements ClinicService {
             }
         }
         ownerRepository.save(owner);
-
+        decorateWithHouseholdMemberCount(owner);
     }
 
     /**
@@ -420,6 +423,39 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * Populate each given owner's transient {@code householdMemberCount} with the current number of
+     * owners that share its {@code householdId}, so the derived {@code membershipTier} reflects the
+     * household size (3 or more members earns {@code GOLD}). Owners without a household id are left
+     * at a count of zero.
+     *
+     * <p>The household sizes are computed in a single pass over the owner table regardless of how
+     * many owners are being decorated, so decorating a whole page does not re-scan per element. This
+     * is the single funnel through which every owner-returning read/save path stamps the count, so
+     * no path can silently drop the {@code GOLD} tier.
+     */
+    private <T> T decorateWithHouseholdMemberCount(T result, Collection<Owner> owners) {
+        if (!owners.isEmpty()) {
+            Map<String, Long> sizeByHousehold = ownerRepository.findAll().stream()
+                .filter(owner -> owner.getHouseholdId() != null)
+                .collect(Collectors.groupingBy(Owner::getHouseholdId, Collectors.counting()));
+            for (Owner owner : owners) {
+                long size = owner.getHouseholdId() == null
+                    ? 0L
+                    : sizeByHousehold.getOrDefault(owner.getHouseholdId(), 0L);
+                owner.setHouseholdMemberCount((int) size);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Decorate a single (possibly {@code null}) owner with its household member count and return it.
+     */
+    private Owner decorateWithHouseholdMemberCount(Owner owner) {
+        return decorateWithHouseholdMemberCount(owner, owner == null ? List.of() : List.of(owner));
+    }
+
+    /**
      * Reduces a telephone number to its canonical E.164 form so that differently formatted but
      * equivalent numbers compare equal. A value already stored that cannot form valid E.164
      * (e.g. unusual legacy data) falls back to its digits-only form rather than failing lookup.
@@ -438,7 +474,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
-        return ownerRepository.findByLastName(lastName);
+        Collection<Owner> owners = ownerRepository.findByLastName(lastName);
+        return decorateWithHouseholdMemberCount(owners, owners);
     }
 
     @Override

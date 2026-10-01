@@ -82,8 +82,9 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's membership tier, as required by the API's read-only
-     * {@code membershipTier} field: {@code SILVER} when the owner has no namesakes
-     * ({@code namesakeCount} is 0) and an email address is present, otherwise
+     * {@code membershipTier} field: {@code GOLD} when the owner's household (owners sharing the
+     * same {@code householdId}) has 3 or more members; otherwise {@code SILVER} when the owner has
+     * no namesakes ({@code namesakeCount} is 0) and an email address is present, otherwise
      * {@code BRONZE}.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
@@ -93,6 +94,10 @@ public interface OwnerMapper {
     default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
+        if (largeHousehold) {
+            return OwnerDto.MembershipTierEnum.GOLD;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();

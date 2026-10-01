@@ -65,6 +65,14 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * The current number of owners that belong to this owner's household (owners sharing the same
+     * {@code householdId}, including this one). Not persisted: it is populated from the current data
+     * whenever the owner is loaded or saved and drives the derived {@code membershipTier}.
+     */
+    @Transient
+    private Integer householdMemberCount;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -130,6 +138,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Integer getHouseholdMemberCount() {
+        return this.householdMemberCount;
+    }
+
+    public void setHouseholdMemberCount(Integer householdMemberCount) {
+        this.householdMemberCount = householdMemberCount;
     }
 
     /**
