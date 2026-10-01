@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -26,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+    @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
@@ -39,6 +41,20 @@ public interface OwnerMapper {
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
         return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Normalizes an email address by lower-casing it, so it is stored and returned in a
+     * canonical form. The schema-level {@code format: email} on {@code OwnerFieldsDto.email}
+     * guarantees any value present is a syntactically valid address.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName} (and when called directly,
+     * e.g. on update).
+     */
+    @Named("normalizeEmail")
+    default String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
