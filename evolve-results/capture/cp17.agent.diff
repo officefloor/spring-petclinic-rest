@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7b440b671..70c0143e9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipTier", expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "locality", expression = "java(Regions.localityOf(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+new file mode 100644
+index 000000000..db45d5026
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Regions.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * City-to-region lookup backing the {@code locality} field produced by
++ * {@link OwnerMapper#toOwnerDto}. The table pins each known city to its canonical region string; any
++ * city not listed derives the locality {@code "UNKNOWN"}.
++ */
++public final class Regions {
++
++    /** City -> canonical region. Anything not listed derives locality {@link #UNKNOWN}. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW",
++        "Melbourne", "VIC",
++        "Brisbane", "QLD");
++
++    /** The locality returned for a city absent from {@link #CITY_REGION}. */
++    public static final String UNKNOWN = "UNKNOWN";
++
++    private Regions() {
++    }
++
++    /**
++     * Derive the locality (canonical region) for a city.
++     *
++     * @param city the owner's city; may be {@code null}
++     * @return the canonical region string, or {@code "UNKNOWN"} when the city is not in the table
++     */
++    public static String localityOf(String city) {
++        return CITY_REGION.getOrDefault(city, UNKNOWN);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b2e690cd7..797d28682 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2101,6 +2101,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'SILVER'
++            locality:
++              title: Locality
++              description: The canonical region derived from the owner's city via the fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not in the table.
++              type: string
++              readOnly: true
++              example: 'NSW'
+             householdId:
+               title: Household ID
+               description: A stable shared identifier for the owner's household. Owners at the same address with the same lastName that opt in via sharesHousehold share one householdId.
