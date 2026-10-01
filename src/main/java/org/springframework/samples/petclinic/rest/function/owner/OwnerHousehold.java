@@ -20,9 +20,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@code householdId} is {@code null}.
  *
  * <p>This is the single definition of "same household" shared by {@link AssignHousehold} (which stamps
- * the computed id onto the new owner) and {@link CheckOwnerHouseholdUnique} (which rejects a second,
- * undeclared member of the same household). Changing the keying rule — e.g. including city or
- * normalizing the postcode differently — happens here, once.
+ * the computed id onto the new owner) and the steps that key off it — {@link CountHouseholdMembers},
+ * {@link CapMembershipLevel} and {@link CheckPossibleDuplicate}. Changing the keying rule — e.g.
+ * including city or normalizing the postcode differently — happens here, once.
  */
 public record OwnerHousehold(String lastName, String postcode) {
 

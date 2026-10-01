@@ -78,13 +78,21 @@ public final class MembershipLevel {
     }
 
     /**
-     * Compute the membership level for an owner by mapping its {@link #points(Owner) points}.
+     * Compute the membership level for an owner by mapping its {@link #points(Owner) points}, then
+     * applying the owner's {@link Owner#getMembershipLevelCap() household cap} if one was set on
+     * create: the level may not exceed one above the highest level then held by an existing
+     * household member. With no cap (no existing household member on create) the mapped level stands.
      *
      * @param owner the owner
      * @return the level, between 1 and {@link #MAX} inclusive
      */
     public static int of(Owner owner) {
-        return levelForPoints(points(owner));
+        int level = levelForPoints(points(owner));
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
     }
 
     /**

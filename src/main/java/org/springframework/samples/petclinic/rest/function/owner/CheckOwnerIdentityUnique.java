@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityDuplic
 
 /**
  * The exact-identity duplicate-detection step of {@code POST /api/owners}. Runs after
- * {@link CheckOwnerHouseholdUnique} (so an undeclared second member of a household has already been
- * rejected) and before {@link SaveOwner}. Rejects the create with a 409 via
+ * {@link AssignHousehold} (so the owner's {@code householdId} — part of the identity key — is set) and
+ * before {@link SaveOwner}. Rejects the create with a 409 via
  * {@link OwnerIdentityDuplicateException} when the new owner's whole derived {@code identityKey} equals
  * an existing owner's.
  *

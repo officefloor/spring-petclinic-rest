@@ -18,9 +18,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * matches). When there is no match the owner is flagged {@code possibleDuplicate} false. The new owner
  * is still unsaved, so it is not among the owners iterated here and cannot match itself.
  *
- * <p>A <em>declared</em> household member — one whose request set {@code sharesHousehold} to bypass the
- * household duplicate block (see {@link CheckOwnerHouseholdUnique}) — is deliberately exempt: it is a
- * known, acknowledged second member of the household, not a suspected duplicate, so it is never flagged.
+ * <p>A <em>declared</em> household member — one whose request set {@code sharesHousehold} — is
+ * deliberately exempt: it is a known, acknowledged second member of the household, not a suspected
+ * duplicate, so it is never flagged.
  */
 public class CheckPossibleDuplicate {
 
