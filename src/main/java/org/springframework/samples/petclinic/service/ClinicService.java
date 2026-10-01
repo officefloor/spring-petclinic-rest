@@ -94,6 +94,16 @@ public interface ClinicService {
 	 */
 	String householdIdFor(String lastName, String address) throws DataAccessException;
 
+	/**
+	 * Returns {@code true} if the given city has already reached its owner capacity, i.e. it already
+	 * contains 50 or more owners (compared case-insensitively, the same way the per-city customer-code
+	 * sequence counts them). Enforces the "at most 50 owners per city" invariant on owner creation.
+	 *
+	 * @param city the city to check
+	 * @return whether the city already contains 50 or more owners
+	 */
+	boolean isCityAtCapacity(String city) throws DataAccessException;
+
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

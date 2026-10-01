@@ -47,6 +47,9 @@ import java.util.function.Supplier;
 @Service
 public class ClinicServiceImpl implements ClinicService {
 
+    /** Maximum number of owners allowed per city. */
+    private static final long CITY_CAPACITY = 50L;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -292,6 +295,12 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll().stream()
             .filter(owner -> city.equalsIgnoreCase(owner.getCity()))
             .count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityAtCapacity(String city) throws DataAccessException {
+        return countOwnersInCity(city) >= CITY_CAPACITY;
     }
 
     @Override
