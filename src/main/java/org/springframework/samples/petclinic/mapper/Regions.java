@@ -24,6 +24,13 @@ public final class Regions {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. A region absent from this table (including the {@link #UNKNOWN}
+     *  locality) has no known timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     /** The locality returned for a city absent from {@link #CITY_REGION}. Points at the single
      *  {@link CustomerCode#UNKNOWN_REGION} definition so the region baked into a customer code and the
      *  region/locality derived here share one sentinel. */
@@ -86,6 +93,17 @@ public final class Regions {
      */
     public static String localityOf(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * The IANA timezone name for a region, taken from the pinned region-to-timezone table
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
+     *
+     * @param region the canonical region code (e.g. the owner's {@code locality}); may be {@code null}
+     * @return the IANA timezone name, or {@code null} when the region has no pinned timezone
+     */
+    public static String timezoneOf(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /**
