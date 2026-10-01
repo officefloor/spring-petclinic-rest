@@ -48,4 +48,16 @@ final class OwnerAddress {
         }
         return String.join(" ", tokens);
     }
+
+    /**
+     * Composes the stored/returned flat address from the structured lines: the normalized
+     * {@code addressLine1} with a single space and the normalized {@code addressLine2} appended when
+     * an {@code addressLine2} is present (non-blank after normalization). Both lines are reduced
+     * through {@link #normalize}, so the composed value is in the same canonical form.
+     */
+    static String compose(String addressLine1, String addressLine2) {
+        String line1 = normalize(addressLine1);
+        String line2 = normalize(addressLine2);
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
+    }
 }
