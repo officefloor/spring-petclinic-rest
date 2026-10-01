@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.mapper;
 import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -24,7 +25,21 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Normalizes a telephone number by stripping every non-digit character. The schema-level
+     * {@code pattern} on {@code OwnerFieldsDto.telephone} guarantees the input contains exactly
+     * ten digits, so the stripped result is the canonical ten-digit value stored and returned.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is applied
+     * only where referenced via {@code qualifiedByName} (and when called directly, e.g. on update).
+     */
+    @Named("normalizeTelephone")
+    default String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
