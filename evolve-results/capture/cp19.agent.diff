@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 7531a2a73..6441e85d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.service.CityAtCapacityException;
++import org.springframework.samples.petclinic.service.DailyRegistrationLimitException;
+ import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+@@ -59,6 +60,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
+     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
++    private static final String ERROR_DAILY_LIMIT = "The maximum number of owners has already been registered today";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -169,6 +171,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyRegistrationLimitException}, raised when a new owner is created on a day
++     * that already has the maximum number of owners registered (counted by {@code registrationDate}),
++     * by returning a 429 Too Many Requests status.
++     *
++     * @param e The {@link DailyRegistrationLimitException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status
++     */
++    @ExceptionHandler(DailyRegistrationLimitException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyRegistrationLimitException(DailyRegistrationLimitException e, HttpServletRequest request) {
++        logger.warn("Daily registration limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 09a6985a8..3c17d3dd3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -48,6 +48,13 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /**
++     * Maximum number of owners that may be registered on a single day. Creating an owner on a day
++     * that already has this many owners (counted by {@code registrationDate}) is rejected with
++     * {@link DailyRegistrationLimitException}.
++     */
++    static final int MAX_OWNERS_PER_DAY = 100;
++
+     private final PetRepository petRepository;
+     private final VetRepository vetRepository;
+     private final OwnerRepository ownerRepository;
+@@ -256,6 +263,9 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        if (owner.isNew()) {
++            assertDailyRegistrationLimit(owner);
++        }
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+             owner.setCustomerCode(generateCustomerCode(owner));
+         }
+@@ -371,6 +381,26 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Enforce that the owner's registration day has not yet reached its capacity, throwing
++     * {@link DailyRegistrationLimitException} when {@link #MAX_OWNERS_PER_DAY} or more owners are
++     * already registered on that day (counted by {@code registrationDate}). The owner being saved
++     * is excluded by id.
++     */
++    private void assertDailyRegistrationLimit(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return;
++        }
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++        if (count >= MAX_OWNERS_PER_DAY) {
++            throw new DailyRegistrationLimitException(registrationDate);
++        }
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimitException.java b/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimitException.java
+new file mode 100644
+index 000000000..a9195cdc4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimitException.java
+@@ -0,0 +1,33 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when a new owner is created on a day that already has
++ * {@link org.springframework.samples.petclinic.service.ClinicServiceImpl#MAX_OWNERS_PER_DAY} or
++ * more owners registered (counted by {@code registrationDate}). Mapped to an HTTP 429 Too Many
++ * Requests response by the web layer.
++ */
++public class DailyRegistrationLimitException extends RuntimeException {
++
++    public DailyRegistrationLimitException(LocalDate registrationDate) {
++        super("The maximum number of owners has already been registered on " + registrationDate);
++    }
++
++}
