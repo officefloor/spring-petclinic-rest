@@ -358,7 +358,7 @@ public class ClinicServiceImpl implements ClinicService {
             AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
             OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQ.incrementAndGet(),
-                owner.getId(), owner.primaryIdentifier(), membershipLevel);
+                owner.getId(), owner.primaryIdentifier(), membershipLevel, owner.ownerSegment());
             AUDIT.info(objectMapper.writeValueAsString(event));
             NOTIFY.info("welcome notification enqueued id={} memberId={}",
                 owner.getId(), owner.getMemberId());

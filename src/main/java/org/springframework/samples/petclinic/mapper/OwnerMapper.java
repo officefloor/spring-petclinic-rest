@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -19,10 +20,11 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "apiVersion", expression = "java(formatApiVersion())")
+    @Mapping(target = "identity", expression = "java(formatIdentity(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
-    @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -32,7 +34,6 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "riskFlag", expression = "java(formatRiskFlag(owner))")
@@ -85,25 +86,42 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's household id, the stable identifier shared by all owners in the same
-     * household, i.e. with the same last name and postcode (see {@link Owner#householdId(String, String)}).
+     * The owner representation version carried by the top-level {@code apiVersion} field. Always 2 for
+     * the current owner-identity schema, in which the stable owner identifiers are grouped under the
+     * nested {@code identity} object (see {@link #formatIdentity(Owner)}).
      */
-    default String formatHouseholdId(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        return Owner.householdId(owner.getLastName(), owner.getPostcode());
+    default Integer formatApiVersion() {
+        return 2;
     }
 
     /**
-     * Read the owner's fiscal year, the 'FY&lt;YY&gt;' value carried by the FY segment of the owner's
-     * memberId (see {@link Owner#fiscalYear(String)}), keeping it consistent with the unified identifier.
+     * Build the owner's nested {@code identity} object, grouping the three stable owner identifiers:
+     * the {@code memberId} assigned on create, the {@code identityKey} through which duplicate
+     * detection is expressed (see {@link Owner#identityKey(String, String, String)}) and the
+     * {@code householdId} shared by all owners in the same household (see
+     * {@link Owner#householdId(String, String)}). All three are derived with the version-2 algorithm.
+     */
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(Owner.identityKey(owner.getTelephone(), owner.getEmail(),
+            owner.getLastName()));
+        identity.setHouseholdId(Owner.householdId(owner.getLastName(), owner.getPostcode()));
+        return identity;
+    }
+
+    /**
+     * Read the owner's fiscal year, the 'FY&lt;YY&gt;' value of the owner's business-day-adjusted
+     * registrationDate (see {@link Owner#fiscalYear(java.time.LocalDate)}).
      */
     default String formatFiscalYear(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.fiscalYear(owner.getMemberId());
+        return Owner.fiscalYear(owner.getRegistrationDate());
     }
 
     /**
@@ -133,14 +151,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's locality, the canonical region taken from the {@code REGION} segment of the
-     * owner's memberId (see {@link Owner#locality(String)}).
+     * Compute the owner's locality, the plain canonical region derived from the owner's postcode
+     * (see {@link Owner#locality(String)}). It never carries the identifiers' 'V2' version tag.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.locality(owner.getMemberId());
+        return Owner.locality(owner.getPostcode());
     }
 
     /**
@@ -152,7 +170,7 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        return Owner.timezone(owner.getMemberId());
+        return Owner.timezone(owner.getPostcode());
     }
 
     /**
@@ -197,18 +215,6 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.contactPreference(owner.getEmail());
-    }
-
-    /**
-     * Compute the owner's identity key, the single derived value through which duplicate detection
-     * is expressed: the SHA-256 hex over the normalized telephone, lower-cased email and the Soundex
-     * of the last name (see {@link Owner#identityKey(String, String, String)}).
-     */
-    default String formatIdentityKey(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
@@ -271,6 +277,7 @@ public interface OwnerMapper {
         return owner.riskFlag();
     }
 
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdCount", ignore = true)
     @Mapping(target = "membershipLevel", ignore = true)
     Owner toOwner(OwnerDto ownerDto);

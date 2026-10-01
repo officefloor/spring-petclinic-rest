@@ -663,13 +663,26 @@ public class Owner extends Person {
     }
 
     /**
+     * The fixed version tag mixed into the version-2 owner identifiers&mdash;the {@link
+     * #householdId(String, String) householdId}, the {@link #identityKey(String, String, String)
+     * identityKey} and the {@link #memberId(String, String, String, LocalDate) memberId} (through its
+     * {@link #identityRegion(String) region code}). Mixing this tag into each derivation makes every
+     * version-2 identifier differ from the value version 1 would have produced for the same owner. The
+     * tag appears only inside the identifiers, never in the user-facing {@code locality},
+     * {@code timezone} or {@code ownerSegment}.
+     */
+    private static final String IDENTITY_VERSION = "V2";
+
+    /**
      * Compute the stable identifier shared by all owners in the same household, i.e. with the same
      * last name (compared case-insensitively with collapsed whitespace, see
      * {@link #normalizeHousehold(String)}) and the same postcode. The value is deterministic in
      * those two fields, so two owners who share a last name and postcode are assigned the same id
      * automatically. It is formatted {@code 'HH-<HEX12>'} where {@code HEX12} is the first twelve
      * upper-cased hex characters of the SHA-256 digest of
-     * {@code normalizedLastName + '|' + postcode}.
+     * {@code IDENTITY_VERSION + '|' + normalizedLastName + '|' + postcode}. The fixed
+     * {@link #IDENTITY_VERSION 'V2'} version tag mixed into the digest makes the version-2 household id
+     * differ from the version-1 value for the same owner.
      *
      * @param lastName the owner's last name, possibly {@code null}
      * @param postcode the owner's postcode, possibly {@code null}
@@ -680,7 +693,7 @@ public class Owner extends Person {
         if (normalizedLastName == null || postcode == null) {
             return null;
         }
-        String key = normalizedLastName + "|" + postcode;
+        String key = IDENTITY_VERSION + "|" + normalizedLastName + "|" + postcode;
         return "HH-" + sha256Hex(key).substring(0, 12).toUpperCase();
     }
 
@@ -711,19 +724,22 @@ public class Owner extends Person {
      * Build an owner's {@code memberId}, the single unified owner identity assigned once when the owner
      * is created. It is formatted {@code '<REGION><FY><HASH8><CHK>'} (no separators) where:
      * <ul>
-     *   <li>{@code REGION} is the region code derived from the postcode (see
-     *       {@link #regionForPostcode(String)}), or {@code 'UNKNOWN'} when the postcode is absent or
-     *       in no known range,</li>
+     *   <li>{@code REGION} is the version-2 region code derived from the postcode (see
+     *       {@link #identityRegion(String)}): the plain region code with the fixed
+     *       {@link #IDENTITY_VERSION 'V2'} tag mixed in, or {@code 'UNKNOWNV2'} when the postcode is
+     *       absent or in no known range,</li>
      *   <li>{@code FY} is the two-digit fiscal year of the registration date (the last two digits of
      *       the fiscal-year number, see {@link #fiscalYearNumber(LocalDate)}),</li>
      *   <li>{@code HASH8} is the first eight upper-cased hex characters of the SHA-256 digest of the
-     *       normalized telephone (see {@link #normalizeTelephone(String)}) concatenated with the last
-     *       name (the same HASH8 used by the region-and-hash identity), and</li>
+     *       {@link #IDENTITY_VERSION 'V2'} tag, the normalized telephone (see
+     *       {@link #normalizeTelephone(String)}) and the last name, and</li>
      *   <li>{@code CHK} is a single Luhn check digit (see {@link #luhn(String)}) over the digits of the
      *       {@code <REGION><FY><HASH8>} prefix.</li>
      * </ul>
      * The value is deterministic in the postcode, telephone, last name and registration date (e.g.
-     * {@code 'NSW271A2B3C4D5'}); it carries no sequence number.
+     * {@code 'NSWV2271A2B3C4D5'}); it carries no sequence number. The {@code 'V2'} tag mixed into both
+     * the region code and the hash makes the version-2 member id differ from the version-1 value for
+     * the same owner.
      *
      * @param postcode the owner's postcode, possibly {@code null}
      * @param telephone the owner's raw telephone, possibly {@code null}
@@ -737,68 +753,53 @@ public class Owner extends Person {
         if (telephone == null || lastName == null || registrationDate == null) {
             return null;
         }
-        String region = regionForPostcode(postcode);
-        if (region == null) {
-            region = "UNKNOWN";
-        }
+        String region = identityRegion(postcode);
         String fy = String.format("%02d", fiscalYearNumber(registrationDate) % 100);
         String normalizedTelephone = normalizeTelephone(telephone);
-        String key = (normalizedTelephone == null ? "" : normalizedTelephone) + lastName;
+        String key = IDENTITY_VERSION + (normalizedTelephone == null ? "" : normalizedTelephone)
+            + lastName;
         String hash8 = sha256Hex(key).substring(0, 8).toUpperCase();
         String prefix = region + fy + hash8;
         return prefix + luhn(prefix);
     }
 
     /**
-     * Extract the {@code REGION} segment of a {@code memberId}: the leading run of letters before the
-     * two-digit {@code FY} segment (see {@link #memberId(String, String, String, LocalDate)}). Because
-     * {@code REGION} is always alphabetic and is immediately followed by digits, the region is the
-     * {@code memberId}'s leading letters. A {@code null} member id, or one with no leading letter,
-     * yields {@code 'UNKNOWN'}.
+     * Resolve the version-2 region code mixed into the owner identifiers: the owner's plain region
+     * code (see {@link #regionForPostcode(String)}, or {@code 'UNKNOWN'} when no region can be derived)
+     * with the fixed {@link #IDENTITY_VERSION 'V2'} tag appended (e.g. {@code 'NSWV2'},
+     * {@code 'UNKNOWNV2'}). This is the region code carried <em>inside</em> the {@code memberId}; the
+     * user-facing {@code locality} keeps the plain region code (see {@link #locality(String)}), so the
+     * {@code 'V2'} tag never leaks into the locality, timezone or owner segment.
      *
-     * @param memberId the owner's member id, possibly {@code null}
-     * @return the region segment, or {@code 'UNKNOWN'} when none can be read
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the version-2 region code, never {@code null}
      */
-    public static String regionOf(String memberId) {
-        if (memberId == null) {
-            return "UNKNOWN";
+    private static String identityRegion(String postcode) {
+        String region = regionForPostcode(postcode);
+        if (region == null) {
+            region = "UNKNOWN";
         }
-        int end = regionEnd(memberId);
-        return end == 0 ? "UNKNOWN" : memberId.substring(0, end);
-    }
-
-    /**
-     * Locate the end of a {@code memberId}'s {@code REGION} segment: the index just past its leading
-     * run of letters, which is where the two-digit {@code FY} segment begins (see
-     * {@link #memberId(String, String, String, LocalDate)}). This is the single place the memberId's
-     * region/FY boundary is read, shared by {@link #regionOf(String)} and {@link #fiscalYear(String)}.
-     *
-     * @param memberId the owner's member id, never {@code null}
-     * @return the index after the leading letters (0 when the member id starts with a non-letter)
-     */
-    private static int regionEnd(String memberId) {
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i;
+        return region + IDENTITY_VERSION;
     }
 
     /**
      * Compute an owner's {@code identityKey}, the single derived value through which all
      * duplicate detection is now expressed. It is the lower-case hex SHA-256 digest (see
-     * {@link #sha256Hex(String)}) of the three identity components joined with {@code '|'}:
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where
+     * {@link #sha256Hex(String)}) of the fixed {@link #IDENTITY_VERSION 'V2'} version tag and the three
+     * identity components joined with {@code '|'}:
+     * {@code IDENTITY_VERSION + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+     * where
      * <ul>
      *   <li>the normalized telephone (see {@link #normalizeTelephone(String)}),</li>
      *   <li>the lower-cased email (see {@link #normalizeEmail(String)}), or the empty string
      *       when no email is present, and</li>
      *   <li>the Soundex code of the last name (see {@link #soundex(String)}).</li>
      * </ul>
-     * A {@code null} component is rendered as the empty string before hashing. Two owners are the
-     * same identity only when their <em>whole</em> keys are equal; because the telephone is part of
-     * the key, two members of the same household (same last name and postcode) with different
-     * telephones have different keys and are not a hard duplicate.
+     * A {@code null} component is rendered as the empty string before hashing. The {@code 'V2'} tag
+     * mixed into the digest makes the version-2 identity key differ from the version-1 value for the
+     * same owner. Two owners are the same identity only when their <em>whole</em> keys are equal;
+     * because the telephone is part of the key, two members of the same household (same last name and
+     * postcode) with different telephones have different keys and are not a hard duplicate.
      *
      * @param telephone the owner's raw telephone, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
@@ -809,7 +810,8 @@ public class Owner extends Person {
         String normalizedTelephone = normalizeTelephone(telephone);
         String normalizedEmail = normalizeEmail(email);
         String lastNameSoundex = soundex(lastName);
-        String raw = (normalizedTelephone == null ? "" : normalizedTelephone)
+        String raw = IDENTITY_VERSION
+            + "|" + (normalizedTelephone == null ? "" : normalizedTelephone)
             + "|" + (normalizedEmail == null ? "" : normalizedEmail)
             + "|" + (lastNameSoundex == null ? "" : lastNameSoundex);
         return sha256Hex(raw);
@@ -911,29 +913,6 @@ public class Owner extends Person {
     }
 
     /**
-     * Read an owner's {@code fiscalYear} from its {@code memberId}, formatted {@code 'FY<YY>'} where
-     * {@code YY} is the two-digit {@code FY} segment carried by the member id (the two digits that
-     * immediately follow the {@code REGION} segment, see
-     * {@link #memberId(String, String, String, LocalDate)}). Reading it back from the member id keeps
-     * the response's fiscal-year value consistent with the one encoded in the unified identifier.
-     *
-     * @param memberId the owner's member id, possibly {@code null}
-     * @return the fiscal year formatted {@code 'FY<YY>'}, or {@code null} when no two-digit segment can
-     *     be read from the member id
-     */
-    public static String fiscalYear(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int start = regionEnd(memberId);
-        if (start + 2 > memberId.length()) {
-            return null;
-        }
-        String yy = memberId.substring(start, start + 2);
-        return yy.matches("\\d{2}") ? "FY" + yy : null;
-    }
-
-    /**
      * Compute an owner's {@code membershipPoints}, the derived points score assigned on create. The
      * score starts at 0, gains 2 when an email is present, gains 1 when {@code namesakeCount} is 0,
      * gains 2 when the owner belongs to a household of 3 or more members (see {@code householdCount}),
@@ -1016,17 +995,19 @@ public class Owner extends Person {
         "Brisbane", "QLD");
 
     /**
-     * Derive an owner's {@code locality}, the canonical region for the owner, from the {@code REGION}
-     * segment of the owner's {@code memberId} (see {@link #regionOf(String)}). Because the member id's
-     * region is itself derived from the postcode, the locality shares the owner's region-and-hash
-     * identity: it is the member id's leading region segment. When the owner has no member id the
-     * locality is {@code 'UNKNOWN'}.
+     * Derive an owner's {@code locality}, the canonical region for the owner, directly from the
+     * owner's postcode (see {@link #regionForPostcode(String)}). This is the <em>plain</em> region
+     * code ({@code 'NSW'}, {@code 'VIC'} or {@code 'QLD'}), or {@code 'UNKNOWN'} when the postcode is
+     * absent or in no known range. The locality is user-facing and is <em>not</em> an identifier, so
+     * it never carries the {@link #IDENTITY_VERSION 'V2'} version tag that the identifiers mix into
+     * their own region code (see {@link #identityRegion(String)}).
      *
-     * @param memberId the owner's member id, possibly {@code null}
-     * @return the canonical region string, or {@code 'UNKNOWN'} when no member id is present
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the plain region string, or {@code 'UNKNOWN'} when no region can be derived
      */
-    public static String locality(String memberId) {
-        return regionOf(memberId);
+    public static String locality(String postcode) {
+        String region = regionForPostcode(postcode);
+        return region == null ? "UNKNOWN" : region;
     }
 
     /**
@@ -1044,15 +1025,15 @@ public class Owner extends Person {
      * Derive an owner's {@code timezone}, the IANA timezone name for the owner's locality/region,
      * from the fixed {@link #REGION_TIMEZONE} table ({@code NSW}->{@code Australia/Sydney},
      * {@code VIC}->{@code Australia/Melbourne}, {@code QLD}->{@code Australia/Brisbane}). The region
-     * is the owner's {@code locality} (see {@link #locality(String)}), itself the {@code REGION}
-     * segment of the member id. A region not in the table (including {@code 'UNKNOWN'}) has no
-     * timezone and yields {@code null}.
+     * is the owner's {@code locality} (see {@link #locality(String)}), the plain region code derived
+     * from the postcode. A region not in the table (including {@code 'UNKNOWN'}) has no timezone and
+     * yields {@code null}.
      *
-     * @param memberId the owner's member id, possibly {@code null}
+     * @param postcode the owner's postcode, possibly {@code null}
      * @return the IANA timezone name, or {@code null} when the owner's region has no mapped timezone
      */
-    public static String timezone(String memberId) {
-        return REGION_TIMEZONE.get(locality(memberId));
+    public static String timezone(String postcode) {
+        return REGION_TIMEZONE.get(locality(postcode));
     }
 
     /**
@@ -1071,11 +1052,15 @@ public class Owner extends Person {
      * otherwise {@code 'REGIONAL'}. The result is one of {@code 'PREMIUM_METRO'},
      * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}.
      *
+     * <p>The {@code AREA} is derived from the owner's <em>plain</em> locality region (from the
+     * postcode), so the {@link #IDENTITY_VERSION 'V2'} version tag carried inside the identifiers never
+     * appears in the owner segment's derived region.
+     *
      * @return the owner's {@code '<TIER>_<AREA>'} segment
      */
     public String ownerSegment() {
         String tier = effectiveMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
-        String area = KNOWN_REGIONS.contains(locality(this.memberId)) ? "METRO" : "REGIONAL";
+        String area = KNOWN_REGIONS.contains(locality(this.postcode)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
 
