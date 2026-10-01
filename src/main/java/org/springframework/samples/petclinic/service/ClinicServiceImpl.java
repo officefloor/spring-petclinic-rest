@@ -22,6 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.InvalidTelephoneException;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -249,11 +251,19 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Reduces a telephone number to its canonical digits-only form, stripping every non-digit
-     * character so that differently formatted but equivalent numbers compare equal.
+     * Reduces a telephone number to its canonical E.164 form so that differently formatted but
+     * equivalent numbers compare equal. A value already stored that cannot form valid E.164
+     * (e.g. unusual legacy data) falls back to its digits-only form rather than failing lookup.
      */
     private static String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        if (telephone == null) {
+            return null;
+        }
+        try {
+            return TelephoneNormalizer.toE164(telephone);
+        } catch (InvalidTelephoneException ex) {
+            return telephone.replaceAll("\\D", "");
+        }
     }
 
     @Override

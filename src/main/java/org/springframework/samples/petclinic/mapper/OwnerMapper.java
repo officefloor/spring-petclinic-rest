@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -71,16 +72,21 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * Normalizes a telephone number by stripping every non-digit character. The schema-level
-     * {@code pattern} on {@code OwnerFieldsDto.telephone} guarantees the input contains exactly
-     * ten digits, so the stripped result is the canonical ten-digit value stored and returned.
+     * Normalizes a telephone number into canonical E.164 form: a leading {@code '+'} and country
+     * code are kept when present, otherwise country code {@code '+61'} is assumed and a single
+     * leading {@code '0'} is dropped from the national digits; spaces, dashes and brackets are
+     * stripped and the result must contain 8 to 15 digits after the {@code '+'}. So
+     * {@code '0412 345 678'} is stored and returned as {@code '+61412345678'}.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is applied
      * only where referenced via {@code qualifiedByName} (and when called directly, e.g. on update).
+     *
+     * @throws org.springframework.samples.petclinic.util.InvalidTelephoneException if the number
+     *         cannot form a valid E.164 value (handled as a 400 Bad Request).
      */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return TelephoneNormalizer.toE164(telephone);
     }
 
     /**
