@@ -5,9 +5,8 @@ import java.util.Map;
 
 /**
  * The single definition of how an owner's {@code address} is normalized. Applied whenever an owner is
- * created (see {@link ValidateOwner}, which stores and returns the normalized value) and used by every
- * comparison of addresses (see {@link OwnerHousehold}), so stored values and household matching stay
- * consistent.
+ * created (see {@link ValidateOwner}, which stores and returns the normalized value), so the stored,
+ * abbreviation-expanded address is consistent.
  *
  * <p>Normalization: strip surrounding whitespace and collapse internal runs to a single space,
  * upper-case, then expand common abbreviations token-by-token ({@code ST}→{@code STREET},
