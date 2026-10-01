@@ -68,7 +68,7 @@ public class Owner extends Person {
     /**
      * The current number of owners that belong to this owner's household (owners sharing the same
      * {@code householdId}, including this one). Not persisted: it is populated from the current data
-     * whenever the owner is loaded or saved and drives the derived {@code membershipTier}.
+     * whenever the owner is loaded or saved.
      */
     @Transient
     private Integer householdMemberCount;

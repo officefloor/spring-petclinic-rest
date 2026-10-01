@@ -124,8 +124,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
         }
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerMapper.formatMembershipLevel(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
         headers.setLocation(UriComponentsBuilder.newInstance()

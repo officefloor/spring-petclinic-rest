@@ -424,14 +424,11 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Populate each given owner's transient {@code householdMemberCount} with the current number of
-     * owners that share its {@code householdId}, so the derived {@code membershipTier} reflects the
-     * household size (3 or more members earns {@code GOLD}). Owners without a household id are left
-     * at a count of zero.
+     * owners that share its {@code householdId}. Owners without a household id are left at a count
+     * of zero.
      *
      * <p>The household sizes are computed in a single pass over the owner table regardless of how
-     * many owners are being decorated, so decorating a whole page does not re-scan per element. This
-     * is the single funnel through which every owner-returning read/save path stamps the count, so
-     * no path can silently drop the {@code GOLD} tier.
+     * many owners are being decorated, so decorating a whole page does not re-scan per element.
      */
     private <T> T decorateWithHouseholdMemberCount(T result, Collection<Owner> owners) {
         if (!owners.isEmpty()) {

@@ -26,7 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
+    @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -81,27 +81,28 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's membership tier, as required by the API's read-only
-     * {@code membershipTier} field: {@code GOLD} when the owner's household (owners sharing the
-     * same {@code householdId}) has 3 or more members; otherwise {@code SILVER} when the owner has
-     * no namesakes ({@code namesakeCount} is 0) and an email address is present, otherwise
-     * {@code BRONZE}.
+     * Derives an owner's membership level, as required by the API's read-only
+     * {@code membershipLevel} field: starting at 1, plus 1 when an email address is present,
+     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), capped at 3. (Level 4
+     * is reserved for tenure.)
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
-     * applied only where referenced via {@code qualifiedByName}.
+     * applied only where referenced via {@code qualifiedByName} (and when called directly, e.g.
+     * to record the membership level on the create audit line).
      */
-    @Named("formatMembershipTier")
-    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
+    @Named("formatMembershipLevel")
+    default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
-        if (largeHousehold) {
-            return OwnerDto.MembershipTierEnum.GOLD;
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            level++;
         }
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
