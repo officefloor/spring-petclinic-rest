@@ -285,6 +285,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        assertRegistrationDateNotInFuture(owner);
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         if (owner.isNew()) {
             assertDailyRegistrationLimit(owner);
@@ -379,6 +380,19 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
         if (count >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(city);
+        }
+    }
+
+    /**
+     * Enforce that the owner's registration date is not later than the current server date, throwing
+     * {@link FutureRegistrationDateException} when it is. A registration date may not be in the
+     * future; a date defaulted to {@link LocalDate#now()} is never in the future, so this check is a
+     * harmless no-op for that case.
+     */
+    private void assertRegistrationDateNotInFuture(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(registrationDate);
         }
     }
 
