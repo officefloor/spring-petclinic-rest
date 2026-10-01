@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -77,6 +78,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail());
+    }
+
+    /**
+     * Compute the owner's locality, the canonical region derived from the owner's city using the
+     * fixed city-to-region table (see {@link Owner#locality(String)}).
+     */
+    default String formatLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.locality(owner.getCity());
     }
 
     Owner toOwner(OwnerDto ownerDto);
