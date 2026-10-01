@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -74,6 +75,25 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Derives an owner's membership tier, as required by the API's read-only
+     * {@code membershipTier} field: {@code SILVER} when the owner has no namesakes
+     * ({@code namesakeCount} is 0) and an email address is present, otherwise
+     * {@code BRONZE}.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatMembershipTier")
+    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
     }
 
     private static String initial(String name) {
