@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -26,6 +27,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
+    @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "telephoneDisplay")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
@@ -51,6 +53,11 @@ public interface OwnerMapper {
     @Named("displayName")
     default String displayName(Owner owner) {
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    @Named("telephoneDisplay")
+    default String telephoneDisplay(Owner owner) {
+        return OwnerTelephone.toDisplay(owner.getTelephone());
     }
 
     @Named("initials")

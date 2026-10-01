@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <p>Example: {@code "0412 345 678"} becomes {@code "+61412345678"}.
  */
-final class OwnerTelephone {
+public final class OwnerTelephone {
 
     /**
      * Country calling code to required national-number length. Iteration order is longest code
@@ -69,5 +69,36 @@ final class OwnerTelephone {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Formats a stored E.164 telephone for humans as the country calling code, a space, then the
+     * national digits grouped in threes from the left (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). The country calling code is identified from the known codes in
+     * {@link #NATIONAL_LENGTH}; an unrecognized or non-E.164 value is returned unchanged.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        for (String code : NATIONAL_LENGTH.keySet()) {
+            if (digits.startsWith(code)) {
+                return "+" + code + " " + groupInThrees(digits.substring(code.length()));
+            }
+        }
+        return e164;
+    }
+
+    /** Groups a run of digits into space-separated groups of three, from the left. */
+    private static String groupInThrees(String national) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return grouped.toString();
     }
 }
