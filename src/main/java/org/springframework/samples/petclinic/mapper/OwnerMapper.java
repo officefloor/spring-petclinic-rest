@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
@@ -164,6 +165,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.timezone(owner.getCustomerCode());
+    }
+
+    /**
+     * Compute the owner's segment, the {@code '<TIER>_<AREA>'} marketing segment derived from the
+     * owner's effective membership level and locality (see {@link Owner#ownerSegment()}).
+     */
+    default String formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.ownerSegment();
     }
 
     /**

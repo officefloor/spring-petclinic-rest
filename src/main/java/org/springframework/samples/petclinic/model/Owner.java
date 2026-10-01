@@ -933,6 +933,30 @@ public class Owner extends Person {
     }
 
     /**
+     * The canonical regions treated as {@code METRO} by {@link #ownerSegment()}: a locality is a
+     * known region exactly when it is {@code NSW}, {@code VIC} or {@code QLD}. Any other locality
+     * (including {@code 'UNKNOWN'}) is {@code REGIONAL}.
+     */
+    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derive this owner's {@code ownerSegment}, the marketing segment formatted
+     * {@code '<TIER>_<AREA>'}. {@code TIER} is {@code 'PREMIUM'} when the owner's effective
+     * membership level (see {@link #effectiveMembershipLevel()}) is 3 or more, otherwise
+     * {@code 'STANDARD'}. {@code AREA} is {@code 'METRO'} when the owner's locality (see
+     * {@link #locality(String)}) is a known region ({@code NSW}, {@code VIC} or {@code QLD}),
+     * otherwise {@code 'REGIONAL'}. The result is one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}.
+     *
+     * @return the owner's {@code '<TIER>_<AREA>'} segment
+     */
+    public String ownerSegment() {
+        String tier = effectiveMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = KNOWN_REGIONS.contains(locality(this.customerCode)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Resolve the canonical region for a city from the fixed {@link #CITY_REGION} table. A city not
      * in the table (including {@code null}) resolves to {@code 'UNKNOWN'}.
      *
