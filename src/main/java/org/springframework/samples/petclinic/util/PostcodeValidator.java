@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.util;
 
-import java.util.Map;
-
 /**
  * Validates an owner's 'postcode' against the owner's city.
  *
@@ -14,16 +12,12 @@ import java.util.Map;
  *   <li>VIC: 3000-3099</li>
  *   <li>QLD: 4000-4099</li>
  * </ul>
- * The region is derived from the city via {@link LocalityResolver}. A city with no known
- * region (locality {@code 'UNKNOWN'}) accepts any 4-digit postcode.
+ * The region is derived from the city via {@link LocalityResolver}, and the range reserved
+ * for that region is sourced from {@link LocalityResolver#postcodeRange} (the single source
+ * of truth for the region&harr;postcode relationship). A city with no known region (locality
+ * {@code 'UNKNOWN'}) accepts any 4-digit postcode.
  */
 public final class PostcodeValidator {
-
-    /** Region -> inclusive 4-digit postcode range {low, high}. Regions not listed accept any postcode. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
 
     private PostcodeValidator() {
     }
@@ -41,7 +35,7 @@ public final class PostcodeValidator {
         if (postcode == null) {
             return;
         }
-        int[] range = REGION_POSTCODES.get(LocalityResolver.resolve(city));
+        int[] range = LocalityResolver.postcodeRange(LocalityResolver.resolve(city));
         if (range == null) {
             return;
         }

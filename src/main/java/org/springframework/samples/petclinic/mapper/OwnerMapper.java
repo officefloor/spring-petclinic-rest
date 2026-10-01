@@ -108,9 +108,11 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's locality, as required by the API's read-only {@code locality}
-     * field: the canonical region from the fixed city-to-region table
-     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), or
-     * {@code 'UNKNOWN'} when the city is not in the table.
+     * field: the canonical region resolved by the postcode range first
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), falling back
+     * to the fixed city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+     * {@code Brisbane -> QLD}) when the postcode is absent or in no known range, or
+     * {@code 'UNKNOWN'} when neither resolves a region.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -120,7 +122,7 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        return LocalityResolver.resolve(owner.getCity());
+        return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
     }
 
     /**
