@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 69e116057..6188621a8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
++    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+@@ -81,6 +82,40 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /**
++     * Computes an owner's check digit, as required by the API's read-only {@code checkDigit}
++     * field: a single Luhn check digit (0-9) over the digits contained in the owner's customer
++     * code. Returns {@code null} when the customer code is absent.
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
++     * applied only where referenced via {@code qualifiedByName}.
++     */
++    @Named("formatCheckDigit")
++    default Integer formatCheckDigit(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null) {
++            return null;
++        }
++        String code = owner.getCustomerCode();
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Derives an owner's membership level, as required by the API's read-only
+      * {@code membershipLevel} field: starting at 1, plus 1 when an email address is present,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c70651a20..be2b6f5c1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2132,6 +2132,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained in the
++                owner's customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 7
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
