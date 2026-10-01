@@ -297,6 +297,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        if (owner.isNew()) {
+            assignPossibleDuplicate(owner);
+        }
         ownerRepository.save(owner);
         if (isCreate) {
             AUDIT.info("owner created id={} customerCode={} registrationDate={}",
@@ -333,6 +336,37 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private String generateCustomerCode(Owner owner) {
         return Owner.customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
+    }
+
+    /**
+     * Flag a newly created owner as a possible (soft) duplicate of an existing owner. A hard
+     * duplicate (an owner reusing an existing normalized telephone) has already been rejected by
+     * {@link #assertIdentityIsUnique(Owner)} before this runs, so this detects the weaker overlap: an
+     * existing owner that shares this owner's last name (compared case-insensitively with collapsed
+     * whitespace, see {@link Owner#normalizeHousehold(String)}) and postcode but has a <em>different</em>
+     * normalized telephone. When such an owner exists, {@code possibleDuplicate} is set {@code true} and
+     * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match);
+     * otherwise {@code possibleDuplicate} is set {@code false} and {@code possibleDuplicateOf} left unset.
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String lastName = Owner.normalizeHousehold(owner.getLastName());
+        String postcode = owner.getPostcode();
+        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
+        Integer match = null;
+        if (lastName != null && postcode != null) {
+            match = ownerRepository.findAll().stream()
+                .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+                .filter(existing -> lastName.equals(Owner.normalizeHousehold(existing.getLastName())))
+                .filter(existing -> postcode.equals(existing.getPostcode()))
+                .filter(existing -> !Objects.equals(normalizedTelephone,
+                    Owner.normalizeTelephone(existing.getTelephone())))
+                .map(Owner::getId)
+                .filter(Objects::nonNull)
+                .min(Integer::compareTo)
+                .orElse(null);
+        }
+        owner.setPossibleDuplicate(match != null);
+        owner.setPossibleDuplicateOf(match);
     }
 
     /**

@@ -30,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+    @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -152,6 +153,18 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.ageBand(owner.getBirthDate(), owner.getRegistrationDate());
+    }
+
+    /**
+     * Resolve the owner's possible-duplicate flag, treating a missing (null) stored value as
+     * {@code false} so the response always carries an explicit boolean. The matching owner id is
+     * carried separately in {@code possibleDuplicateOf}, mapped by name.
+     */
+    default Boolean formatPossibleDuplicate(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate());
     }
 
     Owner toOwner(OwnerDto ownerDto);
