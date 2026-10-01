@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
+    @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("displayName")
@@ -42,6 +43,14 @@ public interface OwnerMapper {
     @Named("locality")
     default String locality(Owner owner) {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    @Named("contactPreference")
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        String email = owner.getEmail();
+        return (email != null && !email.isBlank())
+            ? OwnerDto.ContactPreferenceEnum.EMAIL
+            : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     Owner toOwner(OwnerDto ownerDto);
