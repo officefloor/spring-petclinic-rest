@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9c846a91a..7453be52d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -46,7 +46,7 @@ public interface OwnerMapper {
+ 
+     @Named("locality")
+     default String locality(Owner owner) {
+-        return OwnerRegion.regionOf(owner.getCity());
++        return OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+     }
+ 
+     @Named("contactPreference")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+index eee994a09..65f56a1d4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+@@ -34,6 +34,32 @@ public final class OwnerRegion {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
++    /**
++     * The locality for an owner, preferring the postcode: when {@code postcode} is a 4-digit value
++     * inside a known region's range that region wins, disambiguating cities that share a name.
++     * Otherwise (postcode absent, malformed, or in no known range) this falls back to the
++     * city-to-region table, which still returns {@link #UNKNOWN} for an unknown city.
++     */
++    public static String localityOf(String city, String postcode) {
++        String byPostcode = regionForPostcode(postcode);
++        return byPostcode != null ? byPostcode : regionOf(city);
++    }
++
++    /** The region whose inclusive range contains {@code postcode}, or {@code null} when none does. */
++    private static String regionForPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("\\d{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Whether {@code postcode} is acceptable for {@code city}. A postcode must be exactly four
+      * digits; a city whose region is known must additionally fall within that region's inclusive
