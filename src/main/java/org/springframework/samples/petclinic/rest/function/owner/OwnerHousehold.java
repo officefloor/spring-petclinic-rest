@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Single source of truth for the owner-household identity rule. Two owners count as the same
- * household when their last names match and their addresses match, each compared case-insensitively
- * with surrounding and repeated whitespace collapsed. This class owns both the comparison
+ * household when their last names match (compared case-insensitively, whitespace collapsed) and
+ * their addresses match in their normalized form (see {@link OwnerAddress#normalize}: whitespace
+ * collapsed, upper-cased, common abbreviations expanded). This class owns both the comparison
  * ({@link #sameHousehold}, built on {@link #normalize}) and the derivation of the stable shared
  * {@link #householdId} that identifies a household.
  *
@@ -36,13 +37,15 @@ final class OwnerHousehold {
 
     /**
      * Tells whether an existing owner belongs to the household identified by the given last name and
-     * address — the one place that defines what "same household" means. Both sides are reduced
-     * through {@link #normalize} before comparison, so differently cased or spaced values that mean
-     * the same thing still match.
+     * address — the one place that defines what "same household" means. Last names are reduced
+     * through {@link #normalize} and addresses through {@link OwnerAddress#normalize} before
+     * comparison, so differently cased, spaced or abbreviated values that mean the same thing still
+     * match.
      */
     static boolean sameHousehold(Owner existing, String lastName, String address) {
         return normalize(existing.getLastName()).equals(normalize(lastName))
-                && normalize(existing.getAddress()).equals(normalize(address));
+                && OwnerAddress.normalize(existing.getAddress())
+                        .equals(OwnerAddress.normalize(address));
     }
 
     /**
@@ -53,7 +56,7 @@ final class OwnerHousehold {
      * the normalized {@code "<lastName>|<address>"}.
      */
     static String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "|" + normalize(address);
+        String key = normalize(lastName) + "|" + OwnerAddress.normalize(address);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

@@ -30,8 +30,16 @@ public class ValidateOwnerFields {
         if (isBlank(request.getLastName())) {
             errors.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        // The address is normalized (whitespace collapsed, upper-cased, abbreviations expanded)
+        // before the required-field check, so an address that is blank only after normalization is
+        // rejected; the normalized value replaces the submitted one, so it is what gets stored,
+        // returned and compared for household identity.
+        String address = OwnerAddress.normalize(request.getAddress());
+        if (address.isEmpty()) {
             errors.add("address");
+        }
+        else {
+            request.setAddress(address);
         }
         if (isBlank(request.getCity())) {
             errors.add("city");
