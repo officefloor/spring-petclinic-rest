@@ -402,8 +402,8 @@ public class Owner extends Person {
     }
 
     /**
-     * Fixed city-to-region table used by {@link #locality(String)} to derive an owner's locality,
-     * keyed by the exact city name.
+     * Fixed city-to-region table used by {@link #locality(String, String)} as the fallback to derive
+     * an owner's locality, keyed by the exact city name.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
@@ -411,22 +411,43 @@ public class Owner extends Person {
         "Brisbane", "QLD");
 
     /**
-     * Derive an owner's {@code locality}, the canonical region for the owner's city, from the fixed
-     * city-to-region table ({@code Sydney}->{@code NSW}, {@code Melbourne}->{@code VIC},
-     * {@code Brisbane}->{@code QLD}). The value is deterministic in the city. A city not in the
-     * table (including {@code null}) derives {@code 'UNKNOWN'}.
+     * Derive an owner's {@code locality}, the canonical region for the owner, preferring the
+     * postcode. The postcode is looked up against the fixed region postcode ranges first
+     * ({@code NSW} 2000-2099, {@code VIC} 3000-3099, {@code QLD} 4000-4099) and, when it falls in a
+     * known range, that region is returned. Only when the postcode is absent or in no known range
+     * does the derivation fall back to the fixed city-to-region table ({@code Sydney}->{@code NSW},
+     * {@code Melbourne}->{@code VIC}, {@code Brisbane}->{@code QLD}). This returns the same region
+     * for a known city with a matching postcode but disambiguates cities that share a name. The
+     * value is deterministic in the postcode and city. When neither resolves a region (including
+     * {@code null} inputs) the locality is {@code 'UNKNOWN'}.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @param city the owner's city, possibly {@code null}
+     * @return the canonical region string, or {@code 'UNKNOWN'} when no region can be derived
+     */
+    public static String locality(String postcode, String city) {
+        String byPostcode = regionForPostcode(postcode);
+        if (byPostcode != null) {
+            return byPostcode;
+        }
+        return regionForCity(city);
+    }
+
+    /**
+     * Resolve the canonical region for a city from the fixed {@link #CITY_REGION} table. A city not
+     * in the table (including {@code null}) resolves to {@code 'UNKNOWN'}.
      *
      * @param city the owner's city, possibly {@code null}
-     * @return the canonical region string, or {@code 'UNKNOWN'} when the city is not in the table
+     * @return the matching region, or {@code 'UNKNOWN'} when the city is not in the table
      */
-    public static String locality(String city) {
+    private static String regionForCity(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     /**
-     * Fixed region-to-postcode-range table used by {@link #isPostcodeValidForCity(String, String)},
-     * keyed by the canonical region (see {@link #locality(String)}). Each entry is the inclusive
-     * low and high bound of the region's valid 4-digit postcodes
+     * Fixed region-to-postcode-range table used by {@link #isPostcodeValidForCity(String, String)}
+     * and {@link #regionForPostcode(String)}, keyed by the canonical region. Each entry is the
+     * inclusive low and high bound of the region's valid 4-digit postcodes
      * ({@code NSW} 2000-2099, {@code VIC} 3000-3099, {@code QLD} 4000-4099). A region not in this
      * table (including {@code 'UNKNOWN'}) places no range constraint.
      */
@@ -436,11 +457,33 @@ public class Owner extends Person {
         "QLD", new int[] {4000, 4099});
 
     /**
+     * Resolve the canonical region whose postcode range contains the given postcode, using the fixed
+     * {@link #REGION_POSTCODE_RANGES} table. A {@code null} postcode, one that is not exactly four
+     * digits, or one that falls in no known range resolves to {@code null}.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the matching region, or {@code null} when no range contains the postcode
+     */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Check whether a postcode is valid for an owner's city. Postcode is optional, so a
      * {@code null} or empty postcode is always valid. When present it must be exactly four
-     * digits, and when the city's region (see {@link #locality(String)}) has a known postcode
-     * range the value must fall within that inclusive range. A city with no known region (whose
-     * locality is {@code 'UNKNOWN'}) accepts any four-digit postcode. This is the single source of
+     * digits, and when the city's region (from the fixed city-to-region table) has a known postcode
+     * range the value must fall within that inclusive range. A city with no known region accepts
+     * any four-digit postcode. This is the single source of
      * truth for postcode validity, shared by the DTO validation and any persistence path.
      *
      * @param postcode the owner's postcode, possibly {@code null}
@@ -454,7 +497,7 @@ public class Owner extends Person {
         if (!postcode.matches("\\d{4}")) {
             return false;
         }
-        int[] range = REGION_POSTCODE_RANGES.get(locality(city));
+        int[] range = REGION_POSTCODE_RANGES.get(regionForCity(city));
         if (range == null) {
             return true;
         }
