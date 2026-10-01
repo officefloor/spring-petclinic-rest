@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
@@ -77,15 +78,27 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's membership level, the derived numeric level based on the owner's namesake
-     * count, whether an email is present and the owner's tenure since registration
-     * (see {@link Owner#membershipLevel(Integer, String, java.time.LocalDate)}).
+     * Compute the owner's membership points, the derived points score based on whether an email is
+     * present, the owner's namesake count, the owner's household size and the owner's tenure since
+     * registration (see {@link Owner#membershipPoints(Integer, String, Integer, java.time.LocalDate)}).
+     */
+    default Integer formatMembershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.membershipPoints(owner.getNamesakeCount(), owner.getEmail(),
+            owner.getHouseholdCount(), owner.getRegistrationDate());
+    }
+
+    /**
+     * Compute the owner's membership level, mapped from the owner's membership points
+     * (see {@link Owner#membershipLevel(int)}).
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate());
+        return Owner.membershipLevel(formatMembershipPoints(owner));
     }
 
     /**
@@ -180,12 +193,14 @@ public interface OwnerMapper {
         return Owner.telephoneDisplay(owner.getTelephone());
     }
 
+    @Mapping(target = "householdCount", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdCount", ignore = true)
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 

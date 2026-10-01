@@ -70,6 +70,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_count")
+    private Integer householdCount;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -143,6 +146,14 @@ public class Owner extends Person {
 
     public Integer getNamesakeCount() {
         return this.namesakeCount;
+    }
+
+    public Integer getHouseholdCount() {
+        return this.householdCount;
+    }
+
+    public void setHouseholdCount(Integer householdCount) {
+        this.householdCount = householdCount;
     }
 
     public void setNamesakeCount(Integer namesakeCount) {
@@ -538,31 +549,56 @@ public class Owner extends Person {
     }
 
     /**
-     * Build an owner's {@code membershipLevel}, the derived numeric level assigned on create. The
-     * value starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
-     * and gains 1 when the owner's tenure is more than 365 days (the tenure being the number of days
-     * from {@code registrationDate} to today). Level 4 therefore requires tenure of more than 365
-     * days: because a newly created owner has zero tenure, a new owner never exceeds level 3. The
-     * value is capped at 4.
+     * Compute an owner's {@code membershipPoints}, the derived points score assigned on create. The
+     * score starts at 0, gains 2 when an email is present, gains 1 when {@code namesakeCount} is 0,
+     * gains 2 when the owner belongs to a household of 3 or more members (see {@code householdCount}),
+     * and gains 3 when the owner's tenure is more than 365 days (the tenure being the number of days
+     * from {@code registrationDate} to today). Because a newly created owner has zero tenure, the
+     * tenure points accrue only once the owner has been a member for over a year.
      *
      * @param namesakeCount the owner's namesake count, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
+     * @param householdCount the number of members in the owner's household, possibly {@code null}
      * @param registrationDate the owner's registration date, possibly {@code null}
-     * @return the membership level, an integer from 1 to 4
+     * @return the membership points, a non-negative integer
      */
-    public static int membershipLevel(Integer namesakeCount, String email, LocalDate registrationDate) {
-        int level = 1;
+    public static int membershipPoints(Integer namesakeCount, String email, Integer householdCount,
+            LocalDate registrationDate) {
+        int points = 0;
         if (email != null && !email.isEmpty()) {
-            level++;
+            points += 2;
         }
         if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+            points += 1;
+        }
+        if (householdCount != null && householdCount >= 3) {
+            points += 2;
         }
         if (registrationDate != null
             && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Map an owner's {@code membershipPoints} to its {@code membershipLevel}: level 1 for 0-1 points,
+     * level 2 for 2-3, level 3 for 4-5 and level 4 for 6 or more.
+     *
+     * @param membershipPoints the owner's membership points
+     * @return the membership level, an integer from 1 to 4
+     */
+    public static int membershipLevel(int membershipPoints) {
+        if (membershipPoints >= 6) {
+            return 4;
+        }
+        if (membershipPoints >= 4) {
+            return 3;
+        }
+        if (membershipPoints >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     /**

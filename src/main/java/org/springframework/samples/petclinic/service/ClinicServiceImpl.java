@@ -304,6 +304,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        if (owner.isNew() && owner.getHouseholdCount() == null) {
+            owner.setHouseholdCount(countHouseholdMembers(owner));
+        }
         if (owner.isNew()) {
             assignPossibleDuplicate(owner, sharesHousehold);
         }
@@ -331,6 +334,26 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Count the members of this owner's household at the moment it is created, i.e. the number of
+     * owners sharing its household id (same last name and postcode, see
+     * {@link Owner#householdId(String, String)}) plus this owner itself. An owner with no derivable
+     * household id (missing last name or postcode) is counted as a single-member household. The value
+     * is deterministic given the current data, so it is computed once at creation time and stored.
+     */
+    private Integer countHouseholdMembers(Owner owner) {
+        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
+        if (householdId == null) {
+            return 1;
+        }
+        long others = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> householdId.equals(
+                Owner.householdId(existing.getLastName(), existing.getPostcode())))
+            .count();
+        return (int) others + 1;
     }
 
     /**
