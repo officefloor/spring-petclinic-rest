@@ -1,0 +1,241 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+index df7786966..86dfbd748 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+@@ -35,9 +35,12 @@ public final class OwnerRegion {
+     private OwnerRegion() {
+     }
+ 
+-    /** The canonical region for {@code city}, or {@link #UNKNOWN} when the city is not in the table. */
++    /**
++     * The canonical region for {@code city}, or {@link #UNKNOWN} when the city is {@code null} or not
++     * in the table. (The backing {@code Map.of} rejects a null key, so null is handled explicitly.)
++     */
+     public static String regionOf(String city) {
+-        return CITY_REGION.getOrDefault(city, UNKNOWN);
++        return city == null ? UNKNOWN : CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DataIntegrityViolationExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DataIntegrityViolationExceptionHandler.java
+index f76baae2d..35da91c47 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DataIntegrityViolationExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DataIntegrityViolationExceptionHandler.java
+@@ -11,8 +11,7 @@ public class DataIntegrityViolationExceptionHandler {
+ 
+     public void handle(@Parameter DataIntegrityViolationException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.NOT_FOUND,
+-                "The requested resource could not be processed due to a data constraint violation");
+-        response.send(ResponseEntity.status(HttpStatus.NOT_FOUND).body(detail));
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.NOT_FOUND,
++                "The requested resource could not be processed due to a data constraint violation"));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ForbiddenExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ForbiddenExceptionHandler.java
+index 6d3e83f02..f76b5c615 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ForbiddenExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ForbiddenExceptionHandler.java
+@@ -17,8 +17,7 @@ public class ForbiddenExceptionHandler {
+ 
+     public void handle(@Parameter AuthorizationDeniedException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.FORBIDDEN,
+-                "You do not have permission to access this resource");
+-        response.send(ResponseEntity.status(HttpStatus.FORBIDDEN).body(detail));
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.FORBIDDEN,
++                "You do not have permission to access this resource"));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/GeneralExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/GeneralExceptionHandler.java
+index bf6bdc4cf..8b358eb33 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/GeneralExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/GeneralExceptionHandler.java
+@@ -14,8 +14,7 @@ public class GeneralExceptionHandler {
+ 
+     public void handle(@Parameter Exception ex, ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         logger.error("Unexpected error", ex);
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.INTERNAL_SERVER_ERROR,
+-                "An unexpected error occurred while processing your request");
+-        response.send(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(detail));
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.INTERNAL_SERVER_ERROR,
++                "An unexpected error occurred while processing your request"));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ProblemDetails.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ProblemDetails.java
+index a66ef0c46..91c385a2d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ProblemDetails.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ProblemDetails.java
+@@ -6,18 +6,19 @@ import java.util.List;
+ 
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ 
+ /**
+  * Builds {@link ProblemDetail} bodies with the fields common to every escalation handler
+  * (title = exception simple name, timestamp, empty schemaValidationErrors placeholder).
+  */
+-final class ProblemDetails {
++public final class ProblemDetails {
+ 
+     private ProblemDetails() {
+     }
+ 
+-    static ProblemDetail build(Exception ex, HttpStatus status, String detail) {
++    public static ProblemDetail build(Exception ex, HttpStatus status, String detail) {
+         ProblemDetail problemDetail = ProblemDetail.forStatus(status);
+         problemDetail.setType(URI.create("about:blank"));
+         problemDetail.setTitle(ex.getClass().getSimpleName());
+@@ -26,4 +27,23 @@ final class ProblemDetails {
+         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
+         return problemDetail;
+     }
++
++    /**
++     * Builds the problem body and wraps it in a {@link ResponseEntity} carrying the same
++     * {@code status}, so the status is named once at the call site rather than on both the body
++     * and the entity. For handlers that need to attach extra members, call {@link #build} and wrap
++     * with {@link #asResponse} instead.
++     */
++    public static ResponseEntity<ProblemDetail> responseEntity(Exception ex, HttpStatus status,
++            String detail) {
++        return asResponse(build(ex, status, detail));
++    }
++
++    /**
++     * Wraps an already-built {@link ProblemDetail} in a {@link ResponseEntity} whose HTTP status is
++     * taken from the problem body, keeping the status a single source of truth.
++     */
++    public static ResponseEntity<ProblemDetail> asResponse(ProblemDetail detail) {
++        return ResponseEntity.status(detail.getStatus()).body(detail);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+index 701d0b597..487c3e1ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+@@ -34,6 +34,6 @@ public class ValidationExceptionHandler {
+                     .toList();
+             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+         }
+-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
++        response.send(ProblemDetails.asResponse(detail));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityAtCapacityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityAtCapacityExceptionHandler.java
+index 6bfa0094f..7314f4d92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityAtCapacityExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityAtCapacityExceptionHandler.java
+@@ -3,15 +3,18 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.section.clazz.Parameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.escalation.ProblemDetails;
+ 
+ /**
+- * Responds 409 Conflict when a create request's city already contains 50 or more owners.
++ * Responds 409 Conflict with an RFC7807 {@code application/problem+json} body when a create
++ * request's city already contains 50 or more owners.
+  */
+ public class OwnerCityAtCapacityExceptionHandler {
+ 
+     public void handle(@Parameter OwnerCityAtCapacityException ex,
+-            ObjectResponse<ResponseEntity<String>> response) {
+-        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.CONFLICT, ex.getMessage()));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDailyLimitReachedExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDailyLimitReachedExceptionHandler.java
+index 3cec752a3..1043eb01d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDailyLimitReachedExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDailyLimitReachedExceptionHandler.java
+@@ -3,16 +3,18 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.section.clazz.Parameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.escalation.ProblemDetails;
+ 
+ /**
+- * Responds 429 Too Many Requests when 100 or more owners already carry the current day's
+- * registration date.
++ * Responds 429 Too Many Requests with an RFC7807 {@code application/problem+json} body when 100 or
++ * more owners already carry the current day's registration date.
+  */
+ public class OwnerDailyLimitReachedExceptionHandler {
+ 
+     public void handle(@Parameter OwnerDailyLimitReachedException ex,
+-            ObjectResponse<ResponseEntity<String>> response) {
+-        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.TOO_MANY_REQUESTS));
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDuplicateIdentityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDuplicateIdentityExceptionHandler.java
+index fa361c3cc..834d3b9d0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDuplicateIdentityExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerDuplicateIdentityExceptionHandler.java
+@@ -3,16 +3,18 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.section.clazz.Parameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.escalation.ProblemDetails;
+ 
+ /**
+- * Responds 409 Conflict when a create request's identity key already belongs to an existing,
+- * non-deleted owner.
++ * Responds 409 Conflict with an RFC7807 {@code application/problem+json} body when a create
++ * request's identity key already belongs to an existing, non-deleted owner.
+  */
+ public class OwnerDuplicateIdentityExceptionHandler {
+ 
+     public void handle(@Parameter OwnerDuplicateIdentityException ex,
+-            ObjectResponse<ResponseEntity<String>> response) {
+-        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        response.send(ProblemDetails.responseEntity(ex, HttpStatus.CONFLICT, ex.getMessage()));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java
+index 214c23f38..8a9acffd3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerFieldsInvalidExceptionHandler.java
+@@ -1,21 +1,23 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Map;
+-
+ import net.officefloor.plugin.section.clazz.Parameter;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.escalation.ProblemDetails;
+ 
+ /**
+- * Responds 400 with a JSON body whose {@code errors} array lists the name of each owner field that
+- * was missing or blank.
++ * Responds 400 with an RFC7807 {@code application/problem+json} body. The offending field names are
++ * carried in the {@code errors} extension member alongside the standard problem members.
+  */
+ public class OwnerFieldsInvalidExceptionHandler {
+ 
+     public void handle(@Parameter OwnerFieldsInvalidException ex,
+-            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
+-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+-                .body(Map.of("errors", ex.getErrors())));
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
++                "The request is missing or blank in one or more required owner fields");
++        detail.setProperty("errors", ex.getErrors());
++        response.send(ProblemDetails.asResponse(detail));
+     }
+ }
