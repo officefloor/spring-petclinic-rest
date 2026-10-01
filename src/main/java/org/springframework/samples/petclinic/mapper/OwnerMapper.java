@@ -26,6 +26,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
+    @Mapping(target = "salutation", source = "owner", qualifiedByName = "salutation")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "telephoneDisplay")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
@@ -54,6 +55,14 @@ public interface OwnerMapper {
     @Named("displayName")
     default String displayName(Owner owner) {
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    @Named("salutation")
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        return (title != null && !title.isBlank())
+            ? title + " " + owner.getLastName()
+            : owner.getLastName();
     }
 
     @Named("telephoneDisplay")
