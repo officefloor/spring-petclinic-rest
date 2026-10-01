@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -128,6 +129,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
+    }
+
+    /**
+     * Compute the owner's check digit, the single Luhn check digit over the digits of the owner's
+     * customer code (see {@link Owner#checkDigit(String)}).
+     */
+    default Integer formatCheckDigit(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.checkDigit(owner.getCustomerCode());
     }
 
     Owner toOwner(OwnerDto ownerDto);

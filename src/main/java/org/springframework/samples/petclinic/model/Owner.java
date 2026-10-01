@@ -506,6 +506,41 @@ public class Owner extends Person {
     }
 
     /**
+     * Compute an owner's {@code checkDigit}, a single Luhn check digit (0-9) over the digits
+     * contained in the {@code customerCode}. Non-digit characters in the code are ignored. The
+     * value is deterministic in the customer code and is the standard Luhn check digit: each
+     * digit is weighted right-to-left, every second digit (starting with the rightmost) is
+     * doubled with digit sums above nine reduced by nine, and the check digit is the amount that
+     * brings the weighted sum up to the next multiple of ten.
+     *
+     * @param customerCode the owner's customer code, possibly {@code null}
+     * @return the Luhn check digit from 0 to 9, or {@code null} if the customer code is {@code null}
+     */
+    public static Integer checkDigit(String customerCode) {
+        if (customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = customerCode.length() - 1; i >= 0; i--) {
+            char c = customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * Derive an owner's {@code contactPreference}, the preferred channel for contacting the owner.
      * The value is {@code 'EMAIL'} when an email is present and {@code 'PHONE'} otherwise. The value
      * is deterministic in the email.
