@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,7 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * <p>Runs first in the {@code POST /api/owners} pipeline. It binds the body once (this is the only
  * step that reads {@code @RequestBody}) and republishes it for {@link BuildOwner}. Each of
  * firstName, lastName, address, city and telephone must be present and non-blank; any that are not
- * are collected and reported together via {@link OwnerFieldsInvalidException}.
+ * are collected and reported together via {@link OwnerFieldsInvalidException}. A supplied
+ * registrationDate must not be later than the server's current date.
  *
  * <p>The telephone is converted to E.164 form (see {@link OwnerTelephone#toE164}). The E.164 value
  * replaces the submitted one on the republished body, so it is what gets stored and returned. A
@@ -74,6 +76,12 @@ public class ValidateOwnerFields {
         String postcode = request.getPostcode();
         if (postcode != null && !OwnerRegion.isPostcodeValid(request.getCity(), postcode)) {
             errors.add("postcode");
+        }
+        // Registration date is optional and defaults to the server date when omitted. When supplied
+        // it may not be in the future: a date later than the server's current date is rejected.
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            errors.add("registrationDate");
         }
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
