@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "telephoneDisplay")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
+    @Mapping(target = "timezone", source = "owner", qualifiedByName = "timezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
@@ -72,6 +73,13 @@ public interface OwnerMapper {
         // identity), falling back to the city/postcode table for any owner without a code.
         String region = OwnerCustomerCode.region(owner.getCustomerCode());
         return region != null ? region : OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+    }
+
+    @Named("timezone")
+    default String timezone(Owner owner) {
+        // The timezone is the IANA name for the owner's locality/region, from the fixed
+        // region-to-timezone table; derive the region exactly as locality(owner) does.
+        return OwnerRegion.timezoneOf(locality(owner));
     }
 
     @Named("contactPreference")

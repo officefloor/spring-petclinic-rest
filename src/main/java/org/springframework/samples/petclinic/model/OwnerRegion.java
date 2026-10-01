@@ -26,12 +26,27 @@ public final class OwnerRegion {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-timezone table, as IANA names; any other region has no timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private OwnerRegion() {
     }
 
     /** The canonical region for {@code city}, or {@link #UNKNOWN} when the city is not in the table. */
     public static String regionOf(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * The IANA timezone name for {@code region} from the fixed region-to-timezone table
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
+     * {@code null} when the region (e.g. {@link #UNKNOWN}) has no mapping.
+     */
+    public static String timezoneOf(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /**
