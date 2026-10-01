@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.InvalidTelephoneException;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
@@ -274,19 +275,19 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
         String normalizedLastName = normalizeHouseholdValue(lastName);
-        String normalizedAddress = normalizeHouseholdValue(address);
+        String normalizedAddress = normalizeHouseholdAddress(address);
         if (normalizedLastName.isEmpty() || normalizedAddress.isEmpty()) {
             return false;
         }
         return ownerRepository.findAll().stream()
             .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdValue(owner.getAddress())));
+                && normalizedAddress.equals(normalizeHouseholdAddress(owner.getAddress())));
     }
 
     @Override
     @Transactional(readOnly = true)
     public String householdIdFor(String lastName, String address) throws DataAccessException {
-        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdValue(address);
+        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdAddress(address);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(32);
@@ -309,6 +310,16 @@ public class ClinicServiceImpl implements ClinicService {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Normalizes an address for household comparison by first applying the canonical address
+     * normalization (trim, collapse whitespace, upper-case and expand common abbreviations) and
+     * then the shared household-value normalization, so every address comparison uses the same
+     * normalized form regardless of how the value was originally supplied.
+     */
+    private static String normalizeHouseholdAddress(String address) {
+        return normalizeHouseholdValue(AddressNormalizer.normalize(address));
     }
 
     /**

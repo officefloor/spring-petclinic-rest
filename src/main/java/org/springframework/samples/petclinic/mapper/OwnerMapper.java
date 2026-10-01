@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -67,9 +68,25 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Normalizes a postal address into a canonical form: surrounding whitespace is trimmed and
+     * internal runs of whitespace collapsed to a single space, the value is upper-cased and common
+     * abbreviations are expanded as whole tokens ({@code ST -> STREET}, {@code RD -> ROAD},
+     * {@code AVE -> AVENUE}). So {@code '  12  main  st '} is stored and returned as
+     * {@code '12 MAIN STREET'}.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is applied
+     * only where referenced via {@code qualifiedByName}.
+     */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        return AddressNormalizer.normalize(address);
+    }
 
     /**
      * Normalizes a telephone number into canonical E.164 form: a leading {@code '+'} and country
