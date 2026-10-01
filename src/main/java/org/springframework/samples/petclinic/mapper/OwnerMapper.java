@@ -37,7 +37,20 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "deleted", expression = "java(formatDeleted(owner))")
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Build the owner's self link, the canonical API path for the owner formatted
+     * {@code '/api/owners/<id>'} using the owner's own id. Returns {@code null} when the owner has
+     * no id yet, so the field is omitted.
+     */
+    default String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
     default String formatDisplayName(Owner owner) {
