@@ -22,11 +22,9 @@ public class CheckOwnerHouseholdUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = OwnerHousehold.normalize(request.getLastName());
-        String address = OwnerHousehold.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(OwnerHousehold.normalize(existing.getLastName()))
-                    && address.equals(OwnerHousehold.normalize(existing.getAddress()))) {
+            if (OwnerHousehold.sameHousehold(existing, request.getLastName(),
+                    request.getAddress())) {
                 throw new OwnerHouseholdDuplicateException(request.getLastName(),
                         request.getAddress());
             }
