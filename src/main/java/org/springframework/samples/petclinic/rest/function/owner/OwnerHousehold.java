@@ -15,9 +15,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * ({@link #sameHousehold}, built on {@link #normalize}) and the derivation of the stable shared
  * {@link #householdId} that identifies a household.
  *
- * <p>Used by {@link CheckOwnerHouseholdUnique} to reject a non-opted-in duplicate, and by
- * {@link AssignOwnerHousehold} to find the household's existing members and to compute the id they
- * share — so the definition of "same household" lives here and nowhere else.
+ * <p>Used by {@link AssignOwnerHousehold} to find the household's existing members and to compute
+ * the id they share, and by {@link OwnerIdentity} to derive the household segment of an owner's
+ * identity key — so the definition of "same household" lives here and nowhere else.
  */
 final class OwnerHousehold {
 

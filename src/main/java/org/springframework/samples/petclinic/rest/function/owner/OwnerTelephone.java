@@ -5,8 +5,8 @@ import java.util.Map;
 
 /**
  * Single source of truth for the owner-telephone E.164 rule. Both {@link ValidateOwnerFields}
- * (which normalizes the submitted value) and {@link CheckOwnerTelephoneUnique} (which compares
- * against stored owners) convert through {@link #toE164} so the two can never drift apart.
+ * (which normalizes the submitted value) and {@link OwnerIdentity} (which builds the identity key
+ * compared against stored owners) convert through {@link #toE164} so the two can never drift apart.
  *
  * <p>The rule: strip spaces, dashes and brackets. If what remains starts with a '+', keep that
  * leading '+' and country code as-is. Otherwise assume Australian country code '+61', dropping a

@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -23,7 +24,13 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
+    @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
+
+    @Named("identityKey")
+    default String identityKey(Owner owner) {
+        return OwnerIdentity.identityKey(owner);
+    }
 
     @Named("displayName")
     default String displayName(Owner owner) {
