@@ -9,13 +9,13 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear;
-import org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerRiskFlag;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -35,7 +35,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "timezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
-    @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", source = "owner", qualifiedByName = "identity")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "ageBand")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "fiscalYear")
     @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "ownerSegment")
@@ -44,15 +45,21 @@ public interface OwnerMapper {
 
     @Named("fiscalYear")
     default String fiscalYear(Owner owner) {
-        // The fiscal year is the FY segment of the owner's memberId, falling back to the
-        // business-day-adjusted registrationDate for any owner without a memberId.
-        String label = OwnerMemberId.fiscalYearLabel(owner.getMemberId());
-        return label != null ? label : OwnerFiscalYear.label(owner);
+        // The fiscal year is derived directly from the owner's business-day-adjusted
+        // registrationDate. It is user-facing, so it must not read back the V2-tagged region that the
+        // memberId now carries inside it.
+        return OwnerFiscalYear.label(owner);
     }
 
-    @Named("identityKey")
-    default String identityKey(Owner owner) {
-        return OwnerIdentity.identityKey(owner);
+    @Named("identity")
+    default OwnerIdentityDto identity(Owner owner) {
+        // The three derived identifiers, grouped. memberId and householdId are the version-2 values
+        // stored on the owner; identityKey is recomputed from the owner's current fields.
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentity.identityKey(owner));
+        return identity;
     }
 
     @Named("ageBand")
@@ -62,7 +69,7 @@ public interface OwnerMapper {
 
     @Named("ownerSegment")
     default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
-        return OwnerSegment.segment(owner.getMembershipLevel(), locality(owner));
+        return OwnerSegment.segment(owner);
     }
 
     @Named("riskFlag")
@@ -101,10 +108,10 @@ public interface OwnerMapper {
 
     @Named("locality")
     default String locality(Owner owner) {
-        // The locality is the REGION segment of the owner's memberId (the region-and-hash
-        // identity), falling back to the city/postcode table for any owner without an id.
-        String region = OwnerMemberId.region(owner.getMemberId());
-        return region != null ? region : OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+        // The locality is the plain region derived from the owner's city/postcode. It is user-facing,
+        // so it must stay the plain region code (e.g. 'NSW') and never carry the 'V2' version tag the
+        // identity algorithm mixes into the region inside the identifiers.
+        return OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
     }
 
     @Named("timezone")

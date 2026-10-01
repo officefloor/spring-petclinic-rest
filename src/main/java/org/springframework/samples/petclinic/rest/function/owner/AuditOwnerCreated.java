@@ -17,9 +17,11 @@ import tools.jackson.databind.node.ObjectNode;
  * <ul>
  * <li>a human-readable audit line carrying the owner id, the {@code memberId}, the
  * {@code registrationDate} and the {@code membershipLevel}; and</li>
- * <li>an immutable structured JSON event
- * {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}, where {@code seq}
- * is a monotonically increasing integer across every create in this process.</li>
+ * <li>an immutable structured JSON event (schema version 2)
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, ownerSegment,
+ * event:"OWNER_CREATED"}}, where {@code seq} is a monotonically increasing integer across every
+ * create in this process, {@code memberId} is the owner's version-2 primary identifier and
+ * {@code ownerSegment} is recomputed from the version-2 identity.</li>
  * </ul>
  *
  * <p>The event's identifier is read through {@link OwnerPrimaryIdentifier}, so it always carries the
@@ -40,10 +42,12 @@ public class AuditOwnerCreated {
                 owner.getMembershipLevel());
 
         ObjectNode event = JSON.createObjectNode();
+        event.put("schemaVersion", 2);
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", OwnerPrimaryIdentifier.of(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("ownerSegment", OwnerSegment.segment(owner).getValue());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(JSON.writeValueAsString(event));
     }

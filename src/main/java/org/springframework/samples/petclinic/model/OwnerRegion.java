@@ -16,6 +16,13 @@ public final class OwnerRegion {
     /** Region reported for a city that is not in the fixed table. */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * Fixed version tag mixed into the region code used <em>inside</em> the owner identifiers
+     * (memberId, householdId, identityKey) by the version-2 identity algorithm. It never appears in
+     * the user-facing {@code locality}, {@code timezone} or the owner segment's derived region.
+     */
+    public static final String IDENTITY_VERSION = "V2";
+
     /** Fixed city-to-region table; any other city has region {@link #UNKNOWN}. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -70,6 +77,17 @@ public final class OwnerRegion {
     public static String localityOf(String city, String postcode) {
         String byPostcode = regionForPostcode(postcode);
         return byPostcode != null ? byPostcode : regionOf(city);
+    }
+
+    /**
+     * The version-2 region code used <em>inside</em> the owner identifiers: the plain region (see
+     * {@link #localityOf}) with the fixed {@link #IDENTITY_VERSION} tag mixed in. Because every v2
+     * code carries the {@code V2} prefix that no v1 region ever did, mixing this into an identifier
+     * guarantees the identifier differs from the one version 1 would have produced. This is internal
+     * to the identifiers and is never the user-facing locality.
+     */
+    public static String identityRegion(String city, String postcode) {
+        return IDENTITY_VERSION + localityOf(city, postcode);
     }
 
     /** The region whose inclusive range contains {@code postcode}, or {@code null} when none does. */

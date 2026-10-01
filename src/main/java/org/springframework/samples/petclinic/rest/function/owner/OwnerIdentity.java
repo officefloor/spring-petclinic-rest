@@ -5,12 +5,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerRegion;
 
 /**
  * Single source of truth for an owner's {@code identityKey} — the value that both the owner mapper
  * returns and the create pipeline's duplicate detection compares on. The key is the lower-case hex
- * SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
- * telephone is reduced to E.164 through {@link OwnerTelephone#toE164}, the email is lower-cased
+ * SHA-256 of {@code region + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+ * where {@code region} is the version-2 identity region code (see {@link OwnerRegion#identityRegion}),
+ * the telephone is reduced to E.164 through {@link OwnerTelephone#toE164}, the email is lower-cased
  * through {@link OwnerEmail#normalize}, and the last name is reduced to its phonetic code through
  * {@link OwnerSoundex#soundex}. A missing telephone or email contributes an empty segment.
  *
@@ -25,15 +27,18 @@ public final class OwnerIdentity {
     }
 
     /**
-     * Builds the identity key from its three raw parts: the submitted/stored telephone (normalized
-     * to E.164 here), the email (lower-cased here) and the last name (reduced to its Soundex code
-     * here). The three normalized parts are joined with {@code '|'} and hashed with SHA-256; a
-     * telephone or email that is {@code null} or cannot normalize contributes an empty segment.
+     * Builds the version-2 identity key from the owner's version-2 region code and its three raw
+     * parts: the submitted/stored telephone (normalized to E.164 here), the email (lower-cased here)
+     * and the last name (reduced to its Soundex code here). The region and the three normalized parts
+     * are joined with {@code '|'} and hashed with SHA-256; a telephone or email that is {@code null}
+     * or cannot normalize contributes an empty segment. The {@code V2}-tagged region (see
+     * {@link OwnerRegion#identityRegion}) means no key matches the one version 1 would have produced.
      */
-    public static String identityKey(String telephone, String email, String lastName) {
+    public static String identityKey(String region, String telephone, String email, String lastName) {
         String normalizedTelephone = OwnerTelephone.toE164(telephone);
         String normalizedEmail = OwnerEmail.normalize(email);
-        String raw = (normalizedTelephone == null ? "" : normalizedTelephone) + "|"
+        String raw = region + "|"
+                + (normalizedTelephone == null ? "" : normalizedTelephone) + "|"
                 + (normalizedEmail == null ? "" : normalizedEmail) + "|"
                 + OwnerSoundex.soundex(lastName);
         return sha256Hex(raw);
@@ -44,7 +49,8 @@ public final class OwnerIdentity {
      * {@code Owner}-to-key definition used by the owner mapper and by duplicate detection.
      */
     public static String identityKey(Owner owner) {
-        return identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+        String region = OwnerRegion.identityRegion(owner.getCity(), owner.getPostcode());
+        return identityKey(region, owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */

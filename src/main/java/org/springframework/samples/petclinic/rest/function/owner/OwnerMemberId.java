@@ -15,9 +15,10 @@ import org.springframework.samples.petclinic.model.OwnerRegion;
  * (and the standalone {@code checkDigit}) into one value whose four segments run together with no
  * separators, formatted {@code <REGION><FY><HASH8><CHK>}:
  * <ul>
- * <li>{@code REGION} is the owner's region code, derived from the postcode (see
- * {@link OwnerRegion#localityOf}, which prefers the postcode and falls back to the city table), e.g.
- * {@code NSW}.</li>
+ * <li>{@code REGION} is the owner's version-2 region code — the plain region (derived from the
+ * postcode, preferring the postcode and falling back to the city table) with the fixed {@code V2}
+ * version tag mixed in (see {@link OwnerRegion#identityRegion}), e.g. {@code V2NSW}. The tag lives
+ * only inside the identifier; the user-facing {@code locality} stays the plain region {@code NSW}.</li>
  * <li>{@code FY} is the two-digit fiscal year — the last two digits of the owner's fiscal year, the
  * financial year (starting 1 July) of the business-day-adjusted registration date named by its
  * ending calendar year (see {@link OwnerFiscalYear}), e.g. {@code 27} for an October 2026
@@ -32,9 +33,10 @@ import org.springframework.samples.petclinic.model.OwnerRegion;
  * <p>There are no sequence numbers: the id depends only on the owner's own region, fiscal year,
  * telephone and last name, so it can be computed without coordinating through the database. The one
  * exception to the separator-free shape is collision handling: should two owners produce the same id,
- * {@link #deduplicate} appends a {@code -<n>} suffix to keep them distinct (see that method). Every
- * other identity value is derived from this id — the read-time {@code locality} and {@code fiscalYear}
- * and the create audit record all read the member id assigned here.
+ * {@link #deduplicate} appends a {@code -<n>} suffix to keep them distinct (see that method). The
+ * user-facing {@code locality} and {@code fiscalYear} are derived independently from the owner's own
+ * fields (so the {@code V2} tag never leaks into them); the create audit record reads this id as the
+ * owner's primary identifier.
  */
 public final class OwnerMemberId {
 
@@ -43,7 +45,7 @@ public final class OwnerMemberId {
 
     /** The {@code <REGION><FY><HASH8><CHK>} member id for {@code owner}. */
     public static String memberId(Owner owner) {
-        String region = OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+        String region = OwnerRegion.identityRegion(owner.getCity(), owner.getPostcode());
         String fy = OwnerFiscalYear.yy(owner.getRegistrationDate());
         String base = region + fy + hash8(owner.getTelephone(), owner.getLastName());
         return base + luhn(base);
@@ -113,34 +115,5 @@ public final class OwnerMemberId {
                 return candidate;
             }
         }
-    }
-
-    /**
-     * The {@code REGION} segment of a member id — its leading letters, before the two-digit fiscal
-     * year — or {@code null} when there is no id to read it from.
-     */
-    public static String region(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? null : memberId.substring(0, i);
-    }
-
-    /**
-     * The {@code FY<YY>} fiscal-year label read from a member id's {@code FY} segment (the two
-     * characters after the region), or {@code null} when there is no id or it is too short to carry
-     * one. The {@code FY} prefix is applied by {@link OwnerFiscalYear#label(String)}, which owns the
-     * label format.
-     */
-    public static String fiscalYearLabel(String memberId) {
-        String region = region(memberId);
-        if (region == null || memberId.length() < region.length() + 2) {
-            return null;
-        }
-        return OwnerFiscalYear.label(memberId.substring(region.length(), region.length() + 2));
     }
 }

@@ -5,6 +5,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerRegion;
+
 /**
  * Single source of truth for the owner-household identity rule. A household is keyed on
  * {@code (lastName, postcode)}: two owners whose normalized last names match and whose postcodes are
@@ -38,16 +41,20 @@ final class OwnerHousehold {
      * whose normalized last name and postcode match produce the same value, so the id can be computed
      * independently for each joining owner without coordinating through the database. The value is
      * the first 12 upper-case hex characters of the SHA-256 of the normalized
-     * {@code "<lastName>|<postcode>"}.
+     * {@code "<region>|<lastName>|<postcode>"}, where {@code region} is the version-2 identity region
+     * code (see {@link OwnerRegion#identityRegion}). Mixing the {@code V2}-tagged region in means no
+     * id matches the one version 1 would have produced from last name and postcode alone.
      *
      * <p>A household requires a postcode: when the postcode is {@code null} or blank the owner
      * belongs to no household and this returns {@code null}.
      */
-    static String householdId(String lastName, String postcode) {
+    static String householdId(Owner owner) {
+        String postcode = owner.getPostcode();
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String key = normalize(lastName) + "|" + postcode.trim();
+        String region = OwnerRegion.identityRegion(owner.getCity(), postcode);
+        String key = region + "|" + normalize(owner.getLastName()) + "|" + postcode.trim();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

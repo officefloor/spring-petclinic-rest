@@ -19,6 +19,6 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignOwnerHousehold {
 
     public void service(@Val Owner owner) {
-        owner.setHouseholdId(OwnerHousehold.householdId(owner.getLastName(), owner.getPostcode()));
+        owner.setHouseholdId(OwnerHousehold.householdId(owner));
     }
 }

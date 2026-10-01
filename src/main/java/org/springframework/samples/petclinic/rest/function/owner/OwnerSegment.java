@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 
@@ -31,5 +32,16 @@ public final class OwnerSegment {
         String tier = premium ? "PREMIUM" : "STANDARD";
         String area = metro ? "METRO" : "REGIONAL";
         return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+    }
+
+    /**
+     * The owner segment for a stored {@code owner}: its membership level against its plain locality
+     * (the region derived from the owner's city/postcode, never the {@code V2}-tagged region carried
+     * inside the identifiers). The single {@code Owner}-to-segment definition shared by the read-time
+     * owner response and the create audit event.
+     */
+    public static OwnerDto.OwnerSegmentEnum segment(Owner owner) {
+        return segment(owner.getMembershipLevel(),
+                OwnerRegion.localityOf(owner.getCity(), owner.getPostcode()));
     }
 }

@@ -2130,6 +2130,27 @@ components:
               minimum: 0
               example: 1
               readOnly: true
+            apiVersion:
+              title: API version
+              description: >-
+                The major version of the owner representation. Version 2 groups the owner's
+                identifiers under the nested 'identity' object and derives those identifiers with the
+                version-2 identity algorithm. A fixed value of 2.
+              type: integer
+              format: int32
+              example: 2
+              readOnly: true
+            identity:
+              title: Identity
+              description: >-
+                The owner's derived identifiers (memberId, householdId and identityKey), grouped
+                together. All three are derived with the version-2 identity algorithm, which mixes a
+                fixed 'V2' version tag into the region code used inside each identifier so that no
+                value produced under version 1 is reproduced. These are identifiers only; the
+                user-facing 'locality', 'timezone' and owner-segment region remain the plain region.
+              readOnly: true
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
             selfLink:
               title: Self link
               description: >-
@@ -2168,20 +2189,6 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: >-
-                The owner's single unified member identifier, whose four segments run together with no
-                separators, formatted '<REGION><FY><HASH8><CHK>': REGION is the region code derived
-                from the postcode, FY is the two-digit fiscal year (the financial year of the
-                registrationDate, named by its ending calendar year), HASH8 is the first eight
-                upper-case hex characters of the SHA-256 of the normalized (E.164) telephone
-                concatenated with lastName, and CHK is a single Luhn check digit computed over the
-                digits of '<REGION><FY><HASH8>'. Assigned at creation; it carries no sequence number.
-                Should two owners produce the same id, a '-<n>' suffix is appended to keep them unique.
-              type: string
-              example: NSW271A2B3C4D5
-              readOnly: true
             fiscalYear:
               title: Fiscal year
               description: >-
@@ -2191,28 +2198,6 @@ components:
                 year (e.g. October 2026 -> FY27). Derived at read time.
               type: string
               example: FY27
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A deterministic identifier shared by owners who belong to the same household (same
-                last name and postcode). It is the first 12 hex characters of the SHA-256 of the
-                normalized 'lastName|postcode', so owners with the same last name and postcode share
-                it automatically. Owners with no postcode belong to no household and carry no value.
-              type: string
-              example: 3A7F9C2E1B4D
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                A derived descriptive key for the owner, formatted
-                'normalizedTelephone|email|householdId' where normalizedTelephone is the E.164
-                telephone, email is the lower-cased email (empty when absent) and householdId is the
-                owner's deterministic household id (empty when the owner has no postcode). Duplicate
-                detection keys off the householdId: a second owner in an existing household is
-                rejected with 409 Conflict unless the request opts in with 'sharesHousehold: true'.
-              type: string
-              example: '+61412345678|george.franklin@example.com|3A7F9C2E1B4D'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2318,10 +2303,11 @@ components:
             locality:
               title: Locality
               description: >-
-                The canonical region, read at read time from the REGION segment of the owner's
-                memberId (the region-and-hash identity). REGION is derived from the postcode
-                (preferring the postcode's region, falling back to the fixed city-to-region table:
-                Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD), or 'UNKNOWN' when neither resolves.
+                The canonical region for the owner, derived at read time from the postcode (preferring
+                the postcode's region, falling back to the fixed city-to-region table: Sydney -> NSW,
+                Melbourne -> VIC, Brisbane -> QLD), or 'UNKNOWN' when neither resolves. This is the
+                plain region code (e.g. 'NSW'); it is not an identifier and never carries the 'V2'
+                version tag that the identity algorithm mixes into the identifiers.
               type: string
               example: NSW
               readOnly: true
@@ -2377,6 +2363,53 @@ components:
               readOnly: true
           required:
             - pets
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's derived identifiers, grouped together on the owner response. Every identifier is
+        derived with the version-2 identity algorithm: a fixed 'V2' version tag is mixed into the
+        region code used inside each identifier, so every value differs from the one version 1 would
+        have produced. The region code mixed in here is internal to the identifiers and is never the
+        user-facing 'locality'.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's single unified member identifier, whose segments run together with no
+            separators, formatted '<REGION><FY><HASH8><CHK>': REGION is the version-2 region code (the
+            plain region with the fixed 'V2' tag mixed in), FY is the two-digit fiscal year (the
+            financial year of the registrationDate, named by its ending calendar year), HASH8 is the
+            first eight upper-case hex characters of the SHA-256 of the normalized (E.164) telephone
+            concatenated with lastName, and CHK is a single Luhn check digit computed over the digits
+            of '<REGION><FY><HASH8>'. Assigned at creation; it carries no sequence number. Should two
+            owners produce the same id, a '-<n>' suffix is appended to keep them unique.
+          type: string
+          example: V2NSW271A2B3C4D5
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A deterministic identifier shared by owners who belong to the same household (same last
+            name and postcode). It is the first 12 upper-case hex characters of the SHA-256 of the
+            normalized 'region|lastName|postcode', where region is the version-2 region code, so
+            owners with the same last name and postcode share it automatically. Owners with no
+            postcode belong to no household and carry no value.
+          type: string
+          example: 3A7F9C2E1B4D
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            A derived key for the owner, the lower-case hex SHA-256 of
+            'region|normalizedTelephone|email|soundex(lastName)', where region is the version-2 region
+            code, normalizedTelephone is the E.164 telephone (empty when absent), email is the
+            lower-cased email (empty when absent) and soundex(lastName) is the phonetic code of the
+            last name. Hard-duplicate detection rejects a second owner with the same identity key with
+            409 Conflict.
+          type: string
+          example: 9f2c1b4d7e8a3f5c2b1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b
+          readOnly: true
     OwnerPage:
       title: Owner page
       description: A page of pet owners.
