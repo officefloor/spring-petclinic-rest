@@ -1,0 +1,231 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7f84fcd66..4579ca7cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -148,6 +148,24 @@ public class Owner extends Person {
+         this.householdMemberCount = householdMemberCount;
+     }
+ 
++    /**
++     * The owner's derived identity key, {@code normalizedTelephone + '|' + (email or empty) + '|' +
++     * (householdId or empty)}. This single key is the sole criterion for duplicate detection on
++     * creation: a new owner is rejected with 409 only when its whole identity key equals an existing
++     * owner's. Because the telephone is part of the key, two members of the same household (same
++     * {@code householdId}) with different telephones have distinct identity keys and are both
++     * allowed; only an exact full-key match is a duplicate. The telephone and email components are
++     * already held in their normalized forms (canonical E.164 and lower-cased) on every write path,
++     * so the key is comparable across owners. Not persisted: it is computed from the current fields.
++     */
++    @Transient
++    public String getIdentityKey() {
++        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
++        String emailOrEmpty = this.email == null ? "" : this.email;
++        String householdOrEmpty = this.householdId == null ? "" : this.householdId;
++        return normalizedTelephone + "|" + emailOrEmpty + "|" + householdOrEmpty;
++    }
++
+     /**
+      * Stamp the owner's registration date with the server's current date on first
+      * persist when none was supplied, so the default applies on every create path.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9188d4b98..ad63c758e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -111,21 +111,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        if (sharesHousehold) {
++            owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
+         }
+-        if (this.clinicService.isEmailInUse(owner.getEmail())) {
++        // All duplicate detection is consolidated into the single derived identity key: reject only
++        // when the new owner's whole identity key (telephone|email|householdId) matches an existing one.
++        if (this.clinicService.isIdentityKeyInUse(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        if (sharesHousehold) {
+-            owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
+-        }
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index b030e8354..b6c15e0dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -60,43 +60,24 @@ public interface ClinicService {
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 
+ 	/**
+-	 * Returns {@code true} if any owner already uses the given telephone number. The argument and every
+-	 * stored value are compared in their normalized (digits-only) form, so differently formatted but
+-	 * equivalent numbers collide. Enforces the "unique telephone" invariant for every owner write path.
++	 * Returns {@code true} if the given owner's derived identity key equals that of another owner,
++	 * i.e. the create would introduce a duplicate. The identity key
++	 * ({@link Owner#getIdentityKey()}) is {@code normalizedTelephone + '|' + (email or empty) + '|' +
++	 * (householdId or empty)} and is the single, consolidated criterion for duplicate detection:
++	 * only an exact whole-key match counts. Because the telephone is part of the key, two members of
++	 * the same household (same {@code householdId}) with different telephones have distinct keys and
++	 * are both allowed. Enforces the "no duplicate identity key" invariant on owner creation.
+ 	 *
+-	 * @param telephone the telephone number to look for (in any format)
+-	 * @return whether the normalized telephone is already in use by an owner
++	 * @param owner the (not yet persisted) owner whose identity key to check
++	 * @return whether an existing owner already has the same identity key
+ 	 */
+-	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+-
+-	/**
+-	 * Returns {@code true} if any owner already uses the given email address. The argument and every
+-	 * stored value are compared in their lower-cased form, so differently cased but equivalent
+-	 * addresses collide. Enforces the "unique email" invariant on owner creation.
+-	 *
+-	 * @param email the email address to look for (in any casing)
+-	 * @return whether the lower-cased email is already in use by an owner
+-	 */
+-	boolean isEmailInUse(String email) throws DataAccessException;
+-
+-	/**
+-	 * Returns {@code true} if another owner already has both the given last name and address. The
+-	 * last name and address are compared case-insensitively with runs of whitespace collapsed to a
+-	 * single space (and surrounding whitespace trimmed), so differently cased or spaced but
+-	 * equivalent values collide. Enforces the "one household per last name + address" invariant on
+-	 * owner creation.
+-	 *
+-	 * @param lastName the last name to look for
+-	 * @param address the address to look for
+-	 * @return whether an existing owner shares the same normalized last name and address
+-	 */
+-	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
++	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
+ 
+ 	/**
+ 	 * Returns a stable, shared household identifier derived from the given last name and address.
+-	 * The inputs are normalized the same way as {@link #isHouseholdInUse(String, String)}
+-	 * (trimmed, runs of whitespace collapsed, lower-cased) before hashing, so every owner in the
+-	 * same household (same last name + address) deterministically receives the identical value.
++	 * The inputs are normalized (trimmed, runs of whitespace collapsed, lower-cased) before hashing,
++	 * so every owner in the same household (same last name + address) deterministically receives the
++	 * identical value. This household id forms the final component of each owner's identity key.
+ 	 *
+ 	 * @param lastName the last name of the household
+ 	 * @param address the address of the household
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 015999b34..aaddb7a16 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -23,8 +23,6 @@ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.samples.petclinic.util.AddressNormalizer;
+-import org.springframework.samples.petclinic.util.InvalidTelephoneException;
+-import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -361,43 +359,12 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     @Override
+     @Transactional(readOnly = true)
+-    public boolean isTelephoneInUse(String telephone) throws DataAccessException {
+-        String normalized = normalizeTelephone(telephone);
+-        if (normalized == null) {
+-            return false;
+-        }
+-        return ownerRepository.findAll().stream()
+-            .map(owner -> normalizeTelephone(owner.getTelephone()))
+-            .anyMatch(normalized::equals);
+-    }
+-
+-    @Override
+-    @Transactional(readOnly = true)
+-    public boolean isEmailInUse(String email) throws DataAccessException {
+-        String normalized = normalizeEmail(email);
+-        if (normalized == null) {
+-            return false;
+-        }
++    public boolean isIdentityKeyInUse(Owner owner) throws DataAccessException {
++        String identityKey = owner.getIdentityKey();
+         return ownerRepository.findAll().stream()
+-            .map(owner -> normalizeEmail(owner.getEmail()))
+-            .anyMatch(normalized::equals);
+-    }
+-
+-    private static String normalizeEmail(String email) {
+-        return email == null ? null : email.toLowerCase(Locale.ROOT);
+-    }
+-
+-    @Override
+-    @Transactional(readOnly = true)
+-    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
+-        String normalizedLastName = normalizeHouseholdValue(lastName);
+-        String normalizedAddress = normalizeHouseholdAddress(address);
+-        if (normalizedLastName.isEmpty() || normalizedAddress.isEmpty()) {
+-            return false;
+-        }
+-        return ownerRepository.findAll().stream()
+-            .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
+-                && normalizedAddress.equals(normalizeHouseholdAddress(owner.getAddress())));
++            .filter(existing -> existing != owner)
++            .map(Owner::getIdentityKey)
++            .anyMatch(identityKey::equals);
+     }
+ 
+     @Override
+@@ -468,22 +435,6 @@ public class ClinicServiceImpl implements ClinicService {
+         return decorateWithHouseholdMemberCount(owner, owner == null ? List.of() : List.of(owner));
+     }
+ 
+-    /**
+-     * Reduces a telephone number to its canonical E.164 form so that differently formatted but
+-     * equivalent numbers compare equal. A value already stored that cannot form valid E.164
+-     * (e.g. unusual legacy data) falls back to its digits-only form rather than failing lookup.
+-     */
+-    private static String normalizeTelephone(String telephone) {
+-        if (telephone == null) {
+-            return null;
+-        }
+-        try {
+-            return TelephoneNormalizer.toE164(telephone);
+-        } catch (InvalidTelephoneException ex) {
+-            return telephone.replaceAll("\\D", "");
+-        }
+-    }
+-
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f4dd5ad96..1c44e5626 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2188,6 +2188,20 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived identity key, formatted as
++                'normalizedTelephone|email-or-empty|householdId-or-empty' (the normalized E.164
++                telephone, then the lower-cased email or an empty string, then the household id or
++                an empty string, joined by '|'). This single key is the sole criterion for duplicate
++                detection: a create is rejected with 409 Conflict only when the new owner's whole
++                identity key equals an existing owner's. Because the telephone is part of the key,
++                two members of the same household (same householdId) with different telephones have
++                distinct identity keys and are both allowed.
++              type: string
++              example: '+61412345678||A1B2C3D4E5F6A1B2'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
