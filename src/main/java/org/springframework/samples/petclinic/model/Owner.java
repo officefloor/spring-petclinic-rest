@@ -280,7 +280,7 @@ public class Owner extends Person {
     /**
      * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
      * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
-     * is the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). The
+     * is the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}). The
      * value is deterministic in those two fields.
      *
      * @param customerCode the owner's customer code, possibly {@code null}
