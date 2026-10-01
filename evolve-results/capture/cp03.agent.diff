@@ -1,0 +1,158 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9a9cb1cf5..fa2e9fc9d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,7 +31,7 @@ public interface OwnerMapper {
+     /** Normalize a telephone to its digits only, matching {@code TelephoneValidator}. */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        return Owner.normalizeTelephone(telephone);
+     }
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a32c007b0..99e866059 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -76,6 +76,18 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    /**
++     * Normalize a telephone to its digits only. This is the single source of truth for how
++     * a telephone is compared and persisted, so inputs that differ only in formatting (spaces,
++     * dashes, parentheses) are treated as the same number.
++     *
++     * @param telephone the raw telephone, possibly {@code null}
++     * @return the digits-only form, or {@code null} if the input was {@code null}
++     */
++    public static String normalizeTelephone(String telephone) {
++        return telephone == null ? null : telephone.replaceAll("\\D", "");
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index ab731f608..41bab9c8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
++import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -53,6 +54,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
++    private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -102,6 +104,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateTelephoneException}, raised when an owner is created with a normalized
++     * telephone already used by another owner, by returning a 409 Conflict status.
++     *
++     * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++        logger.warn("Duplicate telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 873eed0f4..cb4f14916 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
+ 
+@@ -232,8 +233,27 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        assertTelephoneIsUnique(owner);
+         ownerRepository.save(owner);
++    }
+ 
++    /**
++     * Enforce that an owner's normalized telephone is not already used by any <em>other</em>
++     * owner, throwing {@link DuplicateTelephoneException} if it is. The owner being saved is
++     * excluded by id so updating an owner in place does not conflict with itself.
++     */
++    private void assertTelephoneIsUnique(Owner owner) {
++        String normalized = Owner.normalizeTelephone(owner.getTelephone());
++        if (normalized == null) {
++            return;
++        }
++        boolean duplicate = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
++            .anyMatch(normalized::equals);
++        if (duplicate) {
++            throw new DuplicateTelephoneException(normalized);
++        }
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..120c7a2c3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java
+@@ -0,0 +1,29 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown by the service layer when an owner is saved with a normalized telephone that is
++ * already used by another owner. Mapped to an HTTP 409 Conflict response by the web layer.
++ */
++public class DuplicateTelephoneException extends RuntimeException {
++
++    public DuplicateTelephoneException(String telephone) {
++        super("An owner with telephone '" + telephone + "' already exists");
++    }
++
++}
