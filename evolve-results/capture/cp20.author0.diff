@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 5eb8622e9..6577217b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -13,9 +13,14 @@ public class BuildOwner {
+     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
+         // When no registration date is supplied, default it to the server's current date.
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        LocalDate effective = owner.getRegistrationDate();
++        if (effective == null) {
++            effective = LocalDate.now();
+         }
++        // The effective date must fall on a business day: a weekend rolls forward to Monday.
++        // Values derived from the registration date (e.g. the membership number's year segment)
++        // are assigned by later steps and so pick up this adjusted date.
++        owner.setRegistrationDate(BusinessDays.toBusinessDay(effective));
+         built.set(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+new file mode 100644
+index 000000000..b906d3693
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Business-day rules for owner registration.
++ *
++ * <p>A registration date must fall on a business day. When the effective date (whether supplied in
++ * the request or defaulted to the server date) is a Saturday or Sunday, it is rolled forward to the
++ * following Monday; a weekday is left unchanged.
++ */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Roll a weekend date forward to the next Monday; weekdays are returned unchanged. */
++    public static LocalDate toBusinessDay(LocalDate date) {
++        LocalDate adjusted = date;
++        while (adjusted.getDayOfWeek() == DayOfWeek.SATURDAY
++                || adjusted.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            adjusted = adjusted.plusDays(1);
++        }
++        return adjusted;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+index 36e424d3a..04dabaa90 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+@@ -2,7 +2,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Rejects a create request once the daily signup limit has been reached.
+@@ -17,14 +19,19 @@ public class CheckOwnerDailyLimit {
+     /** Maximum number of owners that may be created on a single day; the next owner is rejected. */
+     private static final int DAILY_LIMIT = 100;
+ 
+-    public void service(OwnerRepository ownerRepository)
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws OwnerDailyLimitReachedException {
+-        LocalDate today = LocalDate.now();
++        // Count against the business day this owner will actually be registered on: the effective
++        // date (supplied or defaulted to today), rolled forward off a weekend. Stored registration
++        // dates are already adjusted, so this buckets owners per adjusted business day.
++        LocalDate effective = request.getRegistrationDate() != null
++                ? request.getRegistrationDate() : LocalDate.now();
++        LocalDate businessDay = BusinessDays.toBusinessDay(effective);
+         long createdToday = ownerRepository.findAll().stream()
+-                .filter(existing -> today.equals(existing.getRegistrationDate()))
++                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
+                 .count();
+         if (createdToday >= DAILY_LIMIT) {
+-            throw new OwnerDailyLimitReachedException(today);
++            throw new OwnerDailyLimitReachedException(businessDay);
+         }
+     }
+ }
