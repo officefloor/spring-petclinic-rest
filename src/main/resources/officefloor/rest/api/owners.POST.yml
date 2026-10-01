@@ -1,6 +1,23 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# A repeated 'Idempotency-Key' replays the originally created owner (200) instead of
+# creating a duplicate; a new key (or none) falls through to the normal create pipeline.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdempotency
+  outputs:
+    create: validate
+    replay: loadReplay
+
+loadReplay:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadOwnerById
+  govern: [ readonly-transaction ]
+  next: respondReplay
+
+respondReplay:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: checkHousehold
@@ -67,6 +84,11 @@ flagPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordOwnerIdempotency
   govern: [ transaction ]
   next: audit
 
