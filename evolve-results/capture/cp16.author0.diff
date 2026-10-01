@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 55867dfe4..28727a055 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -241,7 +241,7 @@ public class ClinicServiceImpl implements ClinicService {
+     public void saveOwner(Owner owner) throws DataAccessException {
+         if (owner.isNew()) {
+             if (owner.getCustomerCode() == null) {
+-                owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++                owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+             }
+             if (owner.getNamesakeCount() == null) {
+                 owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+@@ -266,16 +266,32 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Build a customer code formatted {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the
+-     * upper-cased first three letters of the owner's last name and {@code NNNN} is a global,
++     * Build a customer code formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
++     * is the upper-cased first three letters of the owner's city, {@code LAST3} the
++     * upper-cased first three letters of the owner's last name and {@code NNNN} a per-city,
+      * 4-digit zero-padded sequence equal to one more than the current number of owners
+-     * (e.g. {@code 'SMI-0007'}).
++     * already in that city (e.g. {@code 'LON-SMI-0007'}).
+      */
+-    private String generateCustomerCode(String lastName) {
++    private String generateCustomerCode(String city, String lastName) {
++        String cityName = city == null ? "" : city;
++        String city3 = cityName.substring(0, Math.min(3, cityName.length())).toUpperCase();
+         String name = lastName == null ? "" : lastName;
+         String last3 = name.substring(0, Math.min(3, name.length())).toUpperCase();
+-        long sequence = ownerRepository.findAll().size() + 1L;
+-        return String.format("%s-%04d", last3, sequence);
++        long sequence = countOwnersInCity(cityName) + 1L;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /**
++     * Count the existing owners whose city matches the given city, compared case-insensitively,
++     * used to derive the per-city sequence of the customer code.
++     */
++    private long countOwnersInCity(String city) {
++        if (city == null) {
++            return 0L;
++        }
++        return ownerRepository.findAll().stream()
++            .filter(owner -> city.equalsIgnoreCase(owner.getCity()))
++            .count();
+     }
+ 
+     @Override
