@@ -11,8 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The {@code householdId} segment is the deterministic household id (see
  * {@link OwnerHousehold#householdId}), so two owners in the same household share that segment.
- * Duplicate detection itself keys off the household id directly (see {@link CheckOwnerHouseholdUnique});
- * this class only derives the key the owner mapper returns.
+ * This class only derives the key the owner mapper returns.
  */
 public final class OwnerIdentity {
 

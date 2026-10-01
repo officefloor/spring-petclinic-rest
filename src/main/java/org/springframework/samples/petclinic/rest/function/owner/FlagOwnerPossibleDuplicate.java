@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Runs in the {@code POST /api/owners} pipeline after {@link FlagOwnerBulkSignup} and before
  * {@link SaveOwner}, so the new owner is not yet persisted and therefore not compared against
- * itself. By this point the request has already cleared {@link CheckOwnerHouseholdUnique}, so it is
- * not a <em>hard</em> identity duplicate. A soft match is a weaker signal: an existing owner that
+ * itself. A soft match is a weaker signal: an existing owner that
  * shares this owner's last name (case-insensitive) and postcode but carries a <em>different</em>
  * telephone. People who really are distinct but look alike — same family name, same postcode, new
  * phone — are still created, but flagged for review.

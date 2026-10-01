@@ -12,8 +12,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * and no database coordination are needed. An owner with no postcode belongs to no household and
  * receives a {@code null} id.
  *
- * <p>The {@code sharesHousehold} request flag no longer takes part here: it only bypasses the
- * household duplicate block in {@link CheckOwnerHouseholdUnique}; it does not create the link.
+ * <p>The {@code sharesHousehold} request flag does not take part here: the id is derived purely from
+ * last name and postcode. The flag only affects soft-duplicate flagging in
+ * {@link FlagOwnerPossibleDuplicate}.
  */
 public class AssignOwnerHousehold {
 
