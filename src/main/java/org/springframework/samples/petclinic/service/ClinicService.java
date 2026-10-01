@@ -82,6 +82,18 @@ public interface ClinicService {
 	 */
 	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
 
+	/**
+	 * Returns a stable, shared household identifier derived from the given last name and address.
+	 * The inputs are normalized the same way as {@link #isHouseholdInUse(String, String)}
+	 * (trimmed, runs of whitespace collapsed, lower-cased) before hashing, so every owner in the
+	 * same household (same last name + address) deterministically receives the identical value.
+	 *
+	 * @param lastName the last name of the household
+	 * @param address the address of the household
+	 * @return a stable identifier shared by all owners of the household
+	 */
+	String householdIdFor(String lastName, String address) throws DataAccessException;
+
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

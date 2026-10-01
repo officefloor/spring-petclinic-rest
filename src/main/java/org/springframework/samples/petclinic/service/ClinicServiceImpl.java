@@ -27,6 +27,9 @@ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -278,6 +281,22 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll().stream()
             .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
                 && normalizedAddress.equals(normalizeHouseholdValue(owner.getAddress())));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String householdIdFor(String lastName, String address) throws DataAccessException {
+        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdValue(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(32);
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
+        }
     }
 
     /**
