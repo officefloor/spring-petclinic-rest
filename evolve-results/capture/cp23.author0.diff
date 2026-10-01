@@ -1,0 +1,192 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1d96cfdd1..9d8b7cb12 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -71,14 +71,15 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Compute the owner's membership tier, the derived tier based on the owner's namesake count and
+-     * whether an email is present (see {@link Owner#membershipTier(Integer, String)}).
++     * Compute the owner's membership tier, the derived tier based on the owner's household size at
++     * creation, namesake count and whether an email is present
++     * (see {@link Owner#membershipTier(Integer, String, Integer)}).
+      */
+     default String formatMembershipTier(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail());
++        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d55047ebe..25f01de1d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -135,6 +138,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * Normalize an email to its canonical stored form, which is lower-cased. This is the single
+      * source of truth for how an email is persisted, so inputs that differ only in letter case
+@@ -306,16 +317,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Build an owner's {@code membershipTier}, the derived tier based on the owner's namesake count
+-     * and whether an email is present. The value is {@code 'SILVER'} when {@code namesakeCount} is 0
+-     * and an email is present, and {@code 'BRONZE'} otherwise. The value is deterministic in those
+-     * two fields.
++     * Build an owner's {@code membershipTier}, the derived tier. The value is {@code 'GOLD'} when the
++     * owner's household had 3 or more members (see {@link #householdId(String, String)}) at the time
++     * the owner was created, as captured by {@code householdSize}. Otherwise the value is
++     * {@code 'SILVER'} when {@code namesakeCount} is 0 and an email is present, and {@code 'BRONZE'}
++     * in every other case. The value is deterministic in those three fields.
+      *
+      * @param namesakeCount the owner's namesake count, possibly {@code null}
+      * @param email the owner's email, possibly {@code null}
+-     * @return {@code 'SILVER'} or {@code 'BRONZE'}
++     * @param householdSize the number of members in the owner's household at creation, possibly {@code null}
++     * @return {@code 'GOLD'}, {@code 'SILVER'} or {@code 'BRONZE'}
+      */
+-    public static String membershipTier(Integer namesakeCount, String email) {
++    public static String membershipTier(Integer namesakeCount, String email, Integer householdSize) {
++        if (householdSize != null && householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isEmpty();
+         return silver ? "SILVER" : "BRONZE";
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4c0f3e3f3..5dfbd1fb8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -291,6 +291,9 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getNamesakeCount() == null) {
+             owner.setNamesakeCount(countNamesakes(owner));
+         }
++        if (owner.isNew() && owner.getHouseholdSize() == null) {
++            owner.setHouseholdSize(countHouseholdMembers(owner));
++        }
+         ownerRepository.save(owner);
+         if (isCreate) {
+             AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+@@ -317,6 +320,26 @@ public class ClinicServiceImpl implements ClinicService {
+             .count();
+     }
+ 
++    /**
++     * Count the members of this owner's household as it stands immediately after this create, i.e.
++     * the existing owners that share this owner's household id (see
++     * {@link Owner#householdId(String, String)}) plus this owner itself. The owner being saved is
++     * excluded from the existing-owner scan by id so it is counted exactly once. This value is
++     * deterministic given the current data, so it is computed once at creation time and stored and
++     * then drives the {@code 'GOLD'} membership tier (3 or more members).
++     */
++    private Integer countHouseholdMembers(Owner owner) {
++        String householdId = Owner.householdId(owner.getLastName(), owner.getAddress());
++        if (householdId == null) {
++            return 1;
++        }
++        long existing = ownerRepository.findAll().stream()
++            .filter(other -> !Objects.equals(other.getId(), owner.getId()))
++            .filter(other -> householdId.equals(Owner.householdId(other.getLastName(), other.getAddress())))
++            .count();
++        return (int) (existing + 1L);
++    }
++
+     /**
+      * Build an owner's {@code customerCode} formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where
+      * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 48796cb4a..398e5ddf5 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 469c6dbb9..7a3ebcc14 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index f86922dff..6a90636df 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  household_size INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 52de1a832..08b87a9a9 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6f0db8a6c..c6275d3b9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2145,8 +2145,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                A derived membership tier: 'SILVER' when namesakeCount is 0 and
+-                an email is present, otherwise 'BRONZE'.
++                A derived membership tier: 'GOLD' when the owner's household
++                (owners sharing the same householdId) had 3 or more members after
++                this create; otherwise 'SILVER' when namesakeCount is 0 and an
++                email is present, and 'BRONZE' in every other case.
+               type: string
+               example: 'SILVER'
+               readOnly: true
