@@ -1,0 +1,201 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 70c0143e9..d907d85c2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipTier", expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\")")
+     @Mapping(target = "locality", expression = "java(Regions.localityOf(owner.getCity()))")
++    @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckBulkSignup.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckBulkSignup.java
+new file mode 100644
+index 000000000..ffa183a9a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckBulkSignup.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Runs just before the responder on both {@code GET /api/owners/{ownerId}} and {@code POST /api/owners}.
++ * Computes the {@code bulkSignupWarning} flag carried on the owner response: it is {@code true} once more
++ * than {@value #BULK_SIGNUP_THRESHOLD} other owners share this owner's effective (business-day)
++ * registration date, otherwise {@code false}.
++ *
++ * <p>The effective day is derived through {@link BusinessDay} and the per-day count through
++ * {@link DailyRegistrations#countOn}, exactly as the per-day create-limit rule
++ * ({@link CheckOwnerDailyLimit}) does, so the two rules cannot drift. The owner itself is excluded from
++ * the count, so on a create it reflects the owners already created that day and on a read the other
++ * owners sharing the day.
++ */
++public class CheckBulkSignup {
++
++    /** More than this many other owners already registered for the day raises the warning. */
++    static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository, Out<Boolean> bulkSignupWarning) {
++        LocalDate businessDay = BusinessDay.effective(owner.getRegistrationDate());
++        int count = DailyRegistrations.countOn(ownerRepository, businessDay, owner.getId());
++        bulkSignupWarning.set(count > BULK_SIGNUP_THRESHOLD);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+index 4a0bc416a..6c0b395d9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+@@ -3,7 +3,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException;
+@@ -25,12 +24,8 @@ public class CheckOwnerDailyLimit {
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws OwnerDailyLimitException {
+         LocalDate businessDay = BusinessDay.effective(request.getRegistrationDate());
+-        int count = 0;
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (businessDay.equals(existing.getRegistrationDate())) {
+-                count++;
+-            }
+-        }
++        // The new owner is still unsaved, so there is nothing to exclude from the count.
++        int count = DailyRegistrations.countOn(ownerRepository, businessDay, null);
+         if (count >= MAX_OWNERS_PER_DAY) {
+             throw new OwnerDailyLimitException(businessDay, count);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DailyRegistrations.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DailyRegistrations.java
+new file mode 100644
+index 000000000..208861724
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DailyRegistrations.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The single home for "how many owners share a registration day" — the domain concept behind both the
++ * per-day create-limit rule ({@link CheckOwnerDailyLimit}) and the bulk-signup warning
++ * ({@link CheckBulkSignup}). Callers derive the effective business day once via {@link BusinessDay} and
++ * pass it here, so the day definition and the count scan each live in exactly one place.
++ */
++final class DailyRegistrations {
++
++    private DailyRegistrations() {
++    }
++
++    /**
++     * Counts owners whose {@code registrationDate} equals {@code businessDay}. When {@code excludeId} is
++     * non-null the owner with that id is not counted (so a persisted owner is not counted against
++     * itself); pass {@code null} to count every owner on the day.
++     */
++    static int countOn(OwnerRepository ownerRepository, LocalDate businessDay, Integer excludeId) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (excludeId != null && excludeId.equals(existing.getId())) {
++                continue;
++            }
++            if (businessDay != null && businessDay.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        return count;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 75c204b47..fc792fdfa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -8,7 +8,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner));
++    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
++            ObjectResponse<OwnerDto> response) {
++        OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        dto.setBulkSignupWarning(bulkSignupWarning);
++        response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..37dd25c58 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -11,9 +11,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        dto.setBulkSignupWarning(bulkSignupWarning);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 204961028..20012f55e 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -53,6 +53,11 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: checkBulkSignup
++
++checkBulkSignup:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckBulkSignup
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 97ea16977..07486bf05 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -4,6 +4,11 @@ composition:
+ load:
+   class: org.springframework.samples.petclinic.rest.function.owner.LoadOwner
+   govern: [ readonly-transaction ]
++  next: checkBulkSignup
++
++checkBulkSignup:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckBulkSignup
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 797d28682..d7349ce39 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,6 +2121,12 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: True when more than 80 other owners share this owner's effective (business-day) registration date, i.e. more than 80 owners were already created that day; otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
