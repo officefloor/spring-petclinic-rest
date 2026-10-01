@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -53,6 +54,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.householdId(owner.getLastName(), owner.getAddress());
+    }
+
+    /**
+     * Compute the owner's membership number, the stable identifier derived from the owner's
+     * customer code and registration date (see {@link Owner#membershipNumber(String, java.time.LocalDate)}).
+     */
+    default String formatMembershipNumber(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate());
     }
 
     Owner toOwner(OwnerDto ownerDto);

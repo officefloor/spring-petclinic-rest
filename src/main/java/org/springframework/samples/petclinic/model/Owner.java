@@ -277,6 +277,23 @@ public class Owner extends Person {
         }
     }
 
+    /**
+     * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
+     * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
+     * is the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). The
+     * value is deterministic in those two fields.
+     *
+     * @param customerCode the owner's customer code, possibly {@code null}
+     * @param registrationDate the owner's registration date, possibly {@code null}
+     * @return the membership number, or {@code null} if either field is {@code null}
+     */
+    public static String membershipNumber(String customerCode, LocalDate registrationDate) {
+        if (customerCode == null || registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
