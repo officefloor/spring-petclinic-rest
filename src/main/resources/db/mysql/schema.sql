@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_level_cap INT,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INT,
+  capacity_warning BOOLEAN,
   deleted BOOLEAN DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;
