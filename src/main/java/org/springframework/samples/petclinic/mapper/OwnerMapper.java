@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -35,7 +36,13 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "ageBand")
+    @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "fiscalYear")
     OwnerDto toOwnerDto(Owner owner);
+
+    @Named("fiscalYear")
+    default String fiscalYear(Owner owner) {
+        return OwnerFiscalYear.label(owner);
+    }
 
     @Named("identityKey")
     default String identityKey(Owner owner) {
