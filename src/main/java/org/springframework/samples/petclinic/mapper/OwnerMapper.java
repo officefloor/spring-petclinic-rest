@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -89,6 +90,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.locality(owner.getCity());
+    }
+
+    /**
+     * Resolve the owner's bulk-signup warning flag, treating a missing (null) stored value as
+     * {@code false} so the response always carries an explicit boolean.
+     */
+    default Boolean formatBulkSignupWarning(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
     }
 
     Owner toOwner(OwnerDto ownerDto);

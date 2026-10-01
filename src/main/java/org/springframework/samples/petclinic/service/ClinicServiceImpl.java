@@ -64,6 +64,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * Threshold of owners registered on a single day (counted by {@code registrationDate}) above
+     * which a newly created owner is flagged with {@code bulkSignupWarning}. When more than this
+     * many owners have already been created on that day, the new owner's warning is {@code true}.
+     */
+    static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -276,6 +283,7 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         if (owner.isNew()) {
             assertDailyRegistrationLimit(owner);
+            owner.setBulkSignupWarning(computeBulkSignupWarning(owner));
         }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -435,6 +443,25 @@ public class ClinicServiceImpl implements ClinicService {
         if (count >= MAX_OWNERS_PER_DAY) {
             throw new DailyRegistrationLimitException(registrationDate);
         }
+    }
+
+    /**
+     * Compute whether a newly created owner should carry a bulk-signup warning, i.e. whether more
+     * than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created on this owner's
+     * registration day (counted by {@code registrationDate}, excluding the owner being saved). Like
+     * the daily-limit rule this reflects the state at creation time, so it is computed once and
+     * stored on the owner.
+     */
+    private boolean computeBulkSignupWarning(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return false;
+        }
+        long count = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     @Override
