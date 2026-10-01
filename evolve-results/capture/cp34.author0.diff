@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/mapper/AgeBand.java
+new file mode 100644
+index 000000000..737b93832
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/AgeBand.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Derives the {@code ageBand} field produced by {@link OwnerMapper#toOwnerDto}: the owner's age band.
++ *
++ * <p>It is computed only when the owner has a {@code birthDate}; the age is the number of whole years
++ * between the birth date and the owner's {@code registrationDate}, and the band is {@code MINOR} when
++ * under 18, {@code ADULT} from 18 to 64 inclusive, and {@code SENIOR} at 65 or older. When no birth
++ * date is present the result is {@code null} so the field is omitted from the response.
++ */
++public final class AgeBand {
++
++    /** Minimum age (inclusive) for the {@code ADULT} band; below this is {@code MINOR}. */
++    private static final int ADULT_FROM = 18;
++
++    /** Minimum age (inclusive) for the {@code SENIOR} band. */
++    private static final int SENIOR_FROM = 65;
++
++    private AgeBand() {
++    }
++
++    /**
++     * Derive the age band for an owner.
++     *
++     * @param owner the owner; its {@code birthDate} and {@code registrationDate} drive the result
++     * @return the band, or {@code null} when the owner has no birth date
++     */
++    public static OwnerDto.AgeBandEnum of(Owner owner) {
++        LocalDate birthDate = owner.getBirthDate();
++        if (birthDate == null) {
++            return null;
++        }
++        int age = Period.between(birthDate, owner.getRegistrationDate()).getYears();
++        if (age < ADULT_FROM) {
++            return OwnerDto.AgeBandEnum.MINOR;
++        }
++        if (age < SENIOR_FROM) {
++            return OwnerDto.AgeBandEnum.ADULT;
++        }
++        return OwnerDto.AgeBandEnum.SENIOR;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5f899d6b3..8b6bdccfb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
++    @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 92349aef8..92b92e7fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date", columnDefinition = "DATE")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9689f38bd..ba410dce1 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 300491a45..28e1d8db8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 76a7a022e..788fbe325 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 31348b973..12bcf2abb 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b78531494..4cd64d676 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2050,6 +2050,12 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: The owner's date of birth. Optional. When present, it drives the derived ageBand (computed against the registrationDate). Accepted and returned in ISO 'YYYY-MM-DD' format.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: Request-only flag. When true, allows creating this owner even though another owner has the same lastName and address (i.e. they share a household), and assigns both owners the same householdId. Not stored or returned (see the read-only householdId for the resulting shared identifier).
+@@ -2160,6 +2166,16 @@ components:
+                 - PHONE
+               readOnly: true
+               example: 'EMAIL'
++            ageBand:
++              title: Age band
++              description: The owner's age band, derived from birthDate computed against registrationDate - 'MINOR' when under 18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or older. Present only when a birthDate was supplied.
++              type: string
++              enum:
++                - MINOR
++                - ADULT
++                - SENIOR
++              readOnly: true
++              example: 'ADULT'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
