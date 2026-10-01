@@ -40,7 +40,7 @@ public class ValidateOwnerFields {
             errors.add("telephone");
         }
         else {
-            String telephone = request.getTelephone().replaceAll("\\D", "");
+            String telephone = OwnerTelephone.normalize(request.getTelephone());
             if (telephone.length() != 10) {
                 errors.add("telephone");
             }
