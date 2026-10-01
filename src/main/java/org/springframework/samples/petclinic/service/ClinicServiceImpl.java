@@ -272,6 +272,7 @@ public class ClinicServiceImpl implements ClinicService {
         boolean isCreate = owner.isNew();
         assertTelephoneIsUnique(owner);
         if (owner.isNew()) {
+            assertEmailIsUnique(owner);
             assertCityHasCapacity(owner);
         }
         if (owner.isNew() && !sharesHousehold) {
@@ -359,6 +360,26 @@ public class ClinicServiceImpl implements ClinicService {
             .anyMatch(normalized::equals);
         if (duplicate) {
             throw new DuplicateTelephoneException(normalized);
+        }
+    }
+
+    /**
+     * Enforce that an owner's lower-cased email is not already used by any <em>other</em> owner,
+     * throwing {@link DuplicateEmailException} if it is. Emails are compared in their canonical
+     * lower-cased form (see {@link Owner#normalizeEmail(String)}). The owner being saved is
+     * excluded by id so it never conflicts with itself.
+     */
+    private void assertEmailIsUnique(Owner owner) {
+        String normalized = Owner.normalizeEmail(owner.getEmail());
+        if (normalized == null || normalized.isEmpty()) {
+            return;
+        }
+        boolean duplicate = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .map(existing -> Owner.normalizeEmail(existing.getEmail()))
+            .anyMatch(normalized::equals);
+        if (duplicate) {
+            throw new DuplicateEmailException(normalized);
         }
     }
 
