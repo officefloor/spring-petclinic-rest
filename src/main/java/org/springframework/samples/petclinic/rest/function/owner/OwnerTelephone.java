@@ -17,6 +17,10 @@ public final class OwnerTelephone {
      * number. Spaces, dashes and brackets are stripped. A leading {@code '+'} keeps its country code;
      * otherwise country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped from
      * the national digits. The result must have 8 to 15 digits after the {@code '+'}.
+     *
+     * <p>The national-number length is also checked against the country code: {@code '+61'} (Australia)
+     * requires 9 national digits and {@code '+1'} (NANP) requires 10. A number whose national part is
+     * the wrong length for its country code cannot form a valid E.164 number and returns {@code null}.
      */
     public static String toE164(String value) {
         if (value == null) {
@@ -32,6 +36,26 @@ public final class OwnerTelephone {
             String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
             digits = "61" + national;
         }
-        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        if (!nationalLengthValid(digits)) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Check the national-number length for the known country codes. {@code '+61'} requires 9 national
+     * digits and {@code '+1'} requires 10; other country codes are not length-checked here.
+     */
+    private static boolean nationalLengthValid(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 }
