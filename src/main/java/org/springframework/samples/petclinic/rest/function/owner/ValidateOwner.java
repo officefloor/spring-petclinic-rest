@@ -3,11 +3,11 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.Regions;
+import org.springframework.samples.petclinic.model.DisposableDomains;
 import org.springframework.samples.petclinic.model.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerEmailDisposableException;
@@ -46,10 +46,6 @@ public class ValidateOwner {
 
     /** Pragmatic syntactic check: non-empty local part, '@', non-empty domain containing a dot. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-
-    /** Disposable email domains that are refused; compared case-insensitively. */
-    private static final Set<String> DISPOSABLE_DOMAINS =
-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /** A postcode is a string of exactly four digits. */
     private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
@@ -104,8 +100,8 @@ public class ValidateOwner {
             if (!EMAIL.matcher(email).matches()) {
                 throw new OwnerEmailInvalidException(email);
             }
-            String domain = email.substring(email.indexOf('@') + 1).toLowerCase();
-            if (DISPOSABLE_DOMAINS.contains(domain)) {
+            String domain = DisposableDomains.domainOf(email);
+            if (DisposableDomains.isBlocked(domain)) {
                 throw new OwnerEmailDisposableException(domain);
             }
             request.setEmail(email.toLowerCase());
