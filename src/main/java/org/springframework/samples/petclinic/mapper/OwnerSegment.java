@@ -1,6 +1,6 @@
 package org.springframework.samples.petclinic.mapper;
 
-import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>{@code TIER} is {@code PREMIUM} when the owner's {@link MembershipLevel#of(Owner) membership
  * level} is {@link #PREMIUM_FROM} (3) or more, otherwise {@code STANDARD}. {@code AREA} is
- * {@code METRO} when the owner's {@link CustomerCode#region(String) locality} is a
+ * {@code METRO} when the owner's {@link MemberId#region(String) locality} is a
  * {@link Regions#isKnownRegion(String) known region} (NSW, VIC or QLD), otherwise {@code REGIONAL}.
  */
 public final class OwnerSegment {
@@ -30,7 +30,7 @@ public final class OwnerSegment {
      */
     public static String of(Owner owner) {
         String tier = MembershipLevel.of(owner) >= PREMIUM_FROM ? "PREMIUM" : "STANDARD";
-        String locality = CustomerCode.region(owner.getCustomerCode());
+        String locality = MemberId.region(owner.getMemberId());
         String area = Regions.isKnownRegion(locality) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }

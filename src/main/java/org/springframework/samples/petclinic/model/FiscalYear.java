@@ -10,11 +10,11 @@ import java.time.Month;
  * it starts in, so the fiscal year running 1 July 2026 - 30 June 2027 is year 2026 and labelled
  * {@code FY26}.
  *
- * <p>This is a model-level derivation of an {@link Owner} (like {@link MembershipNumber} and
+ * <p>This is a model-level derivation of an {@link Owner} (like {@link MemberId} and
  * {@link MembershipLevel}): it is consumed by the response mapper (the {@code fiscalYear} field) and by
- * the other date-derived values that moved to a fiscal-year basis - the membership number's year
- * segment ({@link MembershipNumber}) and tenure ({@link MembershipLevel}) - so it lives in the model
- * layer rather than beside the pipeline functions.
+ * the other date-derived values that moved to a fiscal-year basis - the member id's {@code FY} segment
+ * ({@link MemberId}) and tenure ({@link MembershipLevel}) - so it lives in the model layer rather than
+ * beside the pipeline functions.
  *
  * <p>Every value is computed from the owner's stored registration date, which the create pipeline has
  * already rolled forward to a business day, so these derivations are on a business-day-adjusted basis.
@@ -43,7 +43,7 @@ public final class FiscalYear {
     /**
      * The two-digit fiscal-year start year ({@code YY}) for a date, zero-padded. The single rendering
      * of the fiscal year's two digits, shared by this class's {@link #label(LocalDate)} and by the
-     * {@link MembershipNumber} year segment, so the two cannot drift apart.
+     * {@link MemberId} {@code FY} segment, so the two cannot drift apart.
      */
     public static String twoDigitStartYear(LocalDate date) {
         return String.format("%02d", startYearOf(date) % 100);

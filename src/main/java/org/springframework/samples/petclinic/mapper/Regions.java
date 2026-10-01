@@ -2,7 +2,7 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Map;
 
-import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.MemberId;
 
 /**
  * City-to-region lookup backing the {@code locality} field produced by
@@ -32,9 +32,9 @@ public final class Regions {
         "QLD", "Australia/Brisbane");
 
     /** The locality returned for a city absent from {@link #CITY_REGION}. Points at the single
-     *  {@link CustomerCode#UNKNOWN_REGION} definition so the region baked into a customer code and the
+     *  {@link MemberId#UNKNOWN_REGION} definition so the region baked into a member id and the
      *  region/locality derived here share one sentinel. */
-    public static final String UNKNOWN = CustomerCode.UNKNOWN_REGION;
+    public static final String UNKNOWN = MemberId.UNKNOWN_REGION;
 
     private Regions() {
     }
@@ -73,7 +73,7 @@ public final class Regions {
 
     /**
      * Derive the region code purely from the postcode. This is the {@code REGION} component of an
-     * owner's {@code <REGION>-<HASH8>} customer code: the region whose range contains the postcode, or
+     * owner's {@code <REGION><FY><HASH8><CHK>} member id: the region whose range contains the postcode, or
      * {@link #UNKNOWN} when the postcode is absent, non-numeric, or falls in no known range. Unlike
      * {@link #localityOf(String, String)} it never falls back to the city.
      *
