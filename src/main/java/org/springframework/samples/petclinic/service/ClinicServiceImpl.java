@@ -238,6 +238,26 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isTelephoneInUse(String telephone) throws DataAccessException {
+        String normalized = normalizeTelephone(telephone);
+        if (normalized == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .map(owner -> normalizeTelephone(owner.getTelephone()))
+            .anyMatch(normalized::equals);
+    }
+
+    /**
+     * Reduces a telephone number to its canonical digits-only form, stripping every non-digit
+     * character so that differently formatted but equivalent numbers compare equal.
+     */
+    private static String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
     }

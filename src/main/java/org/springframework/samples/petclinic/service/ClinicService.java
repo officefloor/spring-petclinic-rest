@@ -58,6 +58,16 @@ public interface ClinicService {
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
+
+	/**
+	 * Returns {@code true} if any owner already uses the given telephone number. The argument and every
+	 * stored value are compared in their normalized (digits-only) form, so differently formatted but
+	 * equivalent numbers collide. Enforces the "unique telephone" invariant for every owner write path.
+	 *
+	 * @param telephone the telephone number to look for (in any format)
+	 * @return whether the normalized telephone is already in use by an owner
+	 */
+	boolean isTelephoneInUse(String telephone) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
