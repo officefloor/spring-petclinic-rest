@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 87cf28f09..4f3125b06 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+@@ -166,6 +167,17 @@ public interface OwnerMapper {
+         return Owner.timezone(owner.getCustomerCode());
+     }
+ 
++    /**
++     * Compute the owner's segment, the {@code '<TIER>_<AREA>'} marketing segment derived from the
++     * owner's effective membership level and locality (see {@link Owner#ownerSegment()}).
++     */
++    default String formatOwnerSegment(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return owner.ownerSegment();
++    }
++
+     /**
+      * Resolve the owner's bulk-signup warning flag, treating a missing (null) stored value as
+      * {@code false} so the response always carries an explicit boolean.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8320988cd..c8c81604c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -932,6 +932,30 @@ public class Owner extends Person {
+         return REGION_TIMEZONE.get(locality(customerCode));
+     }
+ 
++    /**
++     * The canonical regions treated as {@code METRO} by {@link #ownerSegment()}: a locality is a
++     * known region exactly when it is {@code NSW}, {@code VIC} or {@code QLD}. Any other locality
++     * (including {@code 'UNKNOWN'}) is {@code REGIONAL}.
++     */
++    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    /**
++     * Derive this owner's {@code ownerSegment}, the marketing segment formatted
++     * {@code '<TIER>_<AREA>'}. {@code TIER} is {@code 'PREMIUM'} when the owner's effective
++     * membership level (see {@link #effectiveMembershipLevel()}) is 3 or more, otherwise
++     * {@code 'STANDARD'}. {@code AREA} is {@code 'METRO'} when the owner's locality (see
++     * {@link #locality(String)}) is a known region ({@code NSW}, {@code VIC} or {@code QLD}),
++     * otherwise {@code 'REGIONAL'}. The result is one of {@code 'PREMIUM_METRO'},
++     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}.
++     *
++     * @return the owner's {@code '<TIER>_<AREA>'} segment
++     */
++    public String ownerSegment() {
++        String tier = effectiveMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
++        String area = KNOWN_REGIONS.contains(locality(this.customerCode)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Resolve the canonical region for a city from the fixed {@link #CITY_REGION} table. A city not
+      * in the table (including {@code null}) resolves to {@code 'UNKNOWN'}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7b6aa4a88..a4b2fb3a1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2297,6 +2297,18 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                A derived marketing segment formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when the owner's membershipLevel is 3 or more, otherwise
++                'STANDARD'. AREA is 'METRO' when the owner's locality is a known
++                region (NSW, VIC or QLD), otherwise 'REGIONAL'. One of
++                'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
++                'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
