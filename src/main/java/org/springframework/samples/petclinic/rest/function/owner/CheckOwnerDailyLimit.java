@@ -11,9 +11,11 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitExce
 /**
  * Runs after {@link ValidateOwner} and before {@link BuildOwner}. Rejects the create with a 429 via
  * {@link OwnerDailyLimitException} when the maximum number of owners ({@value #MAX_OWNERS_PER_DAY})
- * have already been created today, as determined by their {@code registrationDate}. The new owner is
- * still unsaved — and is itself dated today (see {@link BuildOwner}) — so it is not counted against
- * the limit.
+ * already share the new owner's effective registration date, as determined by their
+ * {@code registrationDate}. That effective date is the request's supplied date, or the server's
+ * current date when omitted, rolled forward off any weekend to a business day (see {@link BusinessDay}),
+ * so the limit counts owners per adjusted business day. The new owner is still unsaved — and is itself
+ * dated that same business day (see {@link BuildOwner}) — so it is not counted against the limit.
  */
 public class CheckOwnerDailyLimit {
 
@@ -22,15 +24,15 @@ public class CheckOwnerDailyLimit {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerDailyLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate businessDay = BusinessDay.effective(request.getRegistrationDate());
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            if (businessDay.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
         if (count >= MAX_OWNERS_PER_DAY) {
-            throw new OwnerDailyLimitException(today, count);
+            throw new OwnerDailyLimitException(businessDay, count);
         }
     }
 }
