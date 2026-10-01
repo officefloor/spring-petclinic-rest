@@ -19,6 +19,7 @@ import org.springframework.core.style.ToStringCreator;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
@@ -49,6 +50,10 @@ public class Owner extends Person {
     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String telephone;
 
+    @Column(name = "email")
+    @Email
+    private String email;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -74,6 +79,27 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = telephone;
+    }
+
+    public String getEmail() {
+        return this.email;
+    }
+
+    public void setEmail(String email) {
+        this.email = normalizeEmail(email);
+    }
+
+    /**
+     * Normalize an email to its canonical stored form, which is lower-cased. This is the single
+     * source of truth for how an email is persisted, so inputs that differ only in letter case
+     * are stored identically. Applied by {@link #setEmail(String)} so every persistence path
+     * (create and update, mapper or hand-copied) stores the same canonical value.
+     *
+     * @param email the raw email, possibly {@code null}
+     * @return the lower-cased form, or {@code null} if the input was {@code null}
+     */
+    public static String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase();
     }
 
     /**
