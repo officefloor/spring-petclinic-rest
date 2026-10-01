@@ -159,7 +159,10 @@ public class Owner extends Person {
      *   <li>a leading {@code '+'} and its country code are kept as given;</li>
      *   <li>otherwise country code {@code '+61'} is assumed and a single leading {@code '0'}
      *       is dropped from the national digits;</li>
-     *   <li>the result must have 8 to 15 digits after the {@code '+'}.</li>
+     *   <li>the result must have 8 to 15 digits after the {@code '+'};</li>
+     *   <li>for a recognized country code the national number (the digits after the country
+     *       code) must have the length that code requires: {@code '+61'} requires 9 national
+     *       digits and {@code '+1'} requires 10.</li>
      * </ul>
      * For example {@code "0412 345 678"} becomes {@code "+61412345678"}. Already-normalized
      * values are returned unchanged.
@@ -194,7 +197,38 @@ public class Owner extends Person {
         if (digits.length() < 8 || digits.length() > 15) {
             return null;
         }
+        if (!hasValidNationalNumberLength(digits)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * Required national-number length (the count of digits after the country code) for each
+     * recognized country code, longest country code first so the prefix match is unambiguous.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = new LinkedHashMap<>();
+    static {
+        NATIONAL_NUMBER_LENGTHS.put("61", 9);
+        NATIONAL_NUMBER_LENGTHS.put("1", 10);
+    }
+
+    /**
+     * Check that the national number of an E.164 digit string (no leading {@code '+'}) has the
+     * length its country code requires. A country code with no registered length places no
+     * additional constraint and is accepted.
+     *
+     * @param digits the E.164 digits without the leading {@code '+'}
+     * @return {@code true} if the national-number length is valid for the country code
+     */
+    private static boolean hasValidNationalNumberLength(String digits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                return digits.length() - countryCode.length() == entry.getValue();
+            }
+        }
+        return true;
     }
 
     /**
