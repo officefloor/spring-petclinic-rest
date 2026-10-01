@@ -3,6 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.repository.OwnerRepository;
+
 /**
  * Business-day rules for owner registration.
  *
@@ -23,6 +25,18 @@ public final class BusinessDays {
      */
     public static LocalDate effectiveRegistrationDate(LocalDate supplied) {
         return toBusinessDay(supplied != null ? supplied : LocalDate.now());
+    }
+
+    /**
+     * The number of owners already registered on the given business day. Single source of truth for
+     * the per-day signup count, shared by the daily-limit and bulk-signup rules so their counts
+     * cannot drift apart; each rule keeps only its own threshold and action. Counts persisted owners
+     * only, so a step calling this before {@code SaveOwner} does not count the owner being created.
+     */
+    public static long createdOn(OwnerRepository ownerRepository, LocalDate businessDay) {
+        return ownerRepository.findAll().stream()
+                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
+                .count();
     }
 
     /** Roll a weekend date forward to the next Monday; weekdays are returned unchanged. */

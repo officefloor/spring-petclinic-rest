@@ -24,9 +24,7 @@ public class CheckOwnerDailyLimit {
         // Count against the business day this owner will actually be registered on. Stored
         // registration dates are already adjusted, so this buckets owners per adjusted business day.
         LocalDate businessDay = BusinessDays.effectiveRegistrationDate(request.getRegistrationDate());
-        long createdToday = ownerRepository.findAll().stream()
-                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
-                .count();
+        long createdToday = BusinessDays.createdOn(ownerRepository, businessDay);
         if (createdToday >= DAILY_LIMIT) {
             throw new OwnerDailyLimitReachedException(businessDay);
         }
