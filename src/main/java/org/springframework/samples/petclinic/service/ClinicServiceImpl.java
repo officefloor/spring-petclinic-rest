@@ -55,6 +55,9 @@ public class ClinicServiceImpl implements ClinicService {
     /** Maximum number of owners that may be created on a single day (by registration date). */
     private static final long DAILY_CAPACITY = 100L;
 
+    /** Above this many owners created today, reads carry a bulk-signup warning. */
+    private static final long BULK_SIGNUP_THRESHOLD = 80L;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -315,11 +318,24 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean isDailyRegistrationAtCapacity() throws DataAccessException {
+        return countRegisteredToday() >= DAILY_CAPACITY;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isBulkSignupDay() throws DataAccessException {
+        return countRegisteredToday() > BULK_SIGNUP_THRESHOLD;
+    }
+
+    /**
+     * Count the owners whose registration date equals today's business day, used by the
+     * daily create-limit and bulk-signup rules.
+     */
+    private long countRegisteredToday() {
         LocalDate businessDay = toBusinessDay(LocalDate.now());
-        long registeredToday = ownerRepository.findAll().stream()
+        return ownerRepository.findAll().stream()
             .filter(owner -> businessDay.equals(owner.getRegistrationDate()))
             .count();
-        return registeredToday >= DAILY_CAPACITY;
     }
 
     /**

@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

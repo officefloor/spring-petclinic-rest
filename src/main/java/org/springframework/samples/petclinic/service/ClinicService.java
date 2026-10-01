@@ -113,6 +113,15 @@ public interface ClinicService {
 	 */
 	boolean isDailyRegistrationAtCapacity() throws DataAccessException;
 
+	/**
+	 * Returns {@code true} when more than 80 owners have already been created today, i.e. the
+	 * number of owners whose {@code registrationDate} equals the server's current date exceeds
+	 * the bulk-signup threshold. Drives the read-only {@code bulkSignupWarning} response flag.
+	 *
+	 * @return whether more than 80 owners already carry today's registration date
+	 */
+	boolean isBulkSignupDay() throws DataAccessException;
+
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
