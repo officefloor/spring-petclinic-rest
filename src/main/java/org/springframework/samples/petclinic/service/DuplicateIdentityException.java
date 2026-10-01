@@ -18,8 +18,9 @@ package org.springframework.samples.petclinic.service;
 
 /**
  * Thrown by the service layer when an owner is saved whose derived {@code identityKey} (the single
- * key consolidating the former telephone, email and household duplicate checks, see
- * {@link org.springframework.samples.petclinic.model.Owner#identityKey(String, String, String, String)})
+ * key for duplicate detection, the SHA-256 hex over normalized telephone, lower-cased email and
+ * last-name Soundex, see
+ * {@link org.springframework.samples.petclinic.model.Owner#identityKey(String, String, String)})
  * already belongs to another owner. Mapped to an HTTP 409 Conflict response by the web layer.
  */
 public class DuplicateIdentityException extends RuntimeException {

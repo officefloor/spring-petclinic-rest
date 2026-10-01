@@ -640,32 +640,93 @@ public class Owner extends Person {
 
     /**
      * Compute an owner's {@code identityKey}, the single derived value through which all
-     * duplicate detection is now expressed. It consolidates the three formerly separate
-     * telephone, email and household duplicate checks into one key, formatted as
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}:
+     * duplicate detection is now expressed. It is the lower-case hex SHA-256 digest (see
+     * {@link #sha256Hex(String)}) of the three identity components joined with {@code '|'}:
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where
      * <ul>
      *   <li>the normalized telephone (see {@link #normalizeTelephone(String)}),</li>
-     *   <li>the normalized email (see {@link #normalizeEmail(String)}), or the empty string
+     *   <li>the lower-cased email (see {@link #normalizeEmail(String)}), or the empty string
      *       when no email is present, and</li>
-     *   <li>the household id (see {@link #householdId(String, String)}).</li>
+     *   <li>the Soundex code of the last name (see {@link #soundex(String)}).</li>
      * </ul>
-     * A {@code null} component is rendered as the empty string. Two owners are the same identity
-     * only when their <em>whole</em> keys are equal; because the telephone is part of the key, two
-     * members of the same household with different telephones have different keys.
+     * A {@code null} component is rendered as the empty string before hashing. Two owners are the
+     * same identity only when their <em>whole</em> keys are equal; because the telephone is part of
+     * the key, two members of the same household (same last name and postcode) with different
+     * telephones have different keys and are not a hard duplicate.
      *
      * @param telephone the owner's raw telephone, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
      * @param lastName the owner's last name, possibly {@code null}
-     * @param postcode the owner's postcode, possibly {@code null}
-     * @return the identity key, never {@code null}
+     * @return the 64-character lower-case hex identity key, never {@code null}
      */
-    public static String identityKey(String telephone, String email, String lastName, String postcode) {
+    public static String identityKey(String telephone, String email, String lastName) {
         String normalizedTelephone = normalizeTelephone(telephone);
         String normalizedEmail = normalizeEmail(email);
-        String household = householdId(lastName, postcode);
-        return (normalizedTelephone == null ? "" : normalizedTelephone)
+        String lastNameSoundex = soundex(lastName);
+        String raw = (normalizedTelephone == null ? "" : normalizedTelephone)
             + "|" + (normalizedEmail == null ? "" : normalizedEmail)
-            + "|" + (household == null ? "" : household);
+            + "|" + (lastNameSoundex == null ? "" : lastNameSoundex);
+        return sha256Hex(raw);
+    }
+
+    /** Soundex digit for each consonant; vowels, {@code H}, {@code W} and {@code Y} map to '0'. */
+    private static final Map<Character, Character> SOUNDEX_CODES = new HashMap<>();
+    static {
+        for (char c : "BFPV".toCharArray()) {
+            SOUNDEX_CODES.put(c, '1');
+        }
+        for (char c : "CGJKQSXZ".toCharArray()) {
+            SOUNDEX_CODES.put(c, '2');
+        }
+        for (char c : "DT".toCharArray()) {
+            SOUNDEX_CODES.put(c, '3');
+        }
+        SOUNDEX_CODES.put('L', '4');
+        for (char c : "MN".toCharArray()) {
+            SOUNDEX_CODES.put(c, '5');
+        }
+        SOUNDEX_CODES.put('R', '6');
+    }
+
+    /**
+     * Compute the American Soundex code of a name: the upper-cased first letter followed by three
+     * digits encoding the following consonants ({@code B,F,P,V}->1; {@code C,G,J,K,Q,S,X,Z}->2;
+     * {@code D,T}->3; {@code L}->4; {@code M,N}->5; {@code R}->6), padded with zeros to length four.
+     * Vowels ({@code A,E,I,O,U,Y}) separate codes; {@code H} and {@code W} are ignored so two
+     * like-coded consonants on either side of them collapse to a single digit; adjacent letters with
+     * the same code also collapse to one. Non-letters are stripped before coding. This is the single
+     * source of truth for the surname component of the {@code identityKey} and the soft-match rule.
+     *
+     * @param name the raw name, possibly {@code null}
+     * @return the four-character Soundex code, {@code null} if the input is {@code null}, or the empty
+     *     string if the input contains no letters
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return null;
+        }
+        String letters = name.toUpperCase().replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previous = SOUNDEX_CODES.getOrDefault(letters.charAt(0), '0');
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = SOUNDEX_CODES.getOrDefault(c, '0');
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            previous = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
     }
 
     /**

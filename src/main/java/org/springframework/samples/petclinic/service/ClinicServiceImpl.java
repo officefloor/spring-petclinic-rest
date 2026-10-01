@@ -277,18 +277,20 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Save an owner, enforcing the create-time business rules.
      *
-     * <p>Because the household is keyed on {@code (lastName, postcode)} (see
-     * {@link Owner#householdId(String, String)}), owners sharing a last name and postcode are the
-     * same household. Duplicate rejection on create is expressed solely through the identity key:
-     * {@link #assertIdentityIsUnique(Owner)} rejects an owner that reuses an existing normalized
-     * telephone, and consistent with that check's contract two members of the same household with
-     * different telephones have different identity keys and are both allowed. An undeclared household
-     * member sharing an existing household is therefore created but flagged as a possible (suspected)
-     * duplicate, whereas a declared household member ({@code sharesHousehold} set) is left unflagged;
-     * {@code sharesHousehold} now governs only that flagging. This keeps the sole {@code POST /api/owners}
-     * duplicate rule in one place and lets household members coexist, which the household
-     * membership-level ceiling (see {@link #computeMembershipLevel(Owner)}) relies on to compare a new
-     * owner against the existing members.
+     * <p>Duplicate rejection on create is expressed solely through the single {@code identityKey} (the
+     * SHA-256 hex over the normalized telephone, lower-cased email and last-name Soundex, see
+     * {@link Owner#identityKey(String, String, String)}): {@link #assertIdentityIsUnique(Owner)}
+     * rejects an owner whose whole identity key already belongs to another owner. Because the
+     * telephone is part of the key, two members of the same household (same last name and postcode)
+     * with different telephones have different identity keys and are both allowed; the former separate
+     * household-duplicate 409 no longer applies. Such an undeclared household member is created but
+     * flagged as a possible (suspected) duplicate when its last-name Soundex and postcode match an
+     * existing owner (see {@link #assignPossibleDuplicate(Owner, boolean)}), whereas a declared
+     * household member ({@code sharesHousehold} set) is left unflagged; {@code sharesHousehold} now
+     * governs only that flagging. This keeps the sole {@code POST /api/owners} duplicate rule in one
+     * place and lets household members coexist, which the household membership-level ceiling (see
+     * {@link #computeMembershipLevel(Owner)}) relies on to compare a new owner against the existing
+     * members.
      */
     @Override
     @Transactional
@@ -445,14 +447,15 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Flag a newly created owner as a possible (soft) duplicate of an existing owner. A hard
-     * duplicate (an owner reusing an existing normalized telephone) has already been rejected by
-     * {@link #assertIdentityIsUnique(Owner)}, and an undeclared household duplicate by
-     * {@link #assertHouseholdIsUnique(Owner)}, before this runs. This detects the weaker overlap: an
-     * existing owner that shares this owner's household id (same last name and postcode, see
-     * {@link Owner#householdId(String, String)}) but has a <em>different</em> normalized telephone.
-     * When such an owner exists, {@code possibleDuplicate} is set {@code true} and
-     * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match);
-     * otherwise {@code possibleDuplicate} is set {@code false} and {@code possibleDuplicateOf} left unset.
+     * duplicate (an owner sharing this owner's whole {@code identityKey}) has already been rejected by
+     * {@link #assertIdentityIsUnique(Owner)} before this runs. This detects the weaker overlap: an
+     * existing owner whose identity key <em>differs</em> but whose last-name Soundex (see
+     * {@link Owner#soundex(String)}) and postcode both match this owner. When such an owner exists,
+     * {@code possibleDuplicate} is set {@code true} and {@code possibleDuplicateOf} to the matching
+     * owner's id (the lowest id when several match); otherwise {@code possibleDuplicate} is set
+     * {@code false} and {@code possibleDuplicateOf} left unset. In particular, two owners with the same
+     * last name and postcode but different telephones are no longer a hard duplicate and surface here
+     * as a soft match.
      *
      * <p>A declared household member ({@code sharesHousehold} set) is never a suspected duplicate: it
      * deliberately joins an existing household, so it is left unflagged.
@@ -463,17 +466,19 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setPossibleDuplicateOf(null);
             return;
         }
-        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
-        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
+        String identityKey = Owner.identityKey(
+            owner.getTelephone(), owner.getEmail(), owner.getLastName());
+        String soundex = Owner.soundex(owner.getLastName());
+        String postcode = owner.getPostcode();
         Integer match = null;
-        if (householdId != null) {
+        if (soundex != null && !soundex.isEmpty() && postcode != null) {
             match = ownerRepository.findAll().stream()
                 .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
                 .filter(existing -> !existing.isDeleted())
-                .filter(existing -> householdId.equals(
-                    Owner.householdId(existing.getLastName(), existing.getPostcode())))
-                .filter(existing -> !Objects.equals(normalizedTelephone,
-                    Owner.normalizeTelephone(existing.getTelephone())))
+                .filter(existing -> !identityKey.equals(Owner.identityKey(
+                    existing.getTelephone(), existing.getEmail(), existing.getLastName())))
+                .filter(existing -> soundex.equals(Owner.soundex(existing.getLastName())))
+                .filter(existing -> postcode.equals(existing.getPostcode()))
                 .map(Owner::getId)
                 .filter(Objects::nonNull)
                 .min(Integer::compareTo)
@@ -497,31 +502,29 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Enforce that no <em>other</em> owner already shares this owner's derived identity, throwing
-     * {@link DuplicateIdentityException} if one does. This single check consolidates the former
-     * separate telephone, email and household duplicate checks into the one {@code identityKey}
-     * (normalized telephone, normalized email (or empty) and household id, see
-     * {@link Owner#identityKey(String, String, String, String)}).
+     * {@link DuplicateIdentityException} if one does. Duplicate detection is now the single
+     * {@code identityKey}: the SHA-256 hex over the normalized telephone, lower-cased email and the
+     * Soundex of the last name (see {@link Owner#identityKey(String, String, String)}). Two owners
+     * are a hard duplicate exactly when their whole identity keys are equal.
      *
-     * <p>Because the telephone is part of the key, two owners can only ever collide on the whole
-     * key when their normalized telephones already match; the normalized telephone is therefore the
-     * decisive component and is what this check compares. Consequently two members of the same
-     * household with different telephones have different identity keys and are both allowed, while
-     * an owner reusing an existing normalized telephone is rejected. The owner being saved is
-     * excluded by id so updating an owner in place never conflicts with itself.
+     * <p>Because the telephone is part of the key, two members of the same household (same last name
+     * and postcode) with different telephones have different identity keys and are both allowed —
+     * they surface instead as a soft match (see {@link #assignPossibleDuplicate(Owner, boolean)}).
+     * The email-domain blocklist is applied first (see {@link #assertEmailDomainAllowed(Owner)}), and
+     * soft-deleted owners are ignored. The owner being saved is excluded by id so updating an owner in
+     * place never conflicts with itself.
      */
     private void assertIdentityIsUnique(Owner owner) {
-        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
-        if (normalizedTelephone == null) {
-            return;
-        }
+        String identityKey = Owner.identityKey(
+            owner.getTelephone(), owner.getEmail(), owner.getLastName());
         boolean duplicate = ownerRepository.findAll().stream()
             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
             .filter(existing -> !existing.isDeleted())
-            .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
-            .anyMatch(normalizedTelephone::equals);
+            .map(existing -> Owner.identityKey(
+                existing.getTelephone(), existing.getEmail(), existing.getLastName()))
+            .anyMatch(identityKey::equals);
         if (duplicate) {
-            throw new DuplicateIdentityException(Owner.identityKey(
-                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
+            throw new DuplicateIdentityException(identityKey);
         }
     }
 

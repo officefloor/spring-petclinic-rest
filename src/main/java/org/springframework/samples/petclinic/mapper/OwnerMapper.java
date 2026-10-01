@@ -188,15 +188,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's identity key, the single derived value consolidating the telephone, email
-     * and household duplicate checks (see
-     * {@link Owner#identityKey(String, String, String, String)}).
+     * Compute the owner's identity key, the single derived value through which duplicate detection
+     * is expressed: the SHA-256 hex over the normalized telephone, lower-cased email and the Soundex
+     * of the last name (see {@link Owner#identityKey(String, String, String)}).
      */
     default String formatIdentityKey(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode());
+        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
