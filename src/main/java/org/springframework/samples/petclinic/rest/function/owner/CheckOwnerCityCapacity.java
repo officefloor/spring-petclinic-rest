@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Runs after {@link CheckOwnerIdentityUnique} and before {@link BuildOwner}. A city is at
  * capacity once it already contains 50 or more owners; the 51st owner in that city is refused.
- * The city is matched exactly, consistent with {@link AssignOwnerCustomerCode}'s per-city
- * sequence. A match throws {@link OwnerCityAtCapacityException}, handled as a 409 Conflict.
+ * The city is matched exactly. A match throws {@link OwnerCityAtCapacityException}, handled as a
+ * 409 Conflict.
  */
 public class CheckOwnerCityCapacity {
 
@@ -20,7 +20,10 @@ public class CheckOwnerCityCapacity {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerCityAtCapacityException {
         String city = request.getCity();
-        if (OwnerCity.countOwnersInCity(ownerRepository, city) >= CITY_CAPACITY) {
+        long ownersInCity = ownerRepository.findAll().stream()
+                .filter(existing -> city.equals(existing.getCity()))
+                .count();
+        if (ownersInCity >= CITY_CAPACITY) {
             throw new OwnerCityAtCapacityException(city);
         }
     }

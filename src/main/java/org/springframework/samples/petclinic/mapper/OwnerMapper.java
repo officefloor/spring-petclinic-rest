@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -53,7 +54,10 @@ public interface OwnerMapper {
 
     @Named("locality")
     default String locality(Owner owner) {
-        return OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+        // The locality is the REGION segment of the owner's customerCode (the region-and-hash
+        // identity), falling back to the city/postcode table for any owner without a code.
+        String region = OwnerCustomerCode.region(owner.getCustomerCode());
+        return region != null ? region : OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
     }
 
     @Named("contactPreference")
