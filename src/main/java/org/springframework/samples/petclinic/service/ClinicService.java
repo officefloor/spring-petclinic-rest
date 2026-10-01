@@ -68,6 +68,20 @@ public interface ClinicService {
 	 * @return whether the normalized telephone is already in use by an owner
 	 */
 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+
+	/**
+	 * Returns {@code true} if another owner already has both the given last name and address. The
+	 * last name and address are compared case-insensitively with runs of whitespace collapsed to a
+	 * single space (and surrounding whitespace trimmed), so differently cased or spaced but
+	 * equivalent values collide. Enforces the "one household per last name + address" invariant on
+	 * owner creation.
+	 *
+	 * @param lastName the last name to look for
+	 * @param address the address to look for
+	 * @return whether an existing owner shares the same normalized last name and address
+	 */
+	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
+
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

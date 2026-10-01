@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -264,6 +265,31 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll().stream()
             .map(owner -> normalizeTelephone(owner.getTelephone()))
             .anyMatch(normalized::equals);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
+        String normalizedLastName = normalizeHouseholdValue(lastName);
+        String normalizedAddress = normalizeHouseholdValue(address);
+        if (normalizedLastName.isEmpty() || normalizedAddress.isEmpty()) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(owner -> normalizedLastName.equals(normalizeHouseholdValue(owner.getLastName()))
+                && normalizedAddress.equals(normalizeHouseholdValue(owner.getAddress())));
+    }
+
+    /**
+     * Normalizes a household field (last name or address) for duplicate comparison by trimming,
+     * collapsing runs of whitespace to a single space and lower-casing, so differently cased or
+     * spaced but equivalent values compare equal.
+     */
+    private static String normalizeHouseholdValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
