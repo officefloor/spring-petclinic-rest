@@ -4,9 +4,17 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
+/**
+ * Soft-delete step of {@code DELETE /api/owners/{ownerId}}. Rather than removing the row, it flags the
+ * loaded owner {@code deleted} and saves it, so the record is retained and {@code GET /api/owners/{id}}
+ * still returns the owner with {@code deleted} true. Deleted owners are then ignored by the
+ * {@code POST /api/owners} duplicate/identity checks (see {@link CheckOwnerIdentityUnique} and
+ * {@link CheckOwnerHouseholdUnique}).
+ */
 public class DeleteOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 }
