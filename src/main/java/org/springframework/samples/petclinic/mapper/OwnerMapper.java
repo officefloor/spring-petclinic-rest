@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit
 import org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -38,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "ageBand")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "fiscalYear")
+    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "ownerSegment")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("fiscalYear")
@@ -58,6 +60,11 @@ public interface OwnerMapper {
     @Named("ageBand")
     default OwnerDto.AgeBandEnum ageBand(Owner owner) {
         return OwnerAgeBand.ageBand(owner);
+    }
+
+    @Named("ownerSegment")
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        return OwnerSegment.segment(owner.getMembershipLevel(), locality(owner));
     }
 
     @Named("selfLink")

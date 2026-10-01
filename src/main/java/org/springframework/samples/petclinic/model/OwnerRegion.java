@@ -41,6 +41,15 @@ public final class OwnerRegion {
     }
 
     /**
+     * Whether {@code region} is one of the fixed known regions (NSW, VIC, QLD) rather than
+     * {@link #UNKNOWN} or any other value. Backed by the same canonical tables as the rest of
+     * this class, so callers never need to re-list the region vocabulary.
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_POSTCODES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for {@code region} from the fixed region-to-timezone table
      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
      * {@code null} when the region (e.g. {@link #UNKNOWN}) has no mapping.
