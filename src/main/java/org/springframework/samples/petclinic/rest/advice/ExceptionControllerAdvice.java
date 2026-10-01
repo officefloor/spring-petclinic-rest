@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.util.InvalidPostcodeException;
+import org.springframework.samples.petclinic.util.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.util.InvalidTelephoneException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -156,6 +157,24 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
         logger.debug("Invalid postcode at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidRegistrationDateException} thrown when a supplied registration date is
+     * later than the server's current date, returning a 400 Bad Request so a future-dated
+     * registration is rejected rather than surfacing as an unexpected 500.
+     *
+     * @param e The {@link InvalidRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidRegistrationDateException(InvalidRegistrationDateException e, HttpServletRequest request) {
+        logger.debug("Invalid registration date at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         return ResponseEntity.status(status).body(detail);

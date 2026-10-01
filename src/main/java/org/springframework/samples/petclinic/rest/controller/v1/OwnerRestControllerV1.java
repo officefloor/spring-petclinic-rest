@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
+import org.springframework.samples.petclinic.util.RegistrationDateValidator;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -109,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
+        RegistrationDateValidator.validate(owner.getRegistrationDate());
         if (this.clinicService.isDailyRegistrationAtCapacity()) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
