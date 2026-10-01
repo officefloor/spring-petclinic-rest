@@ -27,6 +27,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -538,15 +539,18 @@ public class Owner extends Person {
 
     /**
      * Build an owner's {@code membershipLevel}, the derived numeric level assigned on create. The
-     * value starts at 1, gains 1 when an email is present and gains 1 when {@code namesakeCount} is 0,
-     * and is capped at 3 (level 4 is reserved for tenure). The value is deterministic in those two
-     * fields.
+     * value starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
+     * and gains 1 when the owner's tenure is more than 365 days (the tenure being the number of days
+     * from {@code registrationDate} to today). Level 4 therefore requires tenure of more than 365
+     * days: because a newly created owner has zero tenure, a new owner never exceeds level 3. The
+     * value is capped at 4.
      *
      * @param namesakeCount the owner's namesake count, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
-     * @return the membership level, an integer from 1 to 3
+     * @param registrationDate the owner's registration date, possibly {@code null}
+     * @return the membership level, an integer from 1 to 4
      */
-    public static int membershipLevel(Integer namesakeCount, String email) {
+    public static int membershipLevel(Integer namesakeCount, String email, LocalDate registrationDate) {
         int level = 1;
         if (email != null && !email.isEmpty()) {
             level++;
@@ -554,7 +558,11 @@ public class Owner extends Person {
         if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        if (registrationDate != null
+            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**

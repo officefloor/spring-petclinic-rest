@@ -78,14 +78,14 @@ public interface OwnerMapper {
 
     /**
      * Compute the owner's membership level, the derived numeric level based on the owner's namesake
-     * count and whether an email is present
-     * (see {@link Owner#membershipLevel(Integer, String)}).
+     * count, whether an email is present and the owner's tenure since registration
+     * (see {@link Owner#membershipLevel(Integer, String, java.time.LocalDate)}).
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail());
+        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate());
     }
 
     /**
