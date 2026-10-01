@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -10,12 +8,12 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdDupli
 
 /**
  * Runs after {@link ValidateOwner} and before {@link BuildOwner}. Rejects the create with a 409 via
- * {@link OwnerHouseholdDuplicateException} when another owner already has the same lastName and the
- * same address. Both fields are compared case-insensitively with surrounding whitespace stripped and
- * internal whitespace runs collapsed to a single space.
+ * {@link OwnerHouseholdDuplicateException} when another owner already belongs to the same household
+ * (same lastName and address — see {@link OwnerHousehold} for how that is compared).
  *
  * <p>The request may opt out of this rule by setting {@code sharesHousehold} true, which permits
- * creating a second owner at the same household (same name and address).
+ * creating a second owner in the same household; {@link AssignHousehold} then gives the new owner the
+ * existing household's identifier.
  */
 public class CheckOwnerHouseholdUnique {
 
@@ -24,21 +22,11 @@ public class CheckOwnerHouseholdUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // opted in to sharing a household; skip the duplicate check
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        OwnerHousehold household = OwnerHousehold.of(request);
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (household.equals(OwnerHousehold.of(existing))) {
                 throw new OwnerHouseholdDuplicateException(request.getLastName(), request.getAddress());
             }
         }
-    }
-
-    /** Lower-cases and collapses whitespace so comparison ignores case and incidental spacing. */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
