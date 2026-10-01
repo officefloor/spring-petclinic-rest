@@ -96,6 +96,19 @@ public final class Regions {
     }
 
     /**
+     * Whether {@code region} is a known, pinned region (NSW, VIC or QLD) rather than the
+     * {@link #UNKNOWN} sentinel or some other value. Backed by the same {@link #REGION_TIMEZONE}
+     * table the other region facts are derived from, so the set of known regions stays single-sourced
+     * here and cannot drift from a copy held elsewhere.
+     *
+     * @param region the canonical region code (e.g. an owner's {@code locality}); may be {@code null}
+     * @return {@code true} when {@code region} is one of the pinned regions
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_TIMEZONE.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for a region, taken from the pinned region-to-timezone table
      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
      *
