@@ -234,7 +234,16 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        saveOwner(owner, false);
+    }
+
+    @Override
+    @Transactional
+    public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         assertTelephoneIsUnique(owner);
+        if (owner.isNew() && !sharesHousehold) {
+            assertHouseholdIsUnique(owner);
+        }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -273,6 +282,28 @@ public class ClinicServiceImpl implements ClinicService {
             .anyMatch(normalized::equals);
         if (duplicate) {
             throw new DuplicateTelephoneException(normalized);
+        }
+    }
+
+    /**
+     * Enforce that no <em>other</em> owner already shares this owner's household, i.e. has the same
+     * last name and the same address compared case-insensitively with collapsed whitespace (see
+     * {@link Owner#normalizeHousehold(String)}), throwing {@link DuplicateHouseholdException} if one
+     * does. The owner being saved is excluded by id. Callers skip this check when the request opted
+     * in with {@code sharesHousehold}.
+     */
+    private void assertHouseholdIsUnique(Owner owner) {
+        String lastName = Owner.normalizeHousehold(owner.getLastName());
+        String address = Owner.normalizeHousehold(owner.getAddress());
+        if (lastName == null || address == null) {
+            return;
+        }
+        boolean duplicate = ownerRepository.findAll().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .anyMatch(existing -> lastName.equals(Owner.normalizeHousehold(existing.getLastName()))
+                && address.equals(Owner.normalizeHousehold(existing.getAddress())));
+        if (duplicate) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
     }
 

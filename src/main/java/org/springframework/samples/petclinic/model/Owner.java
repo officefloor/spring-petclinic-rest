@@ -172,6 +172,22 @@ public class Owner extends Person {
         return "+" + digits;
     }
 
+    /**
+     * Normalize a household field (such as last name or address) to its canonical form for
+     * duplicate-household comparison. Leading and trailing whitespace is trimmed, internal runs
+     * of whitespace are collapsed to a single space, and the result is lower-cased, so inputs
+     * that differ only in letter case or spacing are treated as the same value.
+     *
+     * @param value the raw field value, possibly {@code null}
+     * @return the normalized form, or {@code null} if the input was {@code null}
+     */
+    public static String normalizeHousehold(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
