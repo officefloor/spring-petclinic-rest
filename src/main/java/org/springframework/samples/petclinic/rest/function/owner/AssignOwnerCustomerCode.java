@@ -15,9 +15,7 @@ public class AssignOwnerCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String city = owner.getCity();
-        int sequence = (int) ownerRepository.findAll().stream()
-                .filter(existing -> city.equals(existing.getCity()))
-                .count() + 1;
+        int sequence = (int) OwnerCity.countOwnersInCity(ownerRepository, city) + 1;
         owner.setCustomerCode(String.format("%s-%s-%04d",
                 first3Upper(city), first3Upper(owner.getLastName()), sequence));
     }
