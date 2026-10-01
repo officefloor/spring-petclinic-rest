@@ -1,0 +1,48 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 2b7930c32..a24a2f802 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -34,6 +34,7 @@ import java.util.List;
+ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Mostly used as a facade for all Petclinic controllers
+@@ -361,11 +362,33 @@ public class ClinicServiceImpl implements ClinicService {
+      * is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no region can be
+      * derived) and {@code HASH8} is the first eight upper-cased hex characters of SHA-256 over the
+      * owner's normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The
+-     * value is deterministic in those fields and carries no sequence number (see
++     * base value is deterministic in those fields and carries no sequence number (see
+      * {@link Owner#customerCode(String, String, String)}).
++     *
++     * <p>When that computed code collides with an existing owner's {@code customerCode}, this appends
++     * {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it unique (e.g. a second owner
++     * computing {@code 'NSW-1A2B3C4D'} is stored as {@code 'NSW-1A2B3C4D-2'}), so distinct owners always
++     * receive distinct customer codes. A {@code null} computed code (missing telephone or last name) is
++     * returned unchanged.
+      */
+     private String generateCustomerCode(Owner owner) {
+-        return Owner.customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
++        String base = Owner.customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
++        if (base == null) {
++            return null;
++        }
++        Set<String> existing = ownerRepository.findAll().stream()
++            .filter(other -> !Objects.equals(other.getId(), owner.getId()))
++            .map(Owner::getCustomerCode)
++            .filter(Objects::nonNull)
++            .collect(Collectors.toSet());
++        if (!existing.contains(base)) {
++            return base;
++        }
++        int n = 2;
++        while (existing.contains(base + "-" + n)) {
++            n++;
++        }
++        return base + "-" + n;
+     }
+ 
+     /**
