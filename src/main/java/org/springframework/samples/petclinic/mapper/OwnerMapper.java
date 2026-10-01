@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -139,6 +140,18 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.checkDigit(owner.getCustomerCode());
+    }
+
+    /**
+     * Compute the owner's age band, derived from the birth date against the registration date
+     * (see {@link Owner#ageBand(java.time.LocalDate, java.time.LocalDate)}). Returns {@code null}
+     * when no birth date is set, so the field is omitted from the response.
+     */
+    default String formatAgeBand(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.ageBand(owner.getBirthDate(), owner.getRegistrationDate());
     }
 
     Owner toOwner(OwnerDto ownerDto);

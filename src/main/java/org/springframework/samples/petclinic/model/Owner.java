@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -58,6 +59,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -112,6 +116,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -589,6 +601,32 @@ public class Owner extends Person {
      */
     public static String contactPreference(String email) {
         return (email != null && !email.isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derive an owner's {@code ageBand}, the band the owner's age falls into on the registration
+     * date. The age in whole years is the number of completed years between {@code birthDate} and
+     * {@code registrationDate}, and the band is {@code 'MINOR'} when under 18, {@code 'ADULT'} when
+     * 18 to 64 inclusive, and {@code 'SENIOR'} when 65 or older. The value is deterministic in those
+     * two fields and is only defined when both are present.
+     *
+     * @param birthDate the owner's date of birth, possibly {@code null}
+     * @param registrationDate the owner's registration date, possibly {@code null}
+     * @return {@code 'MINOR'}, {@code 'ADULT'} or {@code 'SENIOR'}, or {@code null} when either date
+     *     is {@code null}
+     */
+    public static String ageBand(LocalDate birthDate, LocalDate registrationDate) {
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     protected Set<Pet> getPetsInternal() {
