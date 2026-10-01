@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5ed9fcf6e..a5a6dcef0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
++    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -67,6 +68,17 @@ public interface OwnerMapper {
+         return Owner.membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate());
+     }
+ 
++    /**
++     * Compute the owner's membership tier, the derived tier based on the owner's namesake count and
++     * whether an email is present (see {@link Owner#membershipTier(Integer, String)}).
++     */
++    default String formatMembershipTier(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 040a63c53..f7e36cc40 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -294,6 +294,21 @@ public class Owner extends Person {
+         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+     }
+ 
++    /**
++     * Build an owner's {@code membershipTier}, the derived tier based on the owner's namesake count
++     * and whether an email is present. The value is {@code 'SILVER'} when {@code namesakeCount} is 0
++     * and an email is present, and {@code 'BRONZE'} otherwise. The value is deterministic in those
++     * two fields.
++     *
++     * @param namesakeCount the owner's namesake count, possibly {@code null}
++     * @param email the owner's email, possibly {@code null}
++     * @return {@code 'SILVER'} or {@code 'BRONZE'}
++     */
++    public static String membershipTier(Integer namesakeCount, String email) {
++        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isEmpty();
++        return silver ? "SILVER" : "BRONZE";
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d4b154a66..b7df34c57 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2142,6 +2142,14 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: >-
++                A derived membership tier: 'SILVER' when namesakeCount is 0 and
++                an email is present, otherwise 'BRONZE'.
++              type: string
++              example: 'SILVER'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
