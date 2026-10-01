@@ -18,6 +18,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  * treated as blank — the DTO's {@code @Size(min = 1)} alone would accept it — so this check, not bean
  * validation, is the authoritative implementation of the required-field rule.
  *
+ * <p>The address is normalized (see {@link OwnerAddress}) before the required-field check, so an
+ * address that is blank once whitespace is collapsed is rejected as missing. The normalized value is
+ * written back onto the body so the normalized, abbreviation-expanded address is what gets stored,
+ * returned and compared for household matching.
+ *
  * <p>The telephone is then converted to E.164 form (see {@link OwnerTelephone#toE164(String)}); a
  * value that cannot form a valid E.164 number is rejected with a 400 via
  * {@link OwnerTelephoneInvalidException}. The E.164 value is written back onto the body so it is what
@@ -44,7 +49,8 @@ public class ValidateOwner {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        String address = OwnerAddress.normalize(request.getAddress());
+        if (address.isEmpty()) {
             missing.add("address");
         }
         if (isBlank(request.getCity())) {
@@ -56,6 +62,7 @@ public class ValidateOwner {
         if (!missing.isEmpty()) {
             throw new OwnerFieldsMissingException(missing);
         }
+        request.setAddress(address);
         String e164 = OwnerTelephone.toE164(request.getTelephone());
         if (e164 == null) {
             throw new OwnerTelephoneInvalidException(request.getTelephone());

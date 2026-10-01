@@ -8,7 +8,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * The identity of an owner's household: its {@code lastName} and {@code address} compared
  * case-insensitively, with surrounding whitespace stripped and internal runs collapsed to a single
- * space. Two owners belong to the same household when their {@code OwnerHousehold} values are equal.
+ * space. The {@code address} is additionally run through the shared {@link OwnerAddress} normalization
+ * (upper-casing and expanding abbreviations), so a stored normalized address and a raw one match.
+ * Two owners belong to the same household when their {@code OwnerHousehold} values are equal.
  *
  * <p>This is the single definition of "same household" shared by {@link CheckOwnerHouseholdUnique}
  * (which iterates to reject a second owner joining a household) and {@link AssignHousehold} (which
@@ -19,7 +21,7 @@ public record OwnerHousehold(String lastName, String address) {
 
     public OwnerHousehold {
         lastName = normalize(lastName);
-        address = normalize(address);
+        address = OwnerAddress.normalize(address);
     }
 
     public static OwnerHousehold of(Owner owner) {
