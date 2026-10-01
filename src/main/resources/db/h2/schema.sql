@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   first_name VARCHAR(30) NOT NULL,
   last_name VARCHAR(30) NOT NULL,
+  title VARCHAR(3),
   address VARCHAR(255) NOT NULL,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),

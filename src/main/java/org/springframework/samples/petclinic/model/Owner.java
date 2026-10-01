@@ -41,6 +41,10 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    @Pattern(regexp = "^(MR|MRS|MS|DR)$", message = "Title must be one of MR, MRS, MS or DR")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -93,6 +97,14 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
     public String getAddress() {
         return this.address;
@@ -857,6 +869,23 @@ public class Owner extends Person {
      */
     public static String contactPreference(String email) {
         return (email != null && !email.isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Compose an owner's {@code salutation} from the optional honorific title and the last name.
+     * When a title is present the result is the title and the last name separated by a single space
+     * (e.g. {@code 'DR Franklin'}); when no title is given the result is just the last name. The
+     * value is deterministic in those two fields.
+     *
+     * @param title the owner's honorific title, possibly {@code null} or blank
+     * @param lastName the owner's last name, possibly {@code null}
+     * @return the composed salutation
+     */
+    public static String salutation(String title, String lastName) {
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     /**

@@ -20,6 +20,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+    @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
@@ -42,6 +43,17 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Compose the owner's salutation from the optional title and the last name
+     * (see {@link Owner#salutation(String, String)}).
+     */
+    default String formatSalutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.salutation(owner.getTitle(), owner.getLastName());
     }
 
     /**
