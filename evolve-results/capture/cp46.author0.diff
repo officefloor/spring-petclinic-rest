@@ -1,0 +1,183 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 15e1ac1f6..619423899 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,6 +35,7 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
++    @Mapping(target = "deleted", expression = "java(formatDeleted(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -218,6 +219,17 @@ public interface OwnerMapper {
+         return Owner.telephoneDisplay(owner.getTelephone());
+     }
+ 
++    /**
++     * Resolve the owner's soft-delete flag, treating a missing (null) stored value as {@code false}
++     * so the response always carries an explicit boolean (see {@link Owner#isDeleted()}).
++     */
++    default Boolean formatDeleted(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return owner.isDeleted();
++    }
++
+     @Mapping(target = "householdCount", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e7f98271f..feaee23cb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -95,6 +95,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted = false;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -241,6 +244,25 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
++    /**
++     * Whether this owner has been soft-deleted. A soft-deleted owner keeps its row (so it is still
++     * readable via GET) but is treated as absent by the create-time duplicate and identity checks. A
++     * {@code null} stored value is read as not deleted.
++     *
++     * @return {@code true} if the owner is flagged deleted, {@code false} otherwise
++     */
++    public boolean isDeleted() {
++        return Boolean.TRUE.equals(this.deleted);
++    }
++
+     /**
+      * Normalize an email to its canonical stored form, which is lower-cased. This is the single
+      * source of truth for how an email is persisted, so inputs that differ only in letter case
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 5d79be31b..b744f57d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -172,7 +172,8 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void deleteOwner(Owner owner) throws DataAccessException {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ 
+     @Override
+@@ -424,6 +425,7 @@ public class ClinicServiceImpl implements ClinicService {
+         if (householdId != null) {
+             match = ownerRepository.findAll().stream()
+                 .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++                .filter(existing -> !existing.isDeleted())
+                 .filter(existing -> householdId.equals(
+                     Owner.householdId(existing.getLastName(), existing.getPostcode())))
+                 .filter(existing -> !Objects.equals(normalizedTelephone,
+@@ -470,6 +472,7 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+         boolean duplicate = ownerRepository.findAll().stream()
+             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> !existing.isDeleted())
+             .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
+             .anyMatch(normalizedTelephone::equals);
+         if (duplicate) {
+@@ -494,6 +497,7 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+         boolean duplicate = ownerRepository.findAll().stream()
+             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> !existing.isDeleted())
+             .map(existing -> Owner.householdId(existing.getLastName(), existing.getPostcode()))
+             .anyMatch(householdId::equals);
+         if (duplicate) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 07bce7277..8d30609b1 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a9c94b521..919102e15 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,7 +54,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e9b13065a..0bc8147ea 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 2e31d6dc8..0715019f3 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 94b1faa03..13ed90f8e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2336,6 +2336,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether the owner has been soft-deleted. DELETE /api/owners/{id}
++                sets this true and retains the record, so the owner is still
++                readable; a newly created owner is false. Deleted owners are
++                ignored by the create endpoint's duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
