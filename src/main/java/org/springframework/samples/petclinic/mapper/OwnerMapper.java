@@ -20,7 +20,23 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's name as {@code 'LastName, FirstName'} from the stored first and
+     * last names, as required by the API's read-only {@code displayName} field.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatDisplayName")
+    default String formatDisplayName(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.getLastName() + ", " + owner.getFirstName();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
