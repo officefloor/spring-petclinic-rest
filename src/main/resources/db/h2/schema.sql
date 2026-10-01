@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
   registration_date DATE,
   customer_code VARCHAR(20),
   namesake_count INTEGER,
-  bulk_signup_warning BOOLEAN
+  bulk_signup_warning BOOLEAN,
+  postcode VARCHAR(4)
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

@@ -68,6 +68,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -133,6 +136,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     /**
@@ -410,6 +421,45 @@ public class Owner extends Person {
      */
     public static String locality(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Fixed region-to-postcode-range table used by {@link #isPostcodeValidForCity(String, String)},
+     * keyed by the canonical region (see {@link #locality(String)}). Each entry is the inclusive
+     * low and high bound of the region's valid 4-digit postcodes
+     * ({@code NSW} 2000-2099, {@code VIC} 3000-3099, {@code QLD} 4000-4099). A region not in this
+     * table (including {@code 'UNKNOWN'}) places no range constraint.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Check whether a postcode is valid for an owner's city. Postcode is optional, so a
+     * {@code null} or empty postcode is always valid. When present it must be exactly four
+     * digits, and when the city's region (see {@link #locality(String)}) has a known postcode
+     * range the value must fall within that inclusive range. A city with no known region (whose
+     * locality is {@code 'UNKNOWN'}) accepts any four-digit postcode. This is the single source of
+     * truth for postcode validity, shared by the DTO validation and any persistence path.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @param city the owner's city, possibly {@code null}
+     * @return {@code true} if the postcode is absent or valid for the city, {@code false} otherwise
+     */
+    public static boolean isPostcodeValidForCity(String postcode, String city) {
+        if (postcode == null || postcode.isEmpty()) {
+            return true;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(locality(city));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /**
