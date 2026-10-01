@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerEmailUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerEmailUnique.java
+new file mode 100644
+index 000000000..ac33c75f8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerEmailUnique.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Rejects a create request whose lower-cased email is already used by any other owner.
++ *
++ * <p>Runs after {@link ValidateOwnerFields} and before {@link BuildOwner}. Email is optional, so a
++ * request without one is left alone. Both the request and every stored owner's email are reduced to
++ * lower case through the shared {@link OwnerEmail#normalize} rule before comparison, so differently
++ * cased addresses that are the same still collide. A match throws {@link OwnerEmailInUseException},
++ * handled as a 409 Conflict.
++ */
++public class CheckOwnerEmailUnique {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws OwnerEmailInUseException {
++        String email = OwnerEmail.normalize(request.getEmail());
++        if (email == null) {
++            return;
++        }
++        for (Owner existing : ownerRepository.findAll()) {
++            if (email.equals(OwnerEmail.normalize(existing.getEmail()))) {
++                throw new OwnerEmailInUseException(request.getEmail());
++            }
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseException.java
+new file mode 100644
+index 000000000..761a7c0dc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseException.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Thrown by {@link CheckOwnerEmailUnique} when a create request carries a lower-cased email that is
++ * already used by another owner. Handled globally by {@code OwnerEmailInUseExceptionHandler}, which
++ * responds 409 Conflict.
++ */
++public class OwnerEmailInUseException extends Exception {
++
++    private final String email;
++
++    public OwnerEmailInUseException(String email) {
++        super("Email already in use: " + email);
++        this.email = email;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseExceptionHandler.java
+new file mode 100644
+index 000000000..52aa7b5c9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmailInUseExceptionHandler.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 409 Conflict when a create request's lower-cased email is already used by another owner.
++ */
++public class OwnerEmailInUseExceptionHandler {
++
++    public void handle(@Parameter OwnerEmailInUseException ex,
++            ObjectResponse<ResponseEntity<String>> response) {
++        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerEmailInUseException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerEmailInUseException.yml
+new file mode 100644
+index 000000000..148da9716
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.OwnerEmailInUseException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.function.owner.OwnerEmailInUseExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f576a122d..33576b47d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -8,6 +8,11 @@ validate:
+ checkTelephone:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerTelephoneUnique
+   govern: [ transaction ]
++  next: checkEmail
++
++checkEmail:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerEmailUnique
++  govern: [ transaction ]
+   next: checkHousehold
+ 
+ checkHousehold:
