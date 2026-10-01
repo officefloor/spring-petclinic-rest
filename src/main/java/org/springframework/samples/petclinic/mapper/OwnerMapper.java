@@ -7,6 +7,7 @@ import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -26,11 +27,17 @@ public interface OwnerMapper {
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
+    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("identityKey")
     default String identityKey(Owner owner) {
         return OwnerIdentity.identityKey(owner);
+    }
+
+    @Named("checkDigit")
+    default Integer checkDigit(Owner owner) {
+        return OwnerCheckDigit.checkDigit(owner);
     }
 
     @Named("displayName")
