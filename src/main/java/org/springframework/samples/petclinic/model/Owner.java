@@ -1087,6 +1087,9 @@ public class Owner extends Person {
      * @return the matching region, or {@code 'UNKNOWN'} when the city is not in the table
      */
     private static String regionForCity(String city) {
+        if (city == null) {
+            return "UNKNOWN";
+        }
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
