@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 56aafc1f6..637b186cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -198,6 +198,19 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * Resolve this owner's current <em>primary identifier</em>: the single external-facing identity an
++     * owner is known by. Today that is the {@link #getCustomerCode() customerCode}; when the customer
++     * code is later unified into a {@code memberId}, this becomes the sole place that choice is made, so
++     * every consumer (such as the {@code OWNER_CREATED} audit event) automatically carries the new
++     * identifier without further change.
++     *
++     * @return the owner's current primary identifier, or {@code null} when none has been assigned
++     */
++    public String primaryIdentifier() {
++        return this.customerCode;
++    }
++
+     public Integer getNamesakeCount() {
+         return this.namesakeCount;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index f27e918b8..0f1ede003 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -52,6 +52,13 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence number stamped onto each {@link OwnerCreatedEvent}. Shared
++     * across all creates so the emitted events form a strictly ordered, gap-free series.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong OWNER_CREATED_SEQ =
++        new java.util.concurrent.atomic.AtomicLong();
++
+     /**
+      * Maximum number of owners allowed in a single city. Creating an owner in a city that already
+      * contains this many owners is rejected with {@link CityAtCapacityException}.
+@@ -334,6 +341,9 @@ public class ClinicServiceImpl implements ClinicService {
+                     + "membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 membershipLevel, membershipNumber);
++            OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQ.incrementAndGet(),
++                owner.getId(), owner.primaryIdentifier(), membershipLevel);
++            AUDIT.info(event.toJson());
+         }
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..361e5b22c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+@@ -0,0 +1,84 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Immutable structured audit event emitted on the dedicated {@code AUDIT} logger when an owner is
++ * created, alongside the human-readable audit line. It is a JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
++ * monotonically increasing integer across creates.
++ *
++ * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em> (see
++ * {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()}): the customer code
++ * today, and whatever replaces it later (e.g. the unified {@code memberId}), so the event always names
++ * the owner by its live identity without this type changing.
++ *
++ * @param seq a monotonically increasing sequence number across creates
++ * @param ownerId the new owner's id
++ * @param customerCode the owner's current primary identifier
++ * @param membershipLevel the owner's effective membership level
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++
++    /** The fixed {@code event} discriminator carried by every instance. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    /**
++     * Render this event as a compact JSON object. String values are quoted and JSON-escaped; a
++     * {@code null} identifier is rendered as JSON {@code null}.
++     */
++    public String toJson() {
++        return "{\"seq\":" + this.seq
++            + ",\"ownerId\":" + this.ownerId
++            + ",\"customerCode\":" + jsonString(this.customerCode)
++            + ",\"membershipLevel\":" + this.membershipLevel
++            + ",\"event\":" + jsonString(EVENT)
++            + "}";
++    }
++
++    @Override
++    public String toString() {
++        return toJson();
++    }
++
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    }
++                    else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        sb.append('"');
++        return sb.toString();
++    }
++}
