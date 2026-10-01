@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -120,6 +121,22 @@ public interface OwnerMapper {
             return null;
         }
         return LocalityResolver.resolve(owner.getCity());
+    }
+
+    /**
+     * Derives an owner's preferred contact channel, as required by the API's read-only
+     * {@code contactPreference} field: {@code 'EMAIL'} when an email address is present,
+     * otherwise {@code 'PHONE'}.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatContactPreference")
+    default String formatContactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
     }
 
     private static String initial(String name) {
