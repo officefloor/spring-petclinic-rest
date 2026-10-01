@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 690a52383..1d96cfdd1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
++    @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -91,6 +92,17 @@ public interface OwnerMapper {
+         return Owner.locality(owner.getCity());
+     }
+ 
++    /**
++     * Resolve the owner's bulk-signup warning flag, treating a missing (null) stored value as
++     * {@code false} so the response always carries an explicit boolean.
++     */
++    default Boolean formatBulkSignupWarning(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 38acc3cf3..d55047ebe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -124,6 +127,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     /**
+      * Normalize an email to its canonical stored form, which is lower-cased. This is the single
+      * source of truth for how an email is persisted, so inputs that differ only in letter case
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 2bab36af0..4c0f3e3f3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -64,6 +64,13 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     static final int MAX_OWNERS_PER_DAY = 100;
+ 
++    /**
++     * Threshold of owners registered on a single day (counted by {@code registrationDate}) above
++     * which a newly created owner is flagged with {@code bulkSignupWarning}. When more than this
++     * many owners have already been created on that day, the new owner's warning is {@code true}.
++     */
++    static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     private final PetRepository petRepository;
+     private final VetRepository vetRepository;
+     private final OwnerRepository ownerRepository;
+@@ -276,6 +283,7 @@ public class ClinicServiceImpl implements ClinicService {
+         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
+         if (owner.isNew()) {
+             assertDailyRegistrationLimit(owner);
++            owner.setBulkSignupWarning(computeBulkSignupWarning(owner));
+         }
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+             owner.setCustomerCode(generateCustomerCode(owner));
+@@ -437,6 +445,25 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Compute whether a newly created owner should carry a bulk-signup warning, i.e. whether more
++     * than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created on this owner's
++     * registration day (counted by {@code registrationDate}, excluding the owner being saved). Like
++     * the daily-limit rule this reflects the state at creation time, so it is computed once and
++     * stored on the owner.
++     */
++    private boolean computeBulkSignupWarning(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return false;
++        }
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++        return count > BULK_SIGNUP_WARNING_THRESHOLD;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8d93bb2fb..48796cb4a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6e617f644..469c6dbb9 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6441f5357..f86922dff 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 7bda5307a..52de1a832 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b9af9a40d..6f0db8a6c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,6 +2159,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                A warning flag set when more than 80 owners have already been
++                created on this owner's registration day. Assigned on create and
++                returned unchanged.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
