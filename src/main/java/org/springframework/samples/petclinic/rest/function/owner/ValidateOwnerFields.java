@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * firstName, lastName, address, city and telephone must be present and non-blank; any that are not
  * are collected and reported together via {@link OwnerFieldsInvalidException}.
  *
- * <p>The telephone is normalized by stripping every non-digit character; it must contain exactly
- * ten digits afterwards. The 10-digit value replaces the submitted one on the republished body, so
- * it is what gets stored and returned. Anything else is rejected as an invalid {@code telephone}.
+ * <p>The telephone is converted to E.164 form (see {@link OwnerTelephone#toE164}). The E.164 value
+ * replaces the submitted one on the republished body, so it is what gets stored and returned. A
+ * number that cannot form valid E.164 is rejected as an invalid {@code telephone}.
  */
 public class ValidateOwnerFields {
 
@@ -40,8 +40,8 @@ public class ValidateOwnerFields {
             errors.add("telephone");
         }
         else {
-            String telephone = OwnerTelephone.normalize(request.getTelephone());
-            if (telephone.length() != 10) {
+            String telephone = OwnerTelephone.toE164(request.getTelephone());
+            if (telephone == null) {
                 errors.add("telephone");
             }
             else {
