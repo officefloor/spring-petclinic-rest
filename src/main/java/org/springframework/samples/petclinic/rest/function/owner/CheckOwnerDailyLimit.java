@@ -3,7 +3,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.LocalDate;
 
 import net.officefloor.plugin.variable.Val;
-import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException;
@@ -25,12 +24,8 @@ public class CheckOwnerDailyLimit {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerDailyLimitException {
         LocalDate businessDay = BusinessDay.effective(request.getRegistrationDate());
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (businessDay.equals(existing.getRegistrationDate())) {
-                count++;
-            }
-        }
+        // The new owner is still unsaved, so there is nothing to exclude from the count.
+        int count = DailyRegistrations.countOn(ownerRepository, businessDay, null);
         if (count >= MAX_OWNERS_PER_DAY) {
             throw new OwnerDailyLimitException(businessDay, count);
         }
