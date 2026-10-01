@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bc7127cd5..5b9d9765d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
+     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "telephoneDisplay")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
++    @Mapping(target = "timezone", source = "owner", qualifiedByName = "timezone")
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "contactPreference")
+     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "identityKey")
+     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "checkDigit")
+@@ -74,6 +75,13 @@ public interface OwnerMapper {
+         return region != null ? region : OwnerRegion.localityOf(owner.getCity(), owner.getPostcode());
+     }
+ 
++    @Named("timezone")
++    default String timezone(Owner owner) {
++        // The timezone is the IANA name for the owner's locality/region, from the fixed
++        // region-to-timezone table; derive the region exactly as locality(owner) does.
++        return OwnerRegion.timezoneOf(locality(owner));
++    }
++
+     @Named("contactPreference")
+     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+         String email = owner.getEmail();
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+index 65f56a1d4..5f230df15 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerRegion.java
+@@ -26,6 +26,12 @@ public final class OwnerRegion {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Fixed region-to-timezone table, as IANA names; any other region has no timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     private OwnerRegion() {
+     }
+ 
+@@ -34,6 +40,15 @@ public final class OwnerRegion {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
++    /**
++     * The IANA timezone name for {@code region} from the fixed region-to-timezone table
++     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
++     * {@code null} when the region (e.g. {@link #UNKNOWN}) has no mapping.
++     */
++    public static String timezoneOf(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++
+     /**
+      * The locality for an owner, preferring the postcode: when {@code postcode} is a 4-digit value
+      * inside a known region's range that region wins, disambiguating cities that share a name.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dd5e96d6c..98f7e55b8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2249,6 +2249,15 @@ components:
+               type: string
+               example: NSW
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived at read time from the owner's locality/region via the
++                fixed region-to-timezone table (NSW -> Australia/Sydney, VIC -> Australia/Melbourne,
++                QLD -> Australia/Brisbane). Absent when the region has no mapping.
++              type: string
++              example: Australia/Sydney
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
