@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RequestBody;
  * step that reads {@code @RequestBody}) and republishes it for {@link BuildOwner}. Each of
  * firstName, lastName, address, city and telephone must be present and non-blank; any that are not
  * are collected and reported together via {@link OwnerFieldsInvalidException}.
+ *
+ * <p>The telephone is normalized by stripping every non-digit character; it must contain exactly
+ * ten digits afterwards. The 10-digit value replaces the submitted one on the republished body, so
+ * it is what gets stored and returned. Anything else is rejected as an invalid {@code telephone}.
  */
 public class ValidateOwnerFields {
 
@@ -34,6 +38,15 @@ public class ValidateOwnerFields {
         }
         if (isBlank(request.getTelephone())) {
             errors.add("telephone");
+        }
+        else {
+            String telephone = request.getTelephone().replaceAll("\\D", "");
+            if (telephone.length() != 10) {
+                errors.add("telephone");
+            }
+            else {
+                request.setTelephone(telephone);
+            }
         }
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
