@@ -15,6 +15,8 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
@@ -42,6 +44,12 @@ import java.util.function.Supplier;
  */
 @Service
 public class ClinicServiceImpl implements ClinicService {
+
+    /**
+     * Dedicated audit logger. Successful owner creates emit a single line here carrying the new
+     * owner's id, customer code and registration date.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
      * Maximum number of owners allowed in a single city. Creating an owner in a city that already
@@ -254,6 +262,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        boolean isCreate = owner.isNew();
         assertTelephoneIsUnique(owner);
         if (owner.isNew()) {
             assertCityHasCapacity(owner);
@@ -275,6 +284,10 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner));
         }
         ownerRepository.save(owner);
+        if (isCreate) {
+            AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        }
     }
 
     /**
