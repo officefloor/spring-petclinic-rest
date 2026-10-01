@@ -68,9 +68,6 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
-    @Column(name = "household_size")
-    private Integer householdSize;
-
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -136,14 +133,6 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
-    }
-
-    public Integer getHouseholdSize() {
-        return this.householdSize;
-    }
-
-    public void setHouseholdSize(Integer householdSize) {
-        this.householdSize = householdSize;
     }
 
     /**
@@ -317,23 +306,24 @@ public class Owner extends Person {
     }
 
     /**
-     * Build an owner's {@code membershipTier}, the derived tier. The value is {@code 'GOLD'} when the
-     * owner's household had 3 or more members (see {@link #householdId(String, String)}) at the time
-     * the owner was created, as captured by {@code householdSize}. Otherwise the value is
-     * {@code 'SILVER'} when {@code namesakeCount} is 0 and an email is present, and {@code 'BRONZE'}
-     * in every other case. The value is deterministic in those three fields.
+     * Build an owner's {@code membershipLevel}, the derived numeric level assigned on create. The
+     * value starts at 1, gains 1 when an email is present and gains 1 when {@code namesakeCount} is 0,
+     * and is capped at 3 (level 4 is reserved for tenure). The value is deterministic in those two
+     * fields.
      *
      * @param namesakeCount the owner's namesake count, possibly {@code null}
      * @param email the owner's email, possibly {@code null}
-     * @param householdSize the number of members in the owner's household at creation, possibly {@code null}
-     * @return {@code 'GOLD'}, {@code 'SILVER'} or {@code 'BRONZE'}
+     * @return the membership level, an integer from 1 to 3
      */
-    public static String membershipTier(Integer namesakeCount, String email, Integer householdSize) {
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
+    public static int membershipLevel(Integer namesakeCount, String email) {
+        int level = 1;
+        if (email != null && !email.isEmpty()) {
+            level++;
         }
-        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isEmpty();
-        return silver ? "SILVER" : "BRONZE";
+        if (namesakeCount != null && namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**

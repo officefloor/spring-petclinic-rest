@@ -23,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -71,15 +71,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's membership tier, the derived tier based on the owner's household size at
-     * creation, namesake count and whether an email is present
-     * (see {@link Owner#membershipTier(Integer, String, Integer)}).
+     * Compute the owner's membership level, the derived numeric level based on the owner's namesake
+     * count and whether an email is present
+     * (see {@link Owner#membershipLevel(Integer, String)}).
      */
-    default String formatMembershipTier(Owner owner) {
+    default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize());
+        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail());
     }
 
     /**
