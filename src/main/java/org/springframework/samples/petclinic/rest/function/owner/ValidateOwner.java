@@ -65,7 +65,17 @@ public class ValidateOwner {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        String address = OwnerAddress.normalize(request.getAddress());
+        // Address may be supplied in structured form (addressLine1 [+ addressLine2]) or as the flat
+        // 'address' field. Structured fields take precedence when present. Normalization (see
+        // OwnerAddress) applies to whichever fields are supplied; the composed, normalized value is
+        // written back onto the flat 'address' so it is what gets stored, returned and read by
+        // everything downstream.
+        String addressLine1 = OwnerAddress.normalize(request.getAddressLine1());
+        String addressLine2 = OwnerAddress.normalize(request.getAddressLine2());
+        boolean structured = !addressLine1.isEmpty();
+        String address = structured
+                ? OwnerAddress.compose(addressLine1, addressLine2)
+                : OwnerAddress.normalize(request.getAddress());
         if (address.isEmpty()) {
             missing.add("address");
         }
@@ -79,6 +89,10 @@ public class ValidateOwner {
             throw new OwnerFieldsMissingException(missing);
         }
         request.setAddress(address);
+        if (structured) {
+            request.setAddressLine1(addressLine1);
+            request.setAddressLine2(addressLine2.isEmpty() ? null : addressLine2);
+        }
         String e164 = OwnerTelephone.toE164(request.getTelephone());
         if (e164 == null) {
             throw new OwnerTelephoneInvalidException(request.getTelephone());
