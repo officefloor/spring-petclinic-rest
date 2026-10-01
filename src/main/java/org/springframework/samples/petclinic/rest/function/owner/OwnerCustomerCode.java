@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Set;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerRegion;
@@ -55,6 +56,23 @@ public final class OwnerCustomerCode {
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
+    /**
+     * De-duplicates {@code base} against the {@code existing} customer codes: returns {@code base}
+     * unchanged when it is not already taken, otherwise appends {@code -<n>} with the smallest
+     * {@code n} of 2 or more that makes the code unique.
+     */
+    public static String deduplicate(String base, Set<String> existing) {
+        if (!existing.contains(base)) {
+            return base;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = base + "-" + n;
+            if (!existing.contains(candidate)) {
+                return candidate;
+            }
         }
     }
 
