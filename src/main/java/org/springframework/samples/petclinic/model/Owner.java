@@ -198,6 +198,19 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * Resolve this owner's current <em>primary identifier</em>: the single external-facing identity an
+     * owner is known by. Today that is the {@link #getCustomerCode() customerCode}; when the customer
+     * code is later unified into a {@code memberId}, this becomes the sole place that choice is made, so
+     * every consumer (such as the {@code OWNER_CREATED} audit event) automatically carries the new
+     * identifier without further change.
+     *
+     * @return the owner's current primary identifier, or {@code null} when none has been assigned
+     */
+    public String primaryIdentifier() {
+        return this.customerCode;
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }

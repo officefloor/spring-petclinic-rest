@@ -27,12 +27,15 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import tools.jackson.databind.ObjectMapper;
+
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -51,6 +54,12 @@ public class ClinicServiceImpl implements ClinicService {
      * owner's id, customer code and registration date.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence number stamped onto each {@link OwnerCreatedEvent}. Shared
+     * across all creates so the emitted events form a strictly ordered, gap-free series.
+     */
+    private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong();
 
     /**
      * Maximum number of owners allowed in a single city. Creating an owner in a city that already
@@ -84,6 +93,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
+    private final ObjectMapper objectMapper;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -91,13 +101,15 @@ public class ClinicServiceImpl implements ClinicService {
         OwnerRepository ownerRepository,
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
-        PetTypeRepository petTypeRepository) {
+        PetTypeRepository petTypeRepository,
+        ObjectMapper objectMapper) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -334,6 +346,9 @@ public class ClinicServiceImpl implements ClinicService {
                     + "membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
                 membershipLevel, membershipNumber);
+            OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQ.incrementAndGet(),
+                owner.getId(), owner.primaryIdentifier(), membershipLevel);
+            AUDIT.info(objectMapper.writeValueAsString(event));
         }
     }
 
