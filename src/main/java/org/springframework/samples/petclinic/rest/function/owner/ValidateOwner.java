@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
+import org.springframework.samples.petclinic.mapper.Regions;
 import org.springframework.samples.petclinic.model.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerEmailInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerFieldsMissingException;
+import org.springframework.samples.petclinic.rest.escalation.OwnerPostcodeInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneInvalidException;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -40,9 +42,12 @@ public class ValidateOwner {
     /** Pragmatic syntactic check: non-empty local part, '@', non-empty domain containing a dot. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    /** A postcode is a string of exactly four digits. */
+    private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsMissingException, OwnerTelephoneInvalidException,
-            OwnerEmailInvalidException {
+            OwnerEmailInvalidException, OwnerPostcodeInvalidException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -76,6 +81,16 @@ public class ValidateOwner {
                 throw new OwnerEmailInvalidException(email);
             }
             request.setEmail(email.toLowerCase());
+        }
+
+        // Postcode is optional. When present it must be a 4-digit value that is valid for the
+        // owner's city region; a city with no known region accepts any 4-digit value.
+        String postcode = request.getPostcode();
+        if (postcode != null) {
+            if (!POSTCODE.matcher(postcode).matches()
+                    || !Regions.postcodeMatchesCity(request.getCity(), postcode)) {
+                throw new OwnerPostcodeInvalidException(postcode);
+            }
         }
 
         validated.set(request);
