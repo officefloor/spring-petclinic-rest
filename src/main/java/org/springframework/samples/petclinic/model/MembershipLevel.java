@@ -27,7 +27,7 @@ public final class MembershipLevel {
      */
     public static int of(Owner owner) {
         int level = 1;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+        if (owner.hasEmail()) {
             level++;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {

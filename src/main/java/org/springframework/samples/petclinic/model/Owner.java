@@ -101,6 +101,16 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /**
+     * Whether this owner has a usable email address. The single source of truth for the
+     * "email present" concept shared by the membership-level and contact-preference rules.
+     *
+     * @return {@code true} when {@code email} is non-null and not blank
+     */
+    public boolean hasEmail() {
+        return this.email != null && !this.email.isBlank();
+    }
+
     public LocalDate getRegistrationDate() {
         return this.registrationDate;
     }
