@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(64),
   household_size INTEGER,
   namesake_count INTEGER,
+  membership_level INTEGER,
   bulk_signup_warning BOOLEAN
 );
 

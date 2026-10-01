@@ -13,7 +13,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@link SaveOwner} (so the new owner is not yet persisted). The count is therefore every existing
  * owner carrying the same id plus one for the owner being created. An owner that did not opt into a
  * household has no {@code householdId} and counts as a household of one. The value is frozen at
- * creation time and drives the 'GOLD' membership tier (3 or more members).
+ * creation time.
  */
 public class CountOwnerHousehold {
 

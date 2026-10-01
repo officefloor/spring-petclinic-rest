@@ -21,7 +21,6 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "membershipTier")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "locality")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -34,17 +33,6 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
-    }
-
-    @Named("membershipTier")
-    default String membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return (namesakeCount != null && namesakeCount == 0 && hasEmail) ? "SILVER" : "BRONZE";
     }
 
     /** Fixed city-to-region table; any other city derives locality "UNKNOWN". */
