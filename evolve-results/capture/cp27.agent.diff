@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/ContactPreference.java b/src/main/java/org/springframework/samples/petclinic/mapper/ContactPreference.java
+new file mode 100644
+index 000000000..0c6f884e6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/ContactPreference.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Derives the {@code contactPreference} field produced by {@link OwnerMapper#toOwnerDto}: the
++ * owner's preferred contact channel. It resolves to {@code EMAIL} when the owner has an email,
++ * otherwise {@code PHONE}.
++ */
++public final class ContactPreference {
++
++    private ContactPreference() {
++    }
++
++    /**
++     * Derive the preferred contact channel for an owner.
++     *
++     * @param owner the owner; its email presence drives the result
++     * @return {@code EMAIL} when the owner {@link Owner#hasEmail() has an email}, else {@code PHONE}
++     */
++    public static OwnerDto.ContactPreferenceEnum of(Owner owner) {
++        return owner.hasEmail() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e1ddb9b48..db507ceb2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(Regions.localityOf(owner.getCity()))")
++    @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index 92e321459..62c631363 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -27,7 +27,7 @@ public final class MembershipLevel {
+      */
+     public static int of(Owner owner) {
+         int level = 1;
+-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++        if (owner.hasEmail()) {
+             level++;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a3d9b4291..6301d750f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -101,6 +101,16 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    /**
++     * Whether this owner has a usable email address. The single source of truth for the
++     * "email present" concept shared by the membership-level and contact-preference rules.
++     *
++     * @return {@code true} when {@code email} is non-null and not blank
++     */
++    public boolean hasEmail() {
++        return this.email != null && !this.email.isBlank();
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 83349deab..27456ac3b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2130,6 +2130,15 @@ components:
+               type: boolean
+               readOnly: true
+               example: false
++            contactPreference:
++              title: Contact preference
++              description: The owner's preferred contact channel, derived as 'EMAIL' when an email is present, otherwise 'PHONE'.
++              type: string
++              enum:
++                - EMAIL
++                - PHONE
++              readOnly: true
++              example: 'EMAIL'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
