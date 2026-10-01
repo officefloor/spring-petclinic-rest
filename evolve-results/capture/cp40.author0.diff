@@ -1,0 +1,288 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b0a074693..c9fe78482 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+@@ -77,15 +78,28 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Compute the owner's membership level, the derived numeric level based on the owner's namesake
+-     * count, whether an email is present and the owner's tenure since registration
+-     * (see {@link Owner#membershipLevel(Integer, String, java.time.LocalDate)}).
++     * Compute the owner's membership points, the derived points score based on whether an email is
++     * present, the owner's namesake count, the owner's household size and the owner's tenure since
++     * registration (see {@link Owner#membershipPoints(Integer, String, Integer, java.time.LocalDate)}).
++     */
++    default Integer formatMembershipPoints(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Owner.membershipPoints(owner.getNamesakeCount(), owner.getEmail(),
++            owner.getHouseholdCount(), owner.getRegistrationDate());
++    }
++
++    /**
++     * Compute the owner's membership level, mapped from the owner's membership points
++     * (see {@link Owner#membershipLevel(int)}).
+      */
+     default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate());
++        return Owner.membershipLevel(Owner.membershipPoints(owner.getNamesakeCount(), owner.getEmail(),
++            owner.getHouseholdCount(), owner.getRegistrationDate()));
+     }
+ 
+     /**
+@@ -180,12 +194,14 @@ public interface OwnerMapper {
+         return Owner.telephoneDisplay(owner.getTelephone());
+     }
+ 
++    @Mapping(target = "householdCount", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
++    @Mapping(target = "householdCount", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 624a6d4bd..5f3f699f4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_count")
++    private Integer householdCount;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -145,6 +148,14 @@ public class Owner extends Person {
+         return this.namesakeCount;
+     }
+ 
++    public Integer getHouseholdCount() {
++        return this.householdCount;
++    }
++
++    public void setHouseholdCount(Integer householdCount) {
++        this.householdCount = householdCount;
++    }
++
+     public void setNamesakeCount(Integer namesakeCount) {
+         this.namesakeCount = namesakeCount;
+     }
+@@ -538,31 +549,56 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Build an owner's {@code membershipLevel}, the derived numeric level assigned on create. The
+-     * value starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
+-     * and gains 1 when the owner's tenure is more than 365 days (the tenure being the number of days
+-     * from {@code registrationDate} to today). Level 4 therefore requires tenure of more than 365
+-     * days: because a newly created owner has zero tenure, a new owner never exceeds level 3. The
+-     * value is capped at 4.
++     * Compute an owner's {@code membershipPoints}, the derived points score assigned on create. The
++     * score starts at 0, gains 2 when an email is present, gains 1 when {@code namesakeCount} is 0,
++     * gains 2 when the owner belongs to a household of 3 or more members (see {@code householdCount}),
++     * and gains 3 when the owner's tenure is more than 365 days (the tenure being the number of days
++     * from {@code registrationDate} to today). Because a newly created owner has zero tenure, the
++     * tenure points accrue only once the owner has been a member for over a year.
+      *
+      * @param namesakeCount the owner's namesake count, possibly {@code null}
+      * @param email the owner's email, possibly {@code null}
++     * @param householdCount the number of members in the owner's household, possibly {@code null}
+      * @param registrationDate the owner's registration date, possibly {@code null}
+-     * @return the membership level, an integer from 1 to 4
++     * @return the membership points, a non-negative integer
+      */
+-    public static int membershipLevel(Integer namesakeCount, String email, LocalDate registrationDate) {
+-        int level = 1;
++    public static int membershipPoints(Integer namesakeCount, String email, Integer householdCount,
++            LocalDate registrationDate) {
++        int points = 0;
+         if (email != null && !email.isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
++            points += 1;
++        }
++        if (householdCount != null && householdCount >= 3) {
++            points += 2;
+         }
+         if (registrationDate != null
+             && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Map an owner's {@code membershipPoints} to its {@code membershipLevel}: level 1 for 0-1 points,
++     * level 2 for 2-3, level 3 for 4-5 and level 4 for 6 or more.
++     *
++     * @param membershipPoints the owner's membership points
++     * @return the membership level, an integer from 1 to 4
++     */
++    public static int membershipLevel(int membershipPoints) {
++        if (membershipPoints >= 6) {
++            return 4;
++        }
++        if (membershipPoints >= 4) {
++            return 3;
++        }
++        if (membershipPoints >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 897d30991..2b7930c32 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -304,6 +304,9 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getNamesakeCount() == null) {
+             owner.setNamesakeCount(countNamesakes(owner));
+         }
++        if (owner.isNew() && owner.getHouseholdCount() == null) {
++            owner.setHouseholdCount(countHouseholdMembers(owner));
++        }
+         if (owner.isNew()) {
+             assignPossibleDuplicate(owner, sharesHousehold);
+         }
+@@ -333,6 +336,26 @@ public class ClinicServiceImpl implements ClinicService {
+             .count();
+     }
+ 
++    /**
++     * Count the members of this owner's household at the moment it is created, i.e. the number of
++     * owners sharing its household id (same last name and postcode, see
++     * {@link Owner#householdId(String, String)}) plus this owner itself. An owner with no derivable
++     * household id (missing last name or postcode) is counted as a single-member household. The value
++     * is deterministic given the current data, so it is computed once at creation time and stored.
++     */
++    private Integer countHouseholdMembers(Owner owner) {
++        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
++        if (householdId == null) {
++            return 1;
++        }
++        long others = ownerRepository.findAll().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> householdId.equals(
++                Owner.householdId(existing.getLastName(), existing.getPostcode())))
++            .count();
++        return (int) others + 1;
++    }
++
+     /**
+      * Build an owner's {@code customerCode} formatted {@code '<REGION>-<HASH8>'}, where {@code REGION}
+      * is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no region can be
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 13937a541..a1b33cfcf 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index c0007a539..4e1d395f5 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1dc5e66a0..7fa5e0575 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 7eb6f1497..332ccab12 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       birth_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
++                                      household_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 67f1addaf..e8f354eca 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2179,18 +2179,29 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                A derived points score, assigned on create: starting at 0, add 2
++                when an email is present, add 1 when namesakeCount is 0, add 2 for
++                a household of 3 or more members, and add 3 when the owner's tenure
++                (days from registrationDate to today) is over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                A derived numeric membership level from 1 to 3, assigned on
+-                create: starting at 1, add 1 when an email is present and add 1
+-                when namesakeCount is 0, capped at 3 (level 4 is reserved for
+-                tenure).
++                A derived numeric membership level from 1 to 4, mapped from
++                membershipPoints: level 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and
++                4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
