@@ -22,6 +22,9 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -186,6 +189,39 @@ public class Owner extends Person {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Compute the stable identifier shared by all owners in the same household, i.e. with the same
+     * last name and address compared case-insensitively with collapsed whitespace (see
+     * {@link #normalizeHousehold(String)}). The value is deterministic in those two fields, so two
+     * owners who share a household are assigned the same id. It is formatted {@code 'HH-<HEX12>'}
+     * where {@code HEX12} is the first twelve upper-cased hex characters of the SHA-256 digest of
+     * the normalized last name and address.
+     *
+     * @param lastName the owner's last name, possibly {@code null}
+     * @param address the owner's address, possibly {@code null}
+     * @return the household id, or {@code null} if either field is {@code null}
+     */
+    public static String householdId(String lastName, String address) {
+        String normalizedLastName = normalizeHousehold(lastName);
+        String normalizedAddress = normalizeHousehold(address);
+        if (normalizedLastName == null || normalizedAddress == null) {
+            return null;
+        }
+        String key = normalizedLastName + "\n" + normalizedAddress;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return "HH-" + hex.substring(0, 12).toUpperCase();
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is a standard algorithm required to be present on every JVM.
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

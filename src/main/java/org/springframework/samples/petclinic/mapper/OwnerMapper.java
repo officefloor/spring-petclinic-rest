@@ -21,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -41,6 +42,17 @@ public interface OwnerMapper {
         }
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * Compute the owner's household id, the stable identifier shared by all owners who live in the
+     * same household (see {@link Owner#householdId(String, String)}).
+     */
+    default String formatHouseholdId(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.householdId(owner.getLastName(), owner.getAddress());
     }
 
     Owner toOwner(OwnerDto ownerDto);
