@@ -1,0 +1,327 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 13dfd1f52..33a773e9f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -188,15 +188,15 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Compute the owner's identity key, the single derived value consolidating the telephone, email
+-     * and household duplicate checks (see
+-     * {@link Owner#identityKey(String, String, String, String)}).
++     * Compute the owner's identity key, the single derived value through which duplicate detection
++     * is expressed: the SHA-256 hex over the normalized telephone, lower-cased email and the Soundex
++     * of the last name (see {@link Owner#identityKey(String, String, String)}).
+      */
+     default String formatIdentityKey(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode());
++        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 290279fdd..56aafc1f6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -640,32 +640,93 @@ public class Owner extends Person {
+ 
+     /**
+      * Compute an owner's {@code identityKey}, the single derived value through which all
+-     * duplicate detection is now expressed. It consolidates the three formerly separate
+-     * telephone, email and household duplicate checks into one key, formatted as
+-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}:
++     * duplicate detection is now expressed. It is the lower-case hex SHA-256 digest (see
++     * {@link #sha256Hex(String)}) of the three identity components joined with {@code '|'}:
++     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where
+      * <ul>
+      *   <li>the normalized telephone (see {@link #normalizeTelephone(String)}),</li>
+-     *   <li>the normalized email (see {@link #normalizeEmail(String)}), or the empty string
++     *   <li>the lower-cased email (see {@link #normalizeEmail(String)}), or the empty string
+      *       when no email is present, and</li>
+-     *   <li>the household id (see {@link #householdId(String, String)}).</li>
++     *   <li>the Soundex code of the last name (see {@link #soundex(String)}).</li>
+      * </ul>
+-     * A {@code null} component is rendered as the empty string. Two owners are the same identity
+-     * only when their <em>whole</em> keys are equal; because the telephone is part of the key, two
+-     * members of the same household with different telephones have different keys.
++     * A {@code null} component is rendered as the empty string before hashing. Two owners are the
++     * same identity only when their <em>whole</em> keys are equal; because the telephone is part of
++     * the key, two members of the same household (same last name and postcode) with different
++     * telephones have different keys and are not a hard duplicate.
+      *
+      * @param telephone the owner's raw telephone, possibly {@code null}
+      * @param email the owner's email, possibly {@code null}
+      * @param lastName the owner's last name, possibly {@code null}
+-     * @param postcode the owner's postcode, possibly {@code null}
+-     * @return the identity key, never {@code null}
++     * @return the 64-character lower-case hex identity key, never {@code null}
+      */
+-    public static String identityKey(String telephone, String email, String lastName, String postcode) {
++    public static String identityKey(String telephone, String email, String lastName) {
+         String normalizedTelephone = normalizeTelephone(telephone);
+         String normalizedEmail = normalizeEmail(email);
+-        String household = householdId(lastName, postcode);
+-        return (normalizedTelephone == null ? "" : normalizedTelephone)
++        String lastNameSoundex = soundex(lastName);
++        String raw = (normalizedTelephone == null ? "" : normalizedTelephone)
+             + "|" + (normalizedEmail == null ? "" : normalizedEmail)
+-            + "|" + (household == null ? "" : household);
++            + "|" + (lastNameSoundex == null ? "" : lastNameSoundex);
++        return sha256Hex(raw);
++    }
++
++    /** Soundex digit for each consonant; vowels, {@code H}, {@code W} and {@code Y} map to '0'. */
++    private static final Map<Character, Character> SOUNDEX_CODES = new HashMap<>();
++    static {
++        for (char c : "BFPV".toCharArray()) {
++            SOUNDEX_CODES.put(c, '1');
++        }
++        for (char c : "CGJKQSXZ".toCharArray()) {
++            SOUNDEX_CODES.put(c, '2');
++        }
++        for (char c : "DT".toCharArray()) {
++            SOUNDEX_CODES.put(c, '3');
++        }
++        SOUNDEX_CODES.put('L', '4');
++        for (char c : "MN".toCharArray()) {
++            SOUNDEX_CODES.put(c, '5');
++        }
++        SOUNDEX_CODES.put('R', '6');
++    }
++
++    /**
++     * Compute the American Soundex code of a name: the upper-cased first letter followed by three
++     * digits encoding the following consonants ({@code B,F,P,V}->1; {@code C,G,J,K,Q,S,X,Z}->2;
++     * {@code D,T}->3; {@code L}->4; {@code M,N}->5; {@code R}->6), padded with zeros to length four.
++     * Vowels ({@code A,E,I,O,U,Y}) separate codes; {@code H} and {@code W} are ignored so two
++     * like-coded consonants on either side of them collapse to a single digit; adjacent letters with
++     * the same code also collapse to one. Non-letters are stripped before coding. This is the single
++     * source of truth for the surname component of the {@code identityKey} and the soft-match rule.
++     *
++     * @param name the raw name, possibly {@code null}
++     * @return the four-character Soundex code, {@code null} if the input is {@code null}, or the empty
++     *     string if the input contains no letters
++     */
++    public static String soundex(String name) {
++        if (name == null) {
++            return null;
++        }
++        String letters = name.toUpperCase().replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder();
++        code.append(letters.charAt(0));
++        char previous = SOUNDEX_CODES.getOrDefault(letters.charAt(0), '0');
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            if (c == 'H' || c == 'W') {
++                continue;
++            }
++            char digit = SOUNDEX_CODES.getOrDefault(c, '0');
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            previous = digit;
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index d49df6125..4c76a483c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -114,8 +114,9 @@ public class ExceptionControllerAdvice {
+ 
+     /**
+      * Handles {@link DuplicateIdentityException}, raised when an owner is saved whose derived
+-     * {@code identityKey} (the single key consolidating the former telephone, email and household
+-     * duplicate checks) already belongs to another owner, by returning a 409 Conflict status.
++     * {@code identityKey} (the single duplicate-detection key: the SHA-256 hex over normalized
++     * telephone, lower-cased email and last-name Soundex) already belongs to another owner, by
++     * returning a 409 Conflict status.
+      *
+      * @param e The {@link DuplicateIdentityException} to be handled
+      * @param request {@link HttpServletRequest} object referring to the current request.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 12945f4b6..f27e918b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -277,18 +277,20 @@ public class ClinicServiceImpl implements ClinicService {
+     /**
+      * Save an owner, enforcing the create-time business rules.
+      *
+-     * <p>Because the household is keyed on {@code (lastName, postcode)} (see
+-     * {@link Owner#householdId(String, String)}), owners sharing a last name and postcode are the
+-     * same household. Duplicate rejection on create is expressed solely through the identity key:
+-     * {@link #assertIdentityIsUnique(Owner)} rejects an owner that reuses an existing normalized
+-     * telephone, and consistent with that check's contract two members of the same household with
+-     * different telephones have different identity keys and are both allowed. An undeclared household
+-     * member sharing an existing household is therefore created but flagged as a possible (suspected)
+-     * duplicate, whereas a declared household member ({@code sharesHousehold} set) is left unflagged;
+-     * {@code sharesHousehold} now governs only that flagging. This keeps the sole {@code POST /api/owners}
+-     * duplicate rule in one place and lets household members coexist, which the household
+-     * membership-level ceiling (see {@link #computeMembershipLevel(Owner)}) relies on to compare a new
+-     * owner against the existing members.
++     * <p>Duplicate rejection on create is expressed solely through the single {@code identityKey} (the
++     * SHA-256 hex over the normalized telephone, lower-cased email and last-name Soundex, see
++     * {@link Owner#identityKey(String, String, String)}): {@link #assertIdentityIsUnique(Owner)}
++     * rejects an owner whose whole identity key already belongs to another owner. Because the
++     * telephone is part of the key, two members of the same household (same last name and postcode)
++     * with different telephones have different identity keys and are both allowed; the former separate
++     * household-duplicate 409 no longer applies. Such an undeclared household member is created but
++     * flagged as a possible (suspected) duplicate when its last-name Soundex and postcode match an
++     * existing owner (see {@link #assignPossibleDuplicate(Owner, boolean)}), whereas a declared
++     * household member ({@code sharesHousehold} set) is left unflagged; {@code sharesHousehold} now
++     * governs only that flagging. This keeps the sole {@code POST /api/owners} duplicate rule in one
++     * place and lets household members coexist, which the household membership-level ceiling (see
++     * {@link #computeMembershipLevel(Owner)}) relies on to compare a new owner against the existing
++     * members.
+      */
+     @Override
+     @Transactional
+@@ -445,14 +447,15 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Flag a newly created owner as a possible (soft) duplicate of an existing owner. A hard
+-     * duplicate (an owner reusing an existing normalized telephone) has already been rejected by
+-     * {@link #assertIdentityIsUnique(Owner)}, and an undeclared household duplicate by
+-     * {@link #assertHouseholdIsUnique(Owner)}, before this runs. This detects the weaker overlap: an
+-     * existing owner that shares this owner's household id (same last name and postcode, see
+-     * {@link Owner#householdId(String, String)}) but has a <em>different</em> normalized telephone.
+-     * When such an owner exists, {@code possibleDuplicate} is set {@code true} and
+-     * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match);
+-     * otherwise {@code possibleDuplicate} is set {@code false} and {@code possibleDuplicateOf} left unset.
++     * duplicate (an owner sharing this owner's whole {@code identityKey}) has already been rejected by
++     * {@link #assertIdentityIsUnique(Owner)} before this runs. This detects the weaker overlap: an
++     * existing owner whose identity key <em>differs</em> but whose last-name Soundex (see
++     * {@link Owner#soundex(String)}) and postcode both match this owner. When such an owner exists,
++     * {@code possibleDuplicate} is set {@code true} and {@code possibleDuplicateOf} to the matching
++     * owner's id (the lowest id when several match); otherwise {@code possibleDuplicate} is set
++     * {@code false} and {@code possibleDuplicateOf} left unset. In particular, two owners with the same
++     * last name and postcode but different telephones are no longer a hard duplicate and surface here
++     * as a soft match.
+      *
+      * <p>A declared household member ({@code sharesHousehold} set) is never a suspected duplicate: it
+      * deliberately joins an existing household, so it is left unflagged.
+@@ -463,17 +466,19 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setPossibleDuplicateOf(null);
+             return;
+         }
+-        String householdId = Owner.householdId(owner.getLastName(), owner.getPostcode());
+-        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
++        String identityKey = Owner.identityKey(
++            owner.getTelephone(), owner.getEmail(), owner.getLastName());
++        String soundex = Owner.soundex(owner.getLastName());
++        String postcode = owner.getPostcode();
+         Integer match = null;
+-        if (householdId != null) {
++        if (soundex != null && !soundex.isEmpty() && postcode != null) {
+             match = ownerRepository.findAll().stream()
+                 .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+                 .filter(existing -> !existing.isDeleted())
+-                .filter(existing -> householdId.equals(
+-                    Owner.householdId(existing.getLastName(), existing.getPostcode())))
+-                .filter(existing -> !Objects.equals(normalizedTelephone,
+-                    Owner.normalizeTelephone(existing.getTelephone())))
++                .filter(existing -> !identityKey.equals(Owner.identityKey(
++                    existing.getTelephone(), existing.getEmail(), existing.getLastName())))
++                .filter(existing -> soundex.equals(Owner.soundex(existing.getLastName())))
++                .filter(existing -> postcode.equals(existing.getPostcode()))
+                 .map(Owner::getId)
+                 .filter(Objects::nonNull)
+                 .min(Integer::compareTo)
+@@ -497,31 +502,29 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Enforce that no <em>other</em> owner already shares this owner's derived identity, throwing
+-     * {@link DuplicateIdentityException} if one does. This single check consolidates the former
+-     * separate telephone, email and household duplicate checks into the one {@code identityKey}
+-     * (normalized telephone, normalized email (or empty) and household id, see
+-     * {@link Owner#identityKey(String, String, String, String)}).
++     * {@link DuplicateIdentityException} if one does. Duplicate detection is now the single
++     * {@code identityKey}: the SHA-256 hex over the normalized telephone, lower-cased email and the
++     * Soundex of the last name (see {@link Owner#identityKey(String, String, String)}). Two owners
++     * are a hard duplicate exactly when their whole identity keys are equal.
+      *
+-     * <p>Because the telephone is part of the key, two owners can only ever collide on the whole
+-     * key when their normalized telephones already match; the normalized telephone is therefore the
+-     * decisive component and is what this check compares. Consequently two members of the same
+-     * household with different telephones have different identity keys and are both allowed, while
+-     * an owner reusing an existing normalized telephone is rejected. The owner being saved is
+-     * excluded by id so updating an owner in place never conflicts with itself.
++     * <p>Because the telephone is part of the key, two members of the same household (same last name
++     * and postcode) with different telephones have different identity keys and are both allowed —
++     * they surface instead as a soft match (see {@link #assignPossibleDuplicate(Owner, boolean)}).
++     * The email-domain blocklist is applied first (see {@link #assertEmailDomainAllowed(Owner)}), and
++     * soft-deleted owners are ignored. The owner being saved is excluded by id so updating an owner in
++     * place never conflicts with itself.
+      */
+     private void assertIdentityIsUnique(Owner owner) {
+-        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
+-        if (normalizedTelephone == null) {
+-            return;
+-        }
++        String identityKey = Owner.identityKey(
++            owner.getTelephone(), owner.getEmail(), owner.getLastName());
+         boolean duplicate = ownerRepository.findAll().stream()
+             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+             .filter(existing -> !existing.isDeleted())
+-            .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
+-            .anyMatch(normalizedTelephone::equals);
++            .map(existing -> Owner.identityKey(
++                existing.getTelephone(), existing.getEmail(), existing.getLastName()))
++            .anyMatch(identityKey::equals);
+         if (duplicate) {
+-            throw new DuplicateIdentityException(Owner.identityKey(
+-                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()));
++            throw new DuplicateIdentityException(identityKey);
+         }
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/service/DuplicateIdentityException.java
+index a5d8295c7..8f82f0ed0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/DuplicateIdentityException.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/DuplicateIdentityException.java
+@@ -18,8 +18,9 @@ package org.springframework.samples.petclinic.service;
+ 
+ /**
+  * Thrown by the service layer when an owner is saved whose derived {@code identityKey} (the single
+- * key consolidating the former telephone, email and household duplicate checks, see
+- * {@link org.springframework.samples.petclinic.model.Owner#identityKey(String, String, String, String)})
++ * key for duplicate detection, the SHA-256 hex over normalized telephone, lower-cased email and
++ * last-name Soundex, see
++ * {@link org.springframework.samples.petclinic.model.Owner#identityKey(String, String, String)})
+  * already belongs to another owner. Mapped to an HTTP 409 Conflict response by the web layer.
+  */
+ public class DuplicateIdentityException extends RuntimeException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 813bbe3ab..62ae8fe5a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2319,12 +2319,13 @@ components:
+               title: Identity key
+               description: >-
+                 The single derived key through which all duplicate detection is
+-                expressed, formatted 'normalizedTelephone|email|householdId'
+-                (the email segment is empty when no email is present). Two owners
+-                are the same identity only when their whole identity keys are
+-                equal.
++                expressed: the lower-case hex SHA-256 digest over
++                'normalizedTelephone|lowerEmail|soundex(lastName)' (the email
++                segment is empty when no email is present). Two owners are the
++                same identity only when their whole identity keys are equal.
+               type: string
+-              example: '+61412345678|george.franklin@example.com|HH-3A7F1C9B2E4D'
++              pattern: '^[0-9a-f]{64}$'
++              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+               readOnly: true
+             checkDigit:
+               title: Check digit
