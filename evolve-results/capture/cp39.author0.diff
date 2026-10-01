@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+index 6350bce51..a09ec1ce7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+@@ -1,13 +1,20 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Assigns the owner's numeric {@code membershipLevel} (1 to 3) at creation time.
++ * Assigns the owner's numeric {@code membershipLevel} (1 to 4) at creation time.
+  *
+- * <p>The level starts at 1, gains 1 when the owner has an email address, and gains 1 when the
+- * owner's {@code namesakeCount} is 0, then is capped at 3. (Level 4 is reserved for tenure.)
++ * <p>The level starts at 1 and gains one for each qualifying factor: a non-blank email address, a
++ * {@code namesakeCount} of 0, and tenure of more than {@value #TENURE_THRESHOLD_DAYS} days
++ * (measured from the owner's {@code registrationDate}). Level 4 therefore requires tenure past that
++ * threshold. A newly created owner registers as of the current date and so has zero tenure, which
++ * means the tenure factor never applies at creation: a new owner never exceeds level 3 — even one
++ * with an email, a {@code namesakeCount} of 0 and a multi-member household lands at level 3, not 4.
+  *
+  * <p>Runs in the {@code POST /api/owners} pipeline after {@link CountOwnerNamesakes} (so
+  * {@code namesakeCount} is already frozen) and before {@link SaveOwner} (so the value is persisted)
+@@ -16,6 +23,9 @@ import org.springframework.samples.petclinic.model.Owner;
+  */
+ public class AssignOwnerMembershipLevel {
+ 
++    /** Tenure, in days, that an owner must exceed to earn the level-4 factor. */
++    static final long TENURE_THRESHOLD_DAYS = 365;
++
+     public void service(@Val Owner owner) {
+         int level = 1;
+         String email = owner.getEmail();
+@@ -26,6 +36,22 @@ public class AssignOwnerMembershipLevel {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        owner.setMembershipLevel(Math.min(level, 3));
++        if (tenureDays(owner) > TENURE_THRESHOLD_DAYS) {
++            level++;
++        }
++        owner.setMembershipLevel(level);
++    }
++
++    /**
++     * The owner's tenure in whole days: the span from their {@code registrationDate} to the current
++     * date, never negative, and 0 when no registration date is recorded. A just-created owner
++     * registers as of today, so its tenure is 0.
++     */
++    private static long tenureDays(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        return Math.max(ChronoUnit.DAYS.between(registrationDate, LocalDate.now()), 0);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 407ecbdd7..9b4cf2d5d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2218,12 +2218,13 @@ components:
+               title: Membership level
+               description: >-
+                 The owner's numeric membership level, assigned at creation. It starts at 1, gains 1
+-                when an email address is present, gains 1 when namesakeCount is 0, and is capped at 3
+-                (level 4 is reserved for tenure).
++                when an email address is present, gains 1 when namesakeCount is 0, and gains 1 when
++                tenure exceeds 365 days. Level 4 therefore requires tenure, so a newly created owner
++                (zero tenure) never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
