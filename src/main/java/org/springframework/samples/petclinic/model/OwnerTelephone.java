@@ -45,6 +45,35 @@ public final class OwnerTelephone {
     }
 
     /**
+     * Format a stored E.164 telephone for humans: the country code, a space, then the national digits
+     * grouped in threes (e.g. {@code '+61412345678'} → {@code '+61 412 345 678'}). The known country
+     * codes {@code '+61'} and {@code '+1'} are split off their national part; any other value (or one not
+     * in E.164 form) is returned unchanged.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        String countryCode;
+        if (digits.startsWith("61")) {
+            countryCode = "61";
+        }
+        else if (digits.startsWith("1")) {
+            countryCode = "1";
+        }
+        else {
+            return e164;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
+    }
+
+    /**
      * Check the national-number length for the known country codes. {@code '+61'} requires 9 national
      * digits and {@code '+1'} requires 10; other country codes are not length-checked here.
      */

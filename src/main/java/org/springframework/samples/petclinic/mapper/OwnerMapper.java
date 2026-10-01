@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.OwnerIdentity.of(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.model.OwnerTelephone.toDisplay(owner.getTelephone()))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
