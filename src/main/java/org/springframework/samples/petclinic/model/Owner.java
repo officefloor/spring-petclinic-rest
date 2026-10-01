@@ -95,6 +95,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted = false;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -239,6 +242,25 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted. A soft-deleted owner keeps its row (so it is still
+     * readable via GET) but is treated as absent by the create-time duplicate and identity checks. A
+     * {@code null} stored value is read as not deleted.
+     *
+     * @return {@code true} if the owner is flagged deleted, {@code false} otherwise
+     */
+    public boolean isDeleted() {
+        return Boolean.TRUE.equals(this.deleted);
     }
 
     /**

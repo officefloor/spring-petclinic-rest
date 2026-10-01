@@ -54,7 +54,8 @@ CREATE TABLE owners (
   bulk_signup_warning BOOLEAN,
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,
-  possible_duplicate_of INTEGER
+  possible_duplicate_of INTEGER,
+  deleted BOOLEAN
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

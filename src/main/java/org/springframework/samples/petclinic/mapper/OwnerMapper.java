@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
+    @Mapping(target = "deleted", expression = "java(formatDeleted(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -216,6 +217,17 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.telephoneDisplay(owner.getTelephone());
+    }
+
+    /**
+     * Resolve the owner's soft-delete flag, treating a missing (null) stored value as {@code false}
+     * so the response always carries an explicit boolean (see {@link Owner#isDeleted()}).
+     */
+    default Boolean formatDeleted(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.isDeleted();
     }
 
     @Mapping(target = "householdCount", ignore = true)

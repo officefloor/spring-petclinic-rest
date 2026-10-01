@@ -172,7 +172,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -424,6 +425,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (householdId != null) {
             match = ownerRepository.findAll().stream()
                 .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+                .filter(existing -> !existing.isDeleted())
                 .filter(existing -> householdId.equals(
                     Owner.householdId(existing.getLastName(), existing.getPostcode())))
                 .filter(existing -> !Objects.equals(normalizedTelephone,
@@ -470,6 +472,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         boolean duplicate = ownerRepository.findAll().stream()
             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> !existing.isDeleted())
             .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
             .anyMatch(normalizedTelephone::equals);
         if (duplicate) {
@@ -494,6 +497,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         boolean duplicate = ownerRepository.findAll().stream()
             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> !existing.isDeleted())
             .map(existing -> Owner.householdId(existing.getLastName(), existing.getPostcode()))
             .anyMatch(householdId::equals);
         if (duplicate) {
