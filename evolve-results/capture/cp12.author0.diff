@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+new file mode 100644
+index 000000000..4a049bd24
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+@@ -0,0 +1,51 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * Single source of truth for the owner-address normalization rule, applied whenever an owner is
++ * created. A raw address is reduced to a canonical stored form: surrounding and repeated whitespace
++ * collapsed to single spaces, upper-cased, and common street-type abbreviations expanded to their
++ * full words ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++ *
++ * <p>The same normalized form is what gets stored and returned, what the required-field check tests
++ * for blankness, and what every address comparison uses — household duplicate detection and the
++ * shared household id both reduce through {@link #normalize} (see {@link OwnerHousehold}).
++ */
++final class OwnerAddress {
++
++    private OwnerAddress() {
++    }
++
++    /**
++     * Reduces an address to its canonical form: trimmed, inner runs of whitespace collapsed to a
++     * single space, upper-cased, with common abbreviations expanded token by token. A {@code null}
++     * value yields an empty string.
++     */
++    static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        for (int i = 0; i < tokens.length; i++) {
++            switch (tokens[i]) {
++                case "ST":
++                    tokens[i] = "STREET";
++                    break;
++                case "RD":
++                    tokens[i] = "ROAD";
++                    break;
++                case "AVE":
++                    tokens[i] = "AVENUE";
++                    break;
++                default:
++                    break;
++            }
++        }
++        return String.join(" ", tokens);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+index 9d086dc38..cc1b2372a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Single source of truth for the owner-household identity rule. Two owners count as the same
+- * household when their last names match and their addresses match, each compared case-insensitively
+- * with surrounding and repeated whitespace collapsed. This class owns both the comparison
++ * household when their last names match (compared case-insensitively, whitespace collapsed) and
++ * their addresses match in their normalized form (see {@link OwnerAddress#normalize}: whitespace
++ * collapsed, upper-cased, common abbreviations expanded). This class owns both the comparison
+  * ({@link #sameHousehold}, built on {@link #normalize}) and the derivation of the stable shared
+  * {@link #householdId} that identifies a household.
+  *
+@@ -36,13 +37,15 @@ final class OwnerHousehold {
+ 
+     /**
+      * Tells whether an existing owner belongs to the household identified by the given last name and
+-     * address — the one place that defines what "same household" means. Both sides are reduced
+-     * through {@link #normalize} before comparison, so differently cased or spaced values that mean
+-     * the same thing still match.
++     * address — the one place that defines what "same household" means. Last names are reduced
++     * through {@link #normalize} and addresses through {@link OwnerAddress#normalize} before
++     * comparison, so differently cased, spaced or abbreviated values that mean the same thing still
++     * match.
+      */
+     static boolean sameHousehold(Owner existing, String lastName, String address) {
+         return normalize(existing.getLastName()).equals(normalize(lastName))
+-                && normalize(existing.getAddress()).equals(normalize(address));
++                && OwnerAddress.normalize(existing.getAddress())
++                        .equals(OwnerAddress.normalize(address));
+     }
+ 
+     /**
+@@ -53,7 +56,7 @@ final class OwnerHousehold {
+      * the normalized {@code "<lastName>|<address>"}.
+      */
+     static String householdId(String lastName, String address) {
+-        String key = normalize(lastName) + "|" + normalize(address);
++        String key = normalize(lastName) + "|" + OwnerAddress.normalize(address);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                     .digest(key.getBytes(StandardCharsets.UTF_8));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 3ab5cbf19..fc6db41df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -30,9 +30,17 @@ public class ValidateOwnerFields {
+         if (isBlank(request.getLastName())) {
+             errors.add("lastName");
+         }
+-        if (isBlank(request.getAddress())) {
++        // The address is normalized (whitespace collapsed, upper-cased, abbreviations expanded)
++        // before the required-field check, so an address that is blank only after normalization is
++        // rejected; the normalized value replaces the submitted one, so it is what gets stored,
++        // returned and compared for household identity.
++        String address = OwnerAddress.normalize(request.getAddress());
++        if (address.isEmpty()) {
+             errors.add("address");
+         }
++        else {
++            request.setAddress(address);
++        }
+         if (isBlank(request.getCity())) {
+             errors.add("city");
+         }
