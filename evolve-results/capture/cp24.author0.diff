@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9d8b7cb12..ca283054a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,7 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -71,15 +71,15 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Compute the owner's membership tier, the derived tier based on the owner's household size at
+-     * creation, namesake count and whether an email is present
+-     * (see {@link Owner#membershipTier(Integer, String, Integer)}).
++     * Compute the owner's membership level, the derived numeric level based on the owner's namesake
++     * count and whether an email is present
++     * (see {@link Owner#membershipLevel(Integer, String)}).
+      */
+-    default String formatMembershipTier(Owner owner) {
++    default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        return Owner.membershipTier(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize());
++        return Owner.membershipLevel(owner.getNamesakeCount(), owner.getEmail());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 25f01de1d..4a4095947 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -317,23 +317,24 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Build an owner's {@code membershipTier}, the derived tier. The value is {@code 'GOLD'} when the
+-     * owner's household had 3 or more members (see {@link #householdId(String, String)}) at the time
+-     * the owner was created, as captured by {@code householdSize}. Otherwise the value is
+-     * {@code 'SILVER'} when {@code namesakeCount} is 0 and an email is present, and {@code 'BRONZE'}
+-     * in every other case. The value is deterministic in those three fields.
++     * Build an owner's {@code membershipLevel}, the derived numeric level assigned on create. The
++     * value starts at 1, gains 1 when an email is present and gains 1 when {@code namesakeCount} is 0,
++     * and is capped at 3 (level 4 is reserved for tenure). The value is deterministic in those two
++     * fields.
+      *
+      * @param namesakeCount the owner's namesake count, possibly {@code null}
+      * @param email the owner's email, possibly {@code null}
+-     * @param householdSize the number of members in the owner's household at creation, possibly {@code null}
+-     * @return {@code 'GOLD'}, {@code 'SILVER'} or {@code 'BRONZE'}
++     * @return the membership level, an integer from 1 to 3
+      */
+-    public static String membershipTier(Integer namesakeCount, String email, Integer householdSize) {
+-        if (householdSize != null && householdSize >= 3) {
+-            return "GOLD";
++    public static int membershipLevel(Integer namesakeCount, String email) {
++        int level = 1;
++        if (email != null && !email.isEmpty()) {
++            level++;
+         }
+-        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isEmpty();
+-        return silver ? "SILVER" : "BRONZE";
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c6275d3b9..75b05dd5f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2142,15 +2142,18 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                A derived membership tier: 'GOLD' when the owner's household
+-                (owners sharing the same householdId) had 3 or more members after
+-                this create; otherwise 'SILVER' when namesakeCount is 0 and an
+-                email is present, and 'BRONZE' in every other case.
+-              type: string
+-              example: 'SILVER'
++                A derived numeric membership level from 1 to 3, assigned on
++                create: starting at 1, add 1 when an email is present and add 1
++                when namesakeCount is 0, capped at 3 (level 4 is reserved for
++                tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
