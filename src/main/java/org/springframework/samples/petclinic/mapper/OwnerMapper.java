@@ -21,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
+    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "membershipTier")
     OwnerDto toOwnerDto(Owner owner);
 
     @Named("displayName")
@@ -32,6 +33,13 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    @Named("membershipTier")
+    default String membershipTier(Owner owner) {
+        Integer namesakeCount = owner.getNamesakeCount();
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return (namesakeCount != null && namesakeCount == 0 && hasEmail) ? "SILVER" : "BRONZE";
     }
 
     Owner toOwner(OwnerDto ownerDto);
