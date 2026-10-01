@@ -26,6 +26,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", source = "owner", qualifiedByName = "selfLink")
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "displayName")
     @Mapping(target = "salutation", source = "owner", qualifiedByName = "salutation")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "initials")
@@ -57,6 +58,11 @@ public interface OwnerMapper {
     @Named("ageBand")
     default OwnerDto.AgeBandEnum ageBand(Owner owner) {
         return OwnerAgeBand.ageBand(owner);
+    }
+
+    @Named("selfLink")
+    default String selfLink(Owner owner) {
+        return "/api/owners/" + owner.getId();
     }
 
     @Named("displayName")
