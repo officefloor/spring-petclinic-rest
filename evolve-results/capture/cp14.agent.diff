@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1894cf0f9..5ed9fcf6e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
++    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
+@@ -55,6 +56,17 @@ public interface OwnerMapper {
+         return Owner.householdId(owner.getLastName(), owner.getAddress());
+     }
+ 
++    /**
++     * Compute the owner's membership number, the stable identifier derived from the owner's
++     * customer code and registration date (see {@link Owner#membershipNumber(String, java.time.LocalDate)}).
++     */
++    default String formatMembershipNumber(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Owner.membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 841ae444f..040a63c53 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -277,6 +277,23 @@ public class Owner extends Person {
+         }
+     }
+ 
++    /**
++     * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
++     * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
++     * is the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). The
++     * value is deterministic in those two fields.
++     *
++     * @param customerCode the owner's customer code, possibly {@code null}
++     * @param registrationDate the owner's registration date, possibly {@code null}
++     * @return the membership number, or {@code null} if either field is {@code null}
++     */
++    public static String membershipNumber(String customerCode, LocalDate registrationDate) {
++        if (customerCode == null || registrationDate == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a66626d3c..d4b154a66 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,6 +2134,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                A derived membership identifier formatted '<customerCode>-M<YY>'
++                where YY is the last two digits of the registrationDate year.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
