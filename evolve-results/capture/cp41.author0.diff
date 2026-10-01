@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 38d28904b..42d6030b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -1,7 +1,11 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.HashSet;
++import java.util.Set;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}, where {@code REGION}
+@@ -9,12 +13,22 @@ import org.springframework.samples.petclinic.model.Owner;
+  * characters of the SHA-256 of the normalized telephone concatenated with the last name (e.g.
+  * {@code NSW-1A2B3C4D}). The shape and all of its parts are owned by {@link OwnerCustomerCode}.
+  *
+- * <p>The code carries no sequence number, so it depends only on the owner's own fields and needs no
+- * repository lookup.
++ * <p>The region-and-hash code depends only on the owner's own fields, but two distinct owners can
++ * nonetheless hash to the same code. On a collision with an existing owner's {@code customerCode} the
++ * code is de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes
++ * it unique (see {@link OwnerCustomerCode#deduplicate}), so distinct owners always keep distinct
++ * customer codes.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
+-        owner.setCustomerCode(OwnerCustomerCode.customerCode(owner));
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String base = OwnerCustomerCode.customerCode(owner);
++        Set<String> existing = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            if (other.getCustomerCode() != null) {
++                existing.add(other.getCustomerCode());
++            }
++        }
++        owner.setCustomerCode(OwnerCustomerCode.deduplicate(base, existing));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
+index 61e00059f..95dfa2ca2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
+@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.util.Set;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerRegion;
+@@ -58,6 +59,23 @@ public final class OwnerCustomerCode {
+         }
+     }
+ 
++    /**
++     * De-duplicates {@code base} against the {@code existing} customer codes: returns {@code base}
++     * unchanged when it is not already taken, otherwise appends {@code -<n>} with the smallest
++     * {@code n} of 2 or more that makes the code unique.
++     */
++    public static String deduplicate(String base, Set<String> existing) {
++        if (!existing.contains(base)) {
++            return base;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = base + "-" + n;
++            if (!existing.contains(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * The {@code REGION} segment of a customer code (everything before the first {@code '-'}), or
+      * {@code null} when there is no code to read it from.
