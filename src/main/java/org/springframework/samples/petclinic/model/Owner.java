@@ -73,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -193,25 +193,23 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
      * Resolve this owner's current <em>primary identifier</em>: the single external-facing identity an
-     * owner is known by. Today that is the {@link #getCustomerCode() customerCode}; when the customer
-     * code is later unified into a {@code memberId}, this becomes the sole place that choice is made, so
-     * every consumer (such as the {@code OWNER_CREATED} audit event) automatically carries the new
-     * identifier without further change.
+     * owner is known by. This is the unified {@link #getMemberId() memberId}, so every consumer (such
+     * as the {@code OWNER_CREATED} audit event) carries the owner's live identity from this one place.
      *
      * @return the owner's current primary identifier, or {@code null} when none has been assigned
      */
     public String primaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     public Integer getNamesakeCount() {
@@ -609,8 +607,8 @@ public class Owner extends Person {
 
     /**
      * Compute the full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}. This is the
-     * shared primitive behind every hash-derived owner value (the household id and the customer code),
-     * so they all agree on algorithm and encoding.
+     * shared primitive behind every hash-derived owner value (the household id and the member id's
+     * HASH8 segment), so they all agree on algorithm and encoding.
      *
      * @param value the string to digest, never {@code null}
      * @return the 64-character lower-case hex digest
@@ -631,35 +629,80 @@ public class Owner extends Person {
     }
 
     /**
-     * Build an owner's {@code customerCode}, the stable owner identity assigned once when the owner is
-     * created. It is formatted {@code '<REGION>-<HASH8>'} where:
+     * Build an owner's {@code memberId}, the single unified owner identity assigned once when the owner
+     * is created. It is formatted {@code '<REGION><FY><HASH8><CHK>'} (no separators) where:
      * <ul>
      *   <li>{@code REGION} is the region code derived from the postcode (see
      *       {@link #regionForPostcode(String)}), or {@code 'UNKNOWN'} when the postcode is absent or
-     *       in no known range, and</li>
+     *       in no known range,</li>
+     *   <li>{@code FY} is the two-digit fiscal year of the registration date (the last two digits of
+     *       the fiscal-year number, see {@link #fiscalYearNumber(LocalDate)}),</li>
      *   <li>{@code HASH8} is the first eight upper-cased hex characters of the SHA-256 digest of the
      *       normalized telephone (see {@link #normalizeTelephone(String)}) concatenated with the last
-     *       name.</li>
+     *       name (the same HASH8 used by the region-and-hash identity), and</li>
+     *   <li>{@code CHK} is a single Luhn check digit (see {@link #luhn(String)}) over the digits of the
+     *       {@code <REGION><FY><HASH8>} prefix.</li>
      * </ul>
-     * The value is deterministic in the postcode, telephone and last name (e.g.
-     * {@code 'NSW-1A2B3C4D'}); it carries no sequence number.
+     * The value is deterministic in the postcode, telephone, last name and registration date (e.g.
+     * {@code 'NSW271A2B3C4D5'}); it carries no sequence number.
      *
      * @param postcode the owner's postcode, possibly {@code null}
      * @param telephone the owner's raw telephone, possibly {@code null}
      * @param lastName the owner's last name, possibly {@code null}
-     * @return the customer code, or {@code null} if the telephone or last name is {@code null}
+     * @param registrationDate the owner's registration date, possibly {@code null}
+     * @return the member id, or {@code null} if the telephone, last name or registration date is
+     *     {@code null}
      */
-    public static String customerCode(String postcode, String telephone, String lastName) {
-        if (telephone == null || lastName == null) {
+    public static String memberId(String postcode, String telephone, String lastName,
+            LocalDate registrationDate) {
+        if (telephone == null || lastName == null || registrationDate == null) {
             return null;
         }
         String region = regionForPostcode(postcode);
         if (region == null) {
             region = "UNKNOWN";
         }
+        String fy = String.format("%02d", fiscalYearNumber(registrationDate) % 100);
         String normalizedTelephone = normalizeTelephone(telephone);
         String key = (normalizedTelephone == null ? "" : normalizedTelephone) + lastName;
-        return region + "-" + sha256Hex(key).substring(0, 8).toUpperCase();
+        String hash8 = sha256Hex(key).substring(0, 8).toUpperCase();
+        String prefix = region + fy + hash8;
+        return prefix + luhn(prefix);
+    }
+
+    /**
+     * Extract the {@code REGION} segment of a {@code memberId}: the leading run of letters before the
+     * two-digit {@code FY} segment (see {@link #memberId(String, String, String, LocalDate)}). Because
+     * {@code REGION} is always alphabetic and is immediately followed by digits, the region is the
+     * {@code memberId}'s leading letters. A {@code null} member id, or one with no leading letter,
+     * yields {@code 'UNKNOWN'}.
+     *
+     * @param memberId the owner's member id, possibly {@code null}
+     * @return the region segment, or {@code 'UNKNOWN'} when none can be read
+     */
+    public static String regionOf(String memberId) {
+        if (memberId == null) {
+            return "UNKNOWN";
+        }
+        int end = regionEnd(memberId);
+        return end == 0 ? "UNKNOWN" : memberId.substring(0, end);
+    }
+
+    /**
+     * Locate the end of a {@code memberId}'s {@code REGION} segment: the index just past its leading
+     * run of letters, which is where the two-digit {@code FY} segment begins (see
+     * {@link #memberId(String, String, String, LocalDate)}). This is the single place the memberId's
+     * region/FY boundary is read, shared by {@link #regionOf(String)} and {@link #fiscalYear(String)}.
+     *
+     * @param memberId the owner's member id, never {@code null}
+     * @return the index after the leading letters (0 when the member id starts with a non-letter)
+     */
+    private static int regionEnd(String memberId) {
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i;
     }
 
     /**
@@ -789,21 +832,26 @@ public class Owner extends Person {
     }
 
     /**
-     * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
-     * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
-     * is the last two digits of the registration date's fiscal year (see
-     * {@link #fiscalYear(LocalDate)}), e.g. {@code 'NSW-1A2B3C4D-M27'}. The value is deterministic
-     * in those two fields.
+     * Read an owner's {@code fiscalYear} from its {@code memberId}, formatted {@code 'FY<YY>'} where
+     * {@code YY} is the two-digit {@code FY} segment carried by the member id (the two digits that
+     * immediately follow the {@code REGION} segment, see
+     * {@link #memberId(String, String, String, LocalDate)}). Reading it back from the member id keeps
+     * the response's fiscal-year value consistent with the one encoded in the unified identifier.
      *
-     * @param customerCode the owner's customer code, possibly {@code null}
-     * @param registrationDate the owner's registration date, possibly {@code null}
-     * @return the membership number, or {@code null} if either field is {@code null}
+     * @param memberId the owner's member id, possibly {@code null}
+     * @return the fiscal year formatted {@code 'FY<YY>'}, or {@code null} when no two-digit segment can
+     *     be read from the member id
      */
-    public static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        if (customerCode == null || registrationDate == null) {
+    public static String fiscalYear(String memberId) {
+        if (memberId == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, fiscalYearNumber(registrationDate) % 100);
+        int start = regionEnd(memberId);
+        if (start + 2 > memberId.length()) {
+            return null;
+        }
+        String yy = memberId.substring(start, start + 2);
+        return yy.matches("\\d{2}") ? "FY" + yy : null;
     }
 
     /**
@@ -890,20 +938,16 @@ public class Owner extends Person {
 
     /**
      * Derive an owner's {@code locality}, the canonical region for the owner, from the {@code REGION}
-     * segment of the owner's {@code customerCode} (see {@link #customerCode(String, String, String)}).
-     * Because the customer code's region is itself derived from the postcode, the locality now shares
-     * the owner's region-and-hash identity: it is the text before the first {@code '-'} of the customer
-     * code. When the owner has no customer code the locality is {@code 'UNKNOWN'}.
+     * segment of the owner's {@code memberId} (see {@link #regionOf(String)}). Because the member id's
+     * region is itself derived from the postcode, the locality shares the owner's region-and-hash
+     * identity: it is the member id's leading region segment. When the owner has no member id the
+     * locality is {@code 'UNKNOWN'}.
      *
-     * @param customerCode the owner's customer code, possibly {@code null}
-     * @return the canonical region string, or {@code 'UNKNOWN'} when no customer code is present
+     * @param memberId the owner's member id, possibly {@code null}
+     * @return the canonical region string, or {@code 'UNKNOWN'} when no member id is present
      */
-    public static String locality(String customerCode) {
-        if (customerCode == null) {
-            return "UNKNOWN";
-        }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? customerCode : customerCode.substring(0, dash);
+    public static String locality(String memberId) {
+        return regionOf(memberId);
     }
 
     /**
@@ -922,14 +966,14 @@ public class Owner extends Person {
      * from the fixed {@link #REGION_TIMEZONE} table ({@code NSW}->{@code Australia/Sydney},
      * {@code VIC}->{@code Australia/Melbourne}, {@code QLD}->{@code Australia/Brisbane}). The region
      * is the owner's {@code locality} (see {@link #locality(String)}), itself the {@code REGION}
-     * segment of the customer code. A region not in the table (including {@code 'UNKNOWN'}) has no
+     * segment of the member id. A region not in the table (including {@code 'UNKNOWN'}) has no
      * timezone and yields {@code null}.
      *
-     * @param customerCode the owner's customer code, possibly {@code null}
+     * @param memberId the owner's member id, possibly {@code null}
      * @return the IANA timezone name, or {@code null} when the owner's region has no mapped timezone
      */
-    public static String timezone(String customerCode) {
-        return REGION_TIMEZONE.get(locality(customerCode));
+    public static String timezone(String memberId) {
+        return REGION_TIMEZONE.get(locality(memberId));
     }
 
     /**
@@ -952,7 +996,7 @@ public class Owner extends Person {
      */
     public String ownerSegment() {
         String tier = effectiveMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
-        String area = KNOWN_REGIONS.contains(locality(this.customerCode)) ? "METRO" : "REGIONAL";
+        String area = KNOWN_REGIONS.contains(locality(this.memberId)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
 
@@ -1029,24 +1073,21 @@ public class Owner extends Person {
     }
 
     /**
-     * Compute an owner's {@code checkDigit}, a single Luhn check digit (0-9) over the digits
-     * contained in the {@code customerCode}. Non-digit characters in the code are ignored. The
-     * value is deterministic in the customer code and is the standard Luhn check digit: each
-     * digit is weighted right-to-left, every second digit (starting with the rightmost) is
-     * doubled with digit sums above nine reduced by nine, and the check digit is the amount that
-     * brings the weighted sum up to the next multiple of ten.
+     * Compute a single Luhn check digit (0-9) over the digits contained in {@code value}. Non-digit
+     * characters are ignored. This is the standard Luhn check digit: each digit is weighted
+     * right-to-left, every second digit (starting with the rightmost) is doubled with digit sums above
+     * nine reduced by nine, and the check digit is the amount that brings the weighted sum up to the
+     * next multiple of ten. It is the shared primitive behind the {@code CHK} segment of the
+     * {@code memberId} (see {@link #memberId(String, String, String, LocalDate)}).
      *
-     * @param customerCode the owner's customer code, possibly {@code null}
-     * @return the Luhn check digit from 0 to 9, or {@code null} if the customer code is {@code null}
+     * @param value the string whose digits are summed, never {@code null}
+     * @return the Luhn check digit from 0 to 9
      */
-    public static Integer checkDigit(String customerCode) {
-        if (customerCode == null) {
-            return null;
-        }
+    private static int luhn(String value) {
         int sum = 0;
         boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }

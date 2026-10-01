@@ -24,7 +24,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "householdId", expression = "java(formatHouseholdId(owner))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -34,7 +33,6 @@ public interface OwnerMapper {
     @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
@@ -97,25 +95,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's fiscal year, the 'FY&lt;YY&gt;' value derived from the
-     * business-day-adjusted registration date (see {@link Owner#fiscalYear(java.time.LocalDate)}).
+     * Read the owner's fiscal year, the 'FY&lt;YY&gt;' value carried by the FY segment of the owner's
+     * memberId (see {@link Owner#fiscalYear(String)}), keeping it consistent with the unified identifier.
      */
     default String formatFiscalYear(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.fiscalYear(owner.getRegistrationDate());
-    }
-
-    /**
-     * Compute the owner's membership number, the stable identifier derived from the owner's
-     * customer code and registration date (see {@link Owner#membershipNumber(String, java.time.LocalDate)}).
-     */
-    default String formatMembershipNumber(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        return Owner.membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate());
+        return Owner.fiscalYear(owner.getMemberId());
     }
 
     /**
@@ -146,13 +133,13 @@ public interface OwnerMapper {
 
     /**
      * Compute the owner's locality, the canonical region taken from the {@code REGION} segment of the
-     * owner's customer code (see {@link Owner#locality(String)}).
+     * owner's memberId (see {@link Owner#locality(String)}).
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Owner.locality(owner.getCustomerCode());
+        return Owner.locality(owner.getMemberId());
     }
 
     /**
@@ -164,7 +151,7 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        return Owner.timezone(owner.getCustomerCode());
+        return Owner.timezone(owner.getMemberId());
     }
 
     /**
@@ -224,17 +211,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's check digit, the single Luhn check digit over the digits of the owner's
-     * customer code (see {@link Owner#checkDigit(String)}).
-     */
-    default Integer formatCheckDigit(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        return Owner.checkDigit(owner.getCustomerCode());
-    }
-
-    /**
      * Compute the owner's age band, derived from the birth date against the registration date
      * (see {@link Owner#ageBand(java.time.LocalDate, java.time.LocalDate)}). Returns {@code null}
      * when no birth date is set, so the field is omitted from the response.
@@ -287,7 +263,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdCount", ignore = true)
     @Mapping(target = "membershipLevel", ignore = true)

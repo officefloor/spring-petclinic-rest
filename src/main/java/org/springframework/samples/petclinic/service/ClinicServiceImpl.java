@@ -51,7 +51,7 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Dedicated audit logger. Successful owner creates emit a single line here carrying the new
-     * owner's id, customer code and registration date.
+     * owner's id, member id and registration date.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -331,8 +331,8 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setBulkSignupWarning(computeBulkSignupWarning(owner));
             owner.setCapacityWarning(computeCapacityWarning(owner));
         }
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.isNew() && owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -348,13 +348,9 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
         if (isCreate) {
-            String membershipNumber = Owner.membershipNumber(owner.getCustomerCode(),
-                owner.getRegistrationDate());
             int membershipLevel = owner.effectiveMembershipLevel();
-            AUDIT.info("owner created id={} customerCode={} registrationDate={} "
-                    + "membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipLevel, membershipNumber);
+            AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
             OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQ.incrementAndGet(),
                 owner.getId(), owner.primaryIdentifier(), membershipLevel);
             AUDIT.info(objectMapper.writeValueAsString(event));
@@ -436,27 +432,30 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's {@code customerCode} formatted {@code '<REGION>-<HASH8>'}, where {@code REGION}
-     * is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no region can be
-     * derived) and {@code HASH8} is the first eight upper-cased hex characters of SHA-256 over the
-     * owner's normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The
-     * base value is deterministic in those fields and carries no sequence number (see
-     * {@link Owner#customerCode(String, String, String)}).
+     * Build an owner's {@code memberId} formatted {@code '<REGION><FY><HASH8><CHK>'}, where
+     * {@code REGION} is the region code derived from the owner's postcode (or {@code 'UNKNOWN'} when no
+     * region can be derived), {@code FY} is the two-digit fiscal year of the registration date,
+     * {@code HASH8} is the first eight upper-cased hex characters of SHA-256 over the owner's normalized
+     * telephone concatenated with the last name, and {@code CHK} is a single Luhn check digit over the
+     * digits of the {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'NSW271A2B3C4D5'}). The base value
+     * is deterministic in those fields and carries no sequence number (see
+     * {@link Owner#memberId(String, String, String, java.time.LocalDate)}).
      *
-     * <p>When that computed code collides with an existing owner's {@code customerCode}, this appends
+     * <p>When that computed id collides with an existing owner's {@code memberId}, this appends
      * {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it unique (e.g. a second owner
-     * computing {@code 'NSW-1A2B3C4D'} is stored as {@code 'NSW-1A2B3C4D-2'}), so distinct owners always
-     * receive distinct customer codes. A {@code null} computed code (missing telephone or last name) is
-     * returned unchanged.
+     * computing {@code 'NSW271A2B3C4D5'} is stored as {@code 'NSW271A2B3C4D5-2'}), so distinct owners
+     * always receive distinct member ids. A {@code null} computed id (missing telephone, last name or
+     * registration date) is returned unchanged.
      */
-    private String generateCustomerCode(Owner owner) {
-        String base = Owner.customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
+    private String generateMemberId(Owner owner) {
+        String base = Owner.memberId(owner.getPostcode(), owner.getTelephone(), owner.getLastName(),
+            owner.getRegistrationDate());
         if (base == null) {
             return null;
         }
         Set<String> existing = ownerRepository.findAll().stream()
             .filter(other -> !Objects.equals(other.getId(), owner.getId()))
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         if (!existing.contains(base)) {
@@ -589,7 +588,7 @@ public class ClinicServiceImpl implements ClinicService {
      * Sunday or a listed public holiday is advanced to the following non-holiday weekday; a plain
      * weekday is returned unchanged. This is applied to the effective registration date (whether
      * supplied in the request or defaulted to the server date) so that every value derived from
-     * it&mdash;such as the membership number's year segment and the daily create-limit
+     * it&mdash;such as the member id's fiscal-year segment and the daily create-limit
      * counting&mdash;uses the adjusted business day.
      */
     private static LocalDate rollToBusinessDay(LocalDate date) {

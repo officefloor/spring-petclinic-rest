@@ -22,21 +22,20 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
  * Immutable structured audit event emitted on the dedicated {@code AUDIT} logger when an owner is
  * created, alongside the human-readable audit line. Serialized (via the application's shared Jackson
  * {@code ObjectMapper}) to a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
  * monotonically increasing integer across creates.
  *
- * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em> (see
- * {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()}): the customer code
- * today, and whatever replaces it later (e.g. the unified {@code memberId}), so the event always names
- * the owner by its live identity without this type changing.
+ * <p>The {@code memberId} field carries the owner's <em>current primary identifier</em> (see
+ * {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()}): the unified
+ * {@code memberId}, so the event always names the owner by its live identity.
  *
  * @param seq a monotonically increasing sequence number across creates
  * @param ownerId the new owner's id
- * @param customerCode the owner's current primary identifier
+ * @param memberId the owner's current primary identifier
  * @param membershipLevel the owner's effective membership level
  */
-@JsonPropertyOrder({"seq", "ownerId", "customerCode", "membershipLevel", "event"})
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+@JsonPropertyOrder({"seq", "ownerId", "memberId", "membershipLevel", "event"})
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
 
     /** The fixed {@code event} discriminator carried by every instance. */
     public static final String EVENT = "OWNER_CREATED";
