@@ -53,6 +53,9 @@ public class ClinicServiceImpl implements ClinicService {
     /** Maximum number of owners allowed per city. */
     private static final long CITY_CAPACITY = 50L;
 
+    /** At or above this many owners, a city read carries a capacity warning (approaching {@link #CITY_CAPACITY}). */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
     /** Maximum number of owners that may be created on a single day (by registration date). */
     private static final long DAILY_CAPACITY = 100L;
 
@@ -363,6 +366,13 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean isCityAtCapacity(String city) throws DataAccessException {
         return countOwnersInCity(city) >= CITY_CAPACITY;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityApproachingCapacity(String city) throws DataAccessException {
+        long count = countOwnersInCity(city);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 
     @Override

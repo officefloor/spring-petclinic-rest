@@ -43,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

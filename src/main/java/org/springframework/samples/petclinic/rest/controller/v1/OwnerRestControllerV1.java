@@ -114,11 +114,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(toOwnerDtoWithWarning(owner), HttpStatus.OK);
     }
 
-    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} flag the same way
-     *  for every owner response. */
+    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} and
+     *  {@code capacityWarning} flags the same way for every owner response. */
     private OwnerDto toOwnerDtoWithWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
+        ownerDto.setCapacityWarning(this.clinicService.isCityApproachingCapacity(owner.getCity()));
         return ownerDto;
     }
 

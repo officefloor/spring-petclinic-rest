@@ -113,6 +113,17 @@ public interface ClinicService {
 	boolean isCityAtCapacity(String city) throws DataAccessException;
 
 	/**
+	 * Returns {@code true} when the given city is approaching its owner capacity, i.e. it already
+	 * contains between 40 and 49 owners inclusive (compared case-insensitively, the same way the
+	 * per-city capacity rule counts them). Drives the read-only {@code capacityWarning} response
+	 * flag; the hard rejection at 50 owners ({@link #isCityAtCapacity}) is unchanged.
+	 *
+	 * @param city the city to check
+	 * @return whether the city already contains between 40 and 49 owners
+	 */
+	boolean isCityApproachingCapacity(String city) throws DataAccessException;
+
+	/**
 	 * Returns {@code true} if 100 or more owners have already been registered today, i.e. the number
 	 * of owners whose {@code registrationDate} equals the server's current date has reached the daily
 	 * create limit. Enforces the "at most 100 owners created per day" invariant on owner creation.
