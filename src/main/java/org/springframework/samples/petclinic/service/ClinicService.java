@@ -124,6 +124,18 @@ public interface ClinicService {
 	boolean isCityApproachingCapacity(String city) throws DataAccessException;
 
 	/**
+	 * Returns {@code true} when the given city is over its soft capacity, i.e. it already contains
+	 * at least 40 owners (compared case-insensitively, the same way the per-city capacity rule
+	 * counts them). 40 is the per-city <em>soft</em> limit, below the hard capacity of 50; a city at
+	 * or beyond it is treated as a risk signal. Drives one of the conditions of the read-only
+	 * {@code riskFlag} response field.
+	 *
+	 * @param city the city to check
+	 * @return whether the city already contains 40 or more owners
+	 */
+	boolean isCityOverSoftCapacity(String city) throws DataAccessException;
+
+	/**
 	 * Returns {@code true} if 100 or more owners have already been registered today, i.e. the number
 	 * of owners whose {@code registrationDate} equals the server's current date has reached the daily
 	 * create limit. Enforces the "at most 100 owners created per day" invariant on owner creation.

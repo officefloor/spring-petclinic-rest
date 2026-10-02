@@ -384,6 +384,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isCityOverSoftCapacity(String city) throws DataAccessException {
+        return countOwnersInCity(city) >= CITY_CAPACITY_WARNING_THRESHOLD;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public boolean isDailyRegistrationAtCapacity() throws DataAccessException {
         return countRegisteredToday() >= DAILY_CAPACITY;
     }

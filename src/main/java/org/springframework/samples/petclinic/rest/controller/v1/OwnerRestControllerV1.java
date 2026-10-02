@@ -116,13 +116,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(toOwnerDtoWithWarning(owner), HttpStatus.OK);
     }
 
-    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} and
-     *  {@code capacityWarning} flags the same way for every owner response. */
+    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning},
+     *  {@code capacityWarning} and {@code riskFlag} flags the same way for every owner response. */
     private OwnerDto toOwnerDtoWithWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
         ownerDto.setCapacityWarning(this.clinicService.isCityApproachingCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(isRiskFlag(owner));
         return ownerDto;
+    }
+
+    /** Compute the read-only {@code riskFlag}: true when the owner is a possible duplicate, its
+     *  email domain is disposable-adjacent, or its city is over its soft capacity. */
+    private boolean isRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || DisposableEmailValidator.isDisposableAdjacent(owner.getEmail())
+            || this.clinicService.isCityOverSoftCapacity(owner.getCity());
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

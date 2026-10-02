@@ -44,6 +44,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
+    @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**
