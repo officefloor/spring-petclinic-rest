@@ -42,7 +42,7 @@ public class ValidateNewOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String digits = request.getTelephone().replaceAll("\\D", "");
+        String digits = OwnerTelephone.normalize(request.getTelephone());
         if (digits.length() != 10) {
             throw new InvalidTelephoneException(
                     "Telephone must be exactly 10 digits after stripping; got " + digits.length());
