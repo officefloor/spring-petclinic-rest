@@ -75,6 +75,19 @@ public final class LocalityResolver {
     }
 
     /**
+     * Whether the given locality is a known canonical region (one with a reserved postcode
+     * range: {@code NSW}, {@code VIC} or {@code QLD}), as opposed to the {@code 'UNKNOWN'}
+     * sentinel or any other value. Reads the single-sourced {@code REGION_POSTCODES} table so
+     * region-membership stays defined by the one place that owns the region knowledge.
+     *
+     * @param region a locality/region string (e.g. {@code 'NSW'} or {@code 'UNKNOWN'})
+     * @return {@code true} when the region has a reserved postcode range
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_POSTCODES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for a region, via the fixed region-to-timezone table
      * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
      * {@code QLD -> Australia/Brisbane}).

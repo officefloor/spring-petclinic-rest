@@ -40,6 +40,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
+    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "formatOwnerSegment")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -310,6 +311,29 @@ public interface OwnerMapper {
             return null;
         }
         return LocalityResolver.timezone(formatLocality(owner));
+    }
+
+    /**
+     * Derives an owner's segment, as required by the API's read-only {@code ownerSegment} field:
+     * {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'},
+     * {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. {@code TIER} is {@code 'PREMIUM'}
+     * when the owner's {@link #formatMembershipLevel membership level} is 3 or more, otherwise
+     * {@code 'STANDARD'}. {@code AREA} is {@code 'METRO'} when the owner's {@link #formatLocality
+     * locality} is a known region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'} — a locality of
+     * {@code 'UNKNOWN'} being exactly the case where no known region resolved.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatOwnerSegment")
+    default String formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = formatMembershipLevel(owner);
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String area = LocalityResolver.isKnownRegion(formatLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
