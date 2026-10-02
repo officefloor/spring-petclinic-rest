@@ -8,16 +8,16 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Responds 409 with an RFC-7807 {@link ProblemDetail} (built through the shared {@link ProblemDetails}
- * helper, like every other handler in this package) when a new owner's whole derived identity key is
- * already used by another owner.
+ * helper, like every other handler in this package) when a new owner resolves to the same household
+ * (same last name and postcode) as an existing owner and did not set {@code sharesHousehold}.
  */
-public class DuplicateIdentityExceptionHandler {
+public class HouseholdDuplicateExceptionHandler {
 
-    public void handle(@Parameter DuplicateIdentityException ex,
+    public void handle(@Parameter HouseholdDuplicateException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "An owner with the given identity key already exists");
-        detail.setProperty("errors", java.util.List.of("identityKey"));
+                "An owner in the same household already exists");
+        detail.setProperty("errors", java.util.List.of("sharesHousehold"));
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }

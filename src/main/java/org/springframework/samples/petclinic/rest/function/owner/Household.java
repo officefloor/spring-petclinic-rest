@@ -7,12 +7,15 @@ import java.util.Locale;
 
 /**
  * Single source of truth for household identity. A household groups owners that share the same last
- * name and the same address, compared case-insensitively with surrounding and internal whitespace
- * collapsed (so "Smith" / " smith " and "10  Main St" / "10 Main St" belong together).
+ * name and the same postcode, with the last name compared case-insensitively and with surrounding and
+ * internal whitespace collapsed (so "Smith" / " smith " belong together).
  *
- * <p>The {@link #id(String, String)} derived from that normalized pair is stable: the same last name
- * and address always map to the same value, so every member of a household — including one that joins
- * via {@code sharesHousehold} — receives an identical {@code householdId}.
+ * <p>The {@link #id(String, String)} derived from that normalized (lastName, postcode) pair is
+ * deterministic: the same last name and postcode always map to the same value, so every owner at the
+ * same household receives an identical {@code householdId} automatically — it is no longer something an
+ * owner "joins" via {@code sharesHousehold}. The household is therefore the basis for duplicate
+ * detection ({@link CheckHouseholdUnique}): two owners belong to the same household exactly when their
+ * ids are equal.
  */
 final class Household {
 
@@ -28,24 +31,24 @@ final class Household {
     }
 
     /**
-     * The canonical household key for a (lastName, address) pair — the single definition of household
-     * membership. Two owners belong to the same household exactly when their keys are equal; {@link #id}
-     * hashes this same key, so the duplicate check and the assigned id can never diverge.
-     *
-     * <p>Addresses are compared in their {@link OwnerAddress normalized} form (whitespace collapsed,
-     * upper-cased, abbreviations expanded) so that equivalent spellings — "12 main st" and
-     * "12 MAIN STREET" — belong to the same household even when stored data was not normalized.
+     * The canonical household key for a (lastName, postcode) pair — the single definition of household
+     * membership: {@code normalizedLastName + "|" + postcode}. Two owners belong to the same household
+     * exactly when their keys are equal; {@link #id} hashes this same key, so the duplicate check and the
+     * assigned id can never diverge. The last name is normalized (whitespace collapsed, lower-cased); the
+     * postcode is trimmed and used as given (a {@code null} or blank postcode contributes an empty
+     * component).
      */
-    static String key(String lastName, String address) {
-        return normalize(lastName) + "\n" + OwnerAddress.normalize(address);
+    static String key(String lastName, String postcode) {
+        String pc = (postcode == null) ? "" : postcode.trim();
+        return normalize(lastName) + "|" + pc;
     }
 
     /**
-     * Stable household identifier for the given last name and address: {@code "H-"} followed by the
-     * first 12 hex characters of the SHA-256 of the {@link #key household key}.
+     * Deterministic household identifier for the given last name and postcode: {@code "H-"} followed by
+     * the first 12 hex characters of the SHA-256 of the {@link #key household key}.
      */
-    static String id(String lastName, String address) {
-        String key = key(lastName, address);
+    static String id(String lastName, String postcode) {
+        String key = key(lastName, postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder("H-");

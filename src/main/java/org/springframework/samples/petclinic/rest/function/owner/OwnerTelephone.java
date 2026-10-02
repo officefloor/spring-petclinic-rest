@@ -5,10 +5,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Single source of truth for what a "normalized" owner telephone is: the E.164 form. Both
- * {@link ValidateNewOwner} (which enforces the rule and stores the E.164 value) and
- * {@link OwnerIdentity} (whose identity key compares against stored owners) normalize through here, so
- * the two cannot drift apart.
+ * Single source of truth for what a "normalized" owner telephone is: the E.164 form.
+ * {@link ValidateNewOwner} enforces the rule and stores the E.164 value through here, so the stored and
+ * returned telephone (and the owner's derived identity key, which includes it) share one canonical form.
  *
  * <p>Normalization strips spaces, dashes and brackets, then forms the canonical E.164 string:
  * <ul>

@@ -207,7 +207,8 @@ public class Owner extends Person {
     /**
      * Whether this owner is a <em>possible</em> (soft) duplicate of another owner: {@code true} when some
      * other owner shares this owner's last name (case-insensitively) and postcode but has a different
-     * telephone — a near match that is not a hard duplicate (which would share the whole identity key).
+     * telephone — a near match. Always false for an owner admitted as a declared household member (via
+     * {@code sharesHousehold}), which is not a suspected duplicate.
      * Computed per request, not persisted. See {@link #getPossibleDuplicateOf()} for the matched owner.
      */
     public Boolean getPossibleDuplicate() {
@@ -363,13 +364,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The single canonical format of an owner's identity key — the one value all duplicate detection is
-     * expressed through: {@code telephone + "|" + (email or empty) + "|" + (householdId or empty)}. The
-     * telephone and household id are used as given (they are expected to already be canonical: E.164 and
-     * an assigned household id); the email is lower-cased here and a null/blank email, telephone or
-     * household id contributes an empty component. This is the only place the {@code "|"}-join lives;
-     * every producer of the key (the stored-owner {@link #getIdentityKey()} and the create-time check in
-     * {@code OwnerIdentity}) routes through here so the formats cannot drift.
+     * The single canonical format of an owner's derived identity key:
+     * {@code telephone + "|" + (email or empty) + "|" + (householdId or empty)}. The telephone and
+     * household id are used as given (they are expected to already be canonical: E.164 and an assigned
+     * household id); the email is lower-cased here and a null/blank email, telephone or household id
+     * contributes an empty component. This is the only place the {@code "|"}-join lives; the stored-owner
+     * {@link #getIdentityKey()} routes through here so the format cannot drift. The key is a descriptive,
+     * returned field; create-time duplicate detection itself is keyed on the household alone (see
+     * {@code CheckHouseholdUnique}).
      */
     public static String identityKey(String telephone, String email, String householdId) {
         String tel = (telephone == null) ? "" : telephone;
@@ -380,8 +382,8 @@ public class Owner extends Person {
 
     /**
      * The owner's derived identity key, built from its stored canonical telephone (E.164), email and
-     * household id via {@link #identityKey(String, String, String)}. Two owners are duplicates exactly
-     * when their whole identity keys are equal.
+     * household id via {@link #identityKey(String, String, String)}. A descriptive, returned value;
+     * create-time duplicate detection is keyed on the household (see {@code CheckHouseholdUnique}).
      */
     public String getIdentityKey() {
         return identityKey(this.telephone, this.email, this.householdId);
