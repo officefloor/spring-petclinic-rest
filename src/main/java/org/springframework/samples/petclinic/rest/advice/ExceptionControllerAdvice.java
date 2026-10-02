@@ -30,11 +30,14 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.util.CityCapacityException;
 import org.springframework.samples.petclinic.util.DisposableEmailException;
+import org.springframework.samples.petclinic.util.DuplicateOwnerException;
 import org.springframework.samples.petclinic.util.InvalidAddressException;
 import org.springframework.samples.petclinic.util.InvalidPostcodeException;
 import org.springframework.samples.petclinic.util.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.util.InvalidTelephoneException;
+import org.springframework.samples.petclinic.util.RegistrationRateLimitException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -216,6 +219,57 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid registration date at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link RegistrationRateLimitException} thrown when the per-day owner registration
+     * limit has been reached, returning a 429 Too Many Requests with an RFC7807 problem body.
+     *
+     * @param e The {@link RegistrationRateLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(RegistrationRateLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRegistrationRateLimitException(RegistrationRateLimitException e, HttpServletRequest request) {
+        logger.debug("Registration rate limit at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerException} thrown when a new owner's identity key matches an
+     * existing, non-deleted owner, returning a 409 Conflict with an RFC7807 problem body.
+     *
+     * @param e The {@link DuplicateOwnerException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityCapacityException} thrown when an owner's city has reached its
+     * registration capacity, returning a 409 Conflict with an RFC7807 problem body.
+     *
+     * @param e The {@link CityCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityCapacityException(CityCapacityException e, HttpServletRequest request) {
+        logger.debug("City capacity reached at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
 

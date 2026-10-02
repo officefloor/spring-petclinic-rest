@@ -41,9 +41,12 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.IdempotencyKeyRegistry;
 import org.springframework.samples.petclinic.util.AddressValidator;
+import org.springframework.samples.petclinic.util.CityCapacityException;
 import org.springframework.samples.petclinic.util.DisposableEmailValidator;
+import org.springframework.samples.petclinic.util.DuplicateOwnerException;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
 import org.springframework.samples.petclinic.util.RegistrationDateValidator;
+import org.springframework.samples.petclinic.util.RegistrationRateLimitException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -153,7 +156,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         DisposableEmailValidator.validate(owner.getEmail());
         RegistrationDateValidator.validate(owner.getRegistrationDate());
         if (this.clinicService.isDailyRegistrationAtCapacity()) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RegistrationRateLimitException();
         }
         // The household id is deterministic from (lastName, postcode), so owners sharing a last name
         // and postcode are automatically the same household. It no longer gates duplicate detection
@@ -165,10 +168,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // existing, non-deleted owner's. Two owners with the same last name and postcode but different
         // telephones have distinct keys and are created as a soft match rather than rejected.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new DuplicateOwnerException();
         }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new CityCapacityException();
         }
         this.clinicService.saveOwner(owner, sharesHousehold);
         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
