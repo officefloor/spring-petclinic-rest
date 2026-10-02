@@ -95,6 +95,9 @@ public class Owner extends Person {
     private Boolean bulkSignupWarning;
 
     @Transient
+    private Boolean capacityWarning;
+
+    @Transient
     private Boolean possibleDuplicate;
 
     @Transient
@@ -344,6 +347,19 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this response should carry a per-city capacity warning: {@code true} when this owner's city
+     * already contains between 40 and 49 owners (inclusive), approaching the per-city capacity limit of 50.
+     * Computed per request, not persisted.
+     */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     /**
