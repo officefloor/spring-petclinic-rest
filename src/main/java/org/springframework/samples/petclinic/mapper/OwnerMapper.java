@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -208,6 +209,24 @@ public interface OwnerMapper {
             }
         }
         return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Derives an owner's timezone, as required by the API's read-only {@code timezone} field:
+     * the IANA timezone name for the owner's {@link #formatLocality locality}/region, via the
+     * fixed region-to-timezone table ({@code NSW -> Australia/Sydney},
+     * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). Returns
+     * {@code null} when the region has no mapped timezone (e.g. {@code 'UNKNOWN'}).
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatTimezone")
+    default String formatTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return LocalityResolver.timezone(formatLocality(owner));
     }
 
     /**
