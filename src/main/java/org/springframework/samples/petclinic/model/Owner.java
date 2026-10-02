@@ -66,9 +66,6 @@ public class Owner extends Person {
     @Transient
     private boolean bulkSignupWarning;
 
-    @Transient
-    private int householdSize;
-
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -168,36 +165,23 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing the
-     * same {@link #getHouseholdId() householdId}) has 3 or more members; otherwise {@code 'SILVER'}
-     * when {@link #getNamesakeCount() namesakeCount} is 0 and an {@link #getEmail() email} is
-     * present, and {@code 'BRONZE'} otherwise.
-     * Not persisted — derived from {@link #getHouseholdSize()}, {@link #getNamesakeCount()} and
-     * {@link #getEmail()}.
+     * The owner's numeric membership level, fixed at creation. Starts at {@code 1}; adds {@code 1}
+     * when an {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
+     * namesakeCount} is {@code 0}; capped at {@code 3} (level {@code 4} is reserved for tenure).
+     * Not persisted — derived from {@link #getEmail()} and {@link #getNamesakeCount()}.
      */
     @Transient
-    public String getMembershipTier() {
-        if (this.householdSize >= 3) {
-            return "GOLD";
+    public int getMembershipLevel() {
+        int level = 1;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean uniqueName = this.namesakeCount != null && this.namesakeCount == 0;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        return (uniqueName && hasEmail) ? "SILVER" : "BRONZE";
-    }
-
-    /**
-     * The number of owners sharing this owner's {@link #getHouseholdId() householdId}, as counted
-     * when the response was built. Not persisted — assigned for the response by the create and
-     * fetch pipelines (at least {@code 1}, the owner itself). When no pipeline has populated it the
-     * field is {@code 0}, which the tier derivation treats as not part of a multi-member household.
-     */
-    @Transient
-    public int getHouseholdSize() {
-        return this.householdSize;
-    }
-
-    public void setHouseholdSize(int householdSize) {
-        this.householdSize = householdSize;
+        if (uniqueName) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
