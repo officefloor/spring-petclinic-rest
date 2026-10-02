@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index aa56abdfd..7ee21b2a8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,6 +40,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
++    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "formatOwnerSegment")
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+@@ -312,6 +313,29 @@ public interface OwnerMapper {
+         return LocalityResolver.timezone(formatLocality(owner));
+     }
+ 
++    /**
++     * Derives an owner's segment, as required by the API's read-only {@code ownerSegment} field:
++     * {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'},
++     * {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. {@code TIER} is {@code 'PREMIUM'}
++     * when the owner's {@link #formatMembershipLevel membership level} is 3 or more, otherwise
++     * {@code 'STANDARD'}. {@code AREA} is {@code 'METRO'} when the owner's {@link #formatLocality
++     * locality} is a known region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'} — a locality of
++     * {@code 'UNKNOWN'} being exactly the case where no known region resolved.
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
++     * applied only where referenced via {@code qualifiedByName}.
++     */
++    @Named("formatOwnerSegment")
++    default String formatOwnerSegment(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        Integer level = formatMembershipLevel(owner);
++        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
++        String area = LocalityResolver.isKnownRegion(formatLocality(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Derives an owner's preferred contact channel, as required by the API's read-only
+      * {@code contactPreference} field: {@code 'EMAIL'} when an email address is present,
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index 5eafe0a8d..75cbad516 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -74,6 +74,19 @@ public final class LocalityResolver {
+         return fromPostcode != null ? fromPostcode : resolve(city);
+     }
+ 
++    /**
++     * Whether the given locality is a known canonical region (one with a reserved postcode
++     * range: {@code NSW}, {@code VIC} or {@code QLD}), as opposed to the {@code 'UNKNOWN'}
++     * sentinel or any other value. Reads the single-sourced {@code REGION_POSTCODES} table so
++     * region-membership stays defined by the one place that owns the region knowledge.
++     *
++     * @param region a locality/region string (e.g. {@code 'NSW'} or {@code 'UNKNOWN'})
++     * @return {@code true} when the region has a reserved postcode range
++     */
++    public static boolean isKnownRegion(String region) {
++        return REGION_POSTCODES.containsKey(region);
++    }
++
+     /**
+      * The IANA timezone name for a region, via the fixed region-to-timezone table
+      * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dc783ce16..b071eb5e7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2327,6 +2327,16 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The pet owner's segment, formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM'
++                when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when
++                the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
