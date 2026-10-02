@@ -183,6 +183,37 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's {@link #getTelephone() telephone} formatted for humans: the stored E.164
+     * value rewritten as the country code, a space, then the national digits grouped in threes
+     * separated by spaces (e.g. {@code '+61 412 345 678'}). The known country codes are
+     * {@code '+61'} (Australia) and {@code '+1'} (NANP); any other E.164 value is split with a
+     * two-digit country code. {@code null} when no telephone is set or the value is not in E.164
+     * form. The raw {@link #getTelephone() telephone} is left in E.164 form. Not persisted —
+     * derived from {@link #getTelephone()}.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+[0-9]+")) {
+            return null;
+        }
+        String digits = this.telephone.substring(1);
+        int countryCodeLength = digits.startsWith("1") && !digits.startsWith("61") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return this.telephone;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
+    }
+
+    /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
      * the last two digits of the {@link #getRegistrationDate() registrationDate} year
      * (e.g. {@code 'NSW-1A2B3C4D-M26'}).
