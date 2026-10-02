@@ -462,6 +462,22 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, formatted {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. The
+     * {@code <TIER>} is {@code 'PREMIUM'} when the owner's {@link #getMembershipLevel() membership
+     * level} is 3 or more, otherwise {@code 'STANDARD'}. The {@code <AREA>} is {@code 'METRO'} when
+     * the owner's {@link #getLocality() locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code 'REGIONAL'}. Derived from the owner's own fields.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        Integer level = getMembershipLevel();
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * The owner's identity key: a single derived value that consolidates all duplicate detection,
      * the lower-case hex SHA-256 digest of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}.
      * The telephone is the stored E.164 value, the email its stored lower-cased form (empty when the
