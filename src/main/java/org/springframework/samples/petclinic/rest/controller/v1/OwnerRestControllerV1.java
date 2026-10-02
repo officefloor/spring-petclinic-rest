@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -545,15 +546,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the last name (e.g. {@code 'NSW-1A2B3C4D'}). The identity carries no sequence number, so the
      * same postcode region, telephone and last name always yield the same customer code.
      *
+     * <p>If the computed code collides with an existing owner's {@code customerCode}, it is
+     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes
+     * it unique, so distinct owners always receive distinct customer codes.
+     *
      * @param postcode  the owner's validated postcode, or {@code null} if none was supplied
      * @param telephone the owner's normalized (E.164) telephone
      * @param lastName  the owner's last name
-     * @return the formatted customer code
+     * @return the formatted, de-duplicated customer code
      */
     private String generateCustomerCode(String postcode, String telephone, String lastName) {
         String region = regionForPostcode(postcode);
         String hash8 = hashHex(telephone + lastName, 8);
-        return region + "-" + hash8;
+        String baseCode = region + "-" + hash8;
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existingCodes.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (existingCodes.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
