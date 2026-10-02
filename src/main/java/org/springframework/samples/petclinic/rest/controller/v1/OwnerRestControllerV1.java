@@ -101,6 +101,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. On a successful owner create a welcome notification is enqueued
+     * here: a single line carrying the new owner's id and member id.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Serializer for the structured {@code OWNER_CREATED} audit event. A record's components are
      * emitted in declaration order, giving the event a stable field layout.
      */
@@ -285,6 +291,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
             owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
+        enqueueWelcomeNotification(owner);
         rememberIdempotentCreate(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
@@ -355,6 +362,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             primaryIdentifier(owner),
             owner.getMembershipLevel());
         AUDIT.info("{}", AUDIT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * Enqueues a welcome notification for a freshly created owner by emitting a single line on the
+     * {@code NOTIFY} logger carrying the new owner's id and member id.
+     *
+     * @param owner the owner that was just created and saved
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("Welcome notification: ownerId={} memberId={}",
+            owner.getId(), primaryIdentifier(owner));
     }
 
     /**
