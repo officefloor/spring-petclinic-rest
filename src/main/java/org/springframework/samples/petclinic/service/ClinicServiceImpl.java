@@ -22,7 +22,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Service;
@@ -251,11 +250,20 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        saveOwner(owner, false);
+    }
+
+    @Override
+    @Transactional
+    public void saveOwner(Owner owner, boolean declaredHouseholdMember) throws DataAccessException {
         if (owner.isNew()) {
             LocalDate effectiveDate = owner.getRegistrationDate() != null
                 ? owner.getRegistrationDate()
                 : LocalDate.now();
             owner.setRegistrationDate(toBusinessDay(effectiveDate));
+            if (owner.getHouseholdId() == null) {
+                owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
+            }
             if (owner.getCustomerCode() == null) {
                 owner.setCustomerCode(generateCustomerCode(owner));
             }
@@ -263,7 +271,9 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             }
             if (owner.getPossibleDuplicate() == null) {
-                Integer possibleDuplicateOf = findPossibleDuplicateOf(owner);
+                // A declared household member is not a suspected duplicate; otherwise flag it against
+                // any existing member of the same household it collides with.
+                Integer possibleDuplicateOf = declaredHouseholdMember ? null : findPossibleDuplicateOf(owner);
                 owner.setPossibleDuplicateOf(possibleDuplicateOf);
                 owner.setPossibleDuplicate(possibleDuplicateOf != null);
             }
@@ -374,20 +384,21 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Resolve the id of an existing owner that the given (not yet persisted) owner is a <em>possible</em>
-     * duplicate of, or {@code null} when there is none. A possible duplicate shares an existing owner's
-     * last name (compared case-insensitively) and postcode while carrying a different telephone, so it is
-     * not a hard duplicate (its identity key is unique) but is worth flagging. When several existing owners
-     * match, the one with the lowest id is returned so the result is deterministic. Computed once, at
-     * creation, to drive the read-only {@code possibleDuplicate}/{@code possibleDuplicateOf} fields.
+     * duplicate of, or {@code null} when there is none. A possible duplicate belongs to an existing
+     * owner's household (same computed {@code householdId}, i.e. same last name and postcode) while
+     * carrying a different telephone, so it is not a hard duplicate (its identity key is unique) but is
+     * worth flagging. When several existing owners match, the one with the lowest id is returned so the
+     * result is deterministic. Computed once, at creation, to drive the read-only
+     * {@code possibleDuplicate}/{@code possibleDuplicateOf} fields.
      */
     private Integer findPossibleDuplicateOf(Owner owner) {
-        if (owner.getLastName() == null || owner.getPostcode() == null) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
             return null;
         }
         return ownerRepository.findAll().stream()
             .filter(existing -> existing != owner && existing.getId() != null)
-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
-            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
             .map(Owner::getId)
             .min(Integer::compareTo)
@@ -396,13 +407,24 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public String householdIdFor(String lastName, String address) throws DataAccessException {
-        String key = normalizeHouseholdValue(lastName) + "\u0000" + normalizeHouseholdAddress(address);
-        return Sha256Hex.upperHexPrefix(key, 16);
+    public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
+        String householdId = owner.getHouseholdId() != null
+            ? owner.getHouseholdId()
+            : householdIdFor(owner.getLastName(), owner.getPostcode());
+        return ownerRepository.findAll().stream()
+            .filter(existing -> existing != owner && existing.getId() != null)
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String householdIdFor(String lastName, String postcode) throws DataAccessException {
+        String key = normalizeHouseholdValue(lastName) + "|" + (postcode == null ? "" : postcode);
+        return Sha256Hex.upperHexPrefix(key, 12);
     }
 
     /**
-     * Normalizes a household field (last name or address) for duplicate comparison by trimming,
+     * Normalizes a household field (the last name) for duplicate comparison by trimming,
      * collapsing runs of whitespace to a single space and lower-casing, so differently cased or
      * spaced but equivalent values compare equal.
      */
@@ -411,16 +433,6 @@ public class ClinicServiceImpl implements ClinicService {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Normalizes an address for household comparison by first applying the canonical address
-     * normalization (trim, collapse whitespace, upper-case and expand common abbreviations) and
-     * then the shared household-value normalization, so every address comparison uses the same
-     * normalized form regardless of how the value was originally supplied.
-     */
-    private static String normalizeHouseholdAddress(String address) {
-        return normalizeHouseholdValue(AddressNormalizer.normalize(address));
     }
 
     /**

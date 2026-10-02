@@ -114,19 +114,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isDailyRegistrationAtCapacity()) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        // The household id is deterministic from (lastName, postcode), so owners sharing a last name
+        // and postcode are automatically the same household.
+        owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getPostcode()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold) {
-            owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getAddress()));
+        // A second owner in an existing household is a duplicate unless it declares itself a member,
+        // which bypasses the household duplicate block.
+        if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // All duplicate detection is consolidated into the single derived identity key: reject only
-        // when the new owner's whole identity key (telephone|email|householdId) matches an existing one.
+        // Reject exact identity duplicates: when the new owner's whole identity key
+        // (telephone|email|householdId) matches an existing one.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        this.clinicService.saveOwner(owner);
+        this.clinicService.saveOwner(owner, sharesHousehold);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner));

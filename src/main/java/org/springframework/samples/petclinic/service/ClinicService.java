@@ -57,6 +57,19 @@ public interface ClinicService {
 	Collection<Owner> findAllOwners() throws DataAccessException;
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
+
+	/**
+	 * Saves the given owner, additionally recording whether it was created as a <em>declared</em>
+	 * household member (via {@code sharesHousehold}). A declared member is explicitly not treated as a
+	 * suspected duplicate of the existing household it joins, so its {@code possibleDuplicate} flag is
+	 * left clear; otherwise duplicate detection runs as normal. Equivalent to
+	 * {@link #saveOwner(Owner)} with {@code declaredHouseholdMember = false}.
+	 *
+	 * @param owner the owner to save
+	 * @param declaredHouseholdMember whether the owner declared itself a member of an existing household
+	 */
+	void saveOwner(Owner owner, boolean declaredHouseholdMember) throws DataAccessException;
+
 	void deleteOwner(Owner owner) throws DataAccessException;
 
 	/**
@@ -74,16 +87,31 @@ public interface ClinicService {
 	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
-	 * Returns a stable, shared household identifier derived from the given last name and address.
-	 * The inputs are normalized (trimmed, runs of whitespace collapsed, lower-cased) before hashing,
-	 * so every owner in the same household (same last name + address) deterministically receives the
-	 * identical value. This household id forms the final component of each owner's identity key.
+	 * Returns {@code true} if another owner already belongs to the same household as the given
+	 * (not yet persisted) owner, i.e. an existing owner has the identical computed
+	 * {@link #householdIdFor household id}. Because the household is keyed on (last name, postcode),
+	 * this holds exactly when an existing owner shares the new owner's last name and postcode, making
+	 * the new owner a household duplicate. The create endpoint rejects such an owner with 409 unless
+	 * it declares itself a household member ({@code sharesHousehold}).
+	 *
+	 * @param owner the (not yet persisted) owner whose household to check
+	 * @return whether an existing owner already belongs to the same household
+	 */
+	boolean isHouseholdInUse(Owner owner) throws DataAccessException;
+
+	/**
+	 * Returns a deterministic, shared household identifier derived from the given last name and
+	 * postcode: the first 12 hexadecimal characters of the SHA-256 digest over
+	 * {@code normalizedLastName + '|' + postcode}. The last name is normalized (trimmed, runs of
+	 * whitespace collapsed, lower-cased) before hashing, so every owner with the same last name and
+	 * postcode deterministically receives the identical value and therefore shares a household
+	 * automatically. This household id also forms the final component of each owner's identity key.
 	 *
 	 * @param lastName the last name of the household
-	 * @param address the address of the household
+	 * @param postcode the postcode of the household
 	 * @return a stable identifier shared by all owners of the household
 	 */
-	String householdIdFor(String lastName, String address) throws DataAccessException;
+	String householdIdFor(String lastName, String postcode) throws DataAccessException;
 
 	/**
 	 * Returns {@code true} if the given city has already reached its owner capacity, i.e. it already
