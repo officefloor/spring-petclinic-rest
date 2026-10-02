@@ -3,16 +3,40 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
+
 /**
  * Shared rules for an owner's registration date. The <em>effective</em> registration date is the one
  * supplied in the request, or the server's current date when none was supplied; it must always fall on
  * a business day, so a Saturday or Sunday is rolled forward to the next Monday. Every value derived from
  * the registration date (the stored {@code registrationDate}, the membership number's year segment and
  * the per-day create-limit bucket) is computed from this adjusted date.
+ *
+ * <p>The per-day owner-count policy also lives here: {@link #DAILY_LIMIT} is the hard cap enforced at
+ * create time, and {@link #BULK_WARNING_THRESHOLD} is the (lower) count above which a response carries
+ * a bulk-signup warning. Both tiers are counted against {@link #countOn(LocalDate, OwnerRepository)}.
  */
 final class RegistrationDates {
 
+    /** Maximum number of owners that may be created for a single day. */
+    static final int DAILY_LIMIT = 100;
+
+    /** Owners created for a single day beyond which a response carries a bulk-signup warning. */
+    static final int BULK_WARNING_THRESHOLD = 80;
+
     private RegistrationDates() {
+    }
+
+    /** Count the owners whose stored registration date equals {@code businessDay}. */
+    static int countOn(LocalDate businessDay, OwnerRepository repository) {
+        int count = 0;
+        for (Owner existing : repository.findAll()) {
+            if (businessDay != null && businessDay.equals(existing.getRegistrationDate())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
