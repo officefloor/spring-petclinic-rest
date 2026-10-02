@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.TelephoneFormatter;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -101,6 +102,16 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = telephone;
+    }
+
+    /**
+     * The stored E.164 {@code telephone} formatted for humans (e.g. {@code '+61 412 345 678'} for the
+     * stored {@code '+61412345678'}); the raw {@code telephone} stays in E.164 form. Derived from the
+     * owner's own {@code telephone}; see {@link TelephoneFormatter#toDisplay(String)}.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return TelephoneFormatter.toDisplay(this.telephone);
     }
 
     public String getEmail() {
