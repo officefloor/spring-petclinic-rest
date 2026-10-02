@@ -127,6 +127,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
     /**
+     * Fixed public holidays that the business-day roll skips over. A registration date that lands on
+     * one of these dates is rolled forward to the next non-holiday business day, exactly as a weekend
+     * date is rolled forward off a Saturday or Sunday.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"),
+        LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
+    /**
      * E.164 country codes mapped to the exact number of national (significant) digits a telephone for
      * that country must carry. For example {@code '+61'} (Australia) requires 9 national digits and
      * {@code '+1'} (NANP) requires 10. A country code listed here enforces that national-number length;
@@ -721,20 +733,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rolls a registration date forward to a business day. A date that falls on a Saturday or Sunday
-     * is rolled forward to the next Monday; a date already on a weekday is returned unchanged. This
-     * applies to the effective registration date whether it was supplied in the request or defaulted
-     * to the server date, and the adjusted value is what gets stored as {@code registrationDate} and
-     * feeds every value derived from it (such as the membership number's year segment and the daily
-     * create-limit's per-day bucket).
+     * Rolls a registration date forward to a business day. A date that falls on a Saturday, a Sunday
+     * or a listed {@linkplain #PUBLIC_HOLIDAYS public holiday} is rolled forward one day at a time
+     * until it reaches the next non-holiday weekday; a date already on a non-holiday weekday is
+     * returned unchanged. This applies to the effective registration date whether it was supplied in
+     * the request or defaulted to the server date, and the adjusted value is what gets stored as
+     * {@code registrationDate} and feeds every value derived from it (such as the membership number's
+     * year segment and the daily create-limit's per-day bucket).
      *
      * @param date the effective registration date, supplied or defaulted
-     * @return the same date when it is a weekday, otherwise the next Monday
+     * @return the same date when it is a non-holiday weekday, otherwise the next non-holiday business day
      */
     private LocalDate toBusinessDay(LocalDate date) {
         LocalDate adjusted = date;
         while (adjusted.getDayOfWeek() == DayOfWeek.SATURDAY
-            || adjusted.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            || adjusted.getDayOfWeek() == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(adjusted)) {
             adjusted = adjusted.plusDays(1);
         }
         return adjusted;
