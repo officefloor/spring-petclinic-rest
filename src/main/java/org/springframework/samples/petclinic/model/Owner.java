@@ -86,6 +86,9 @@ public class Owner extends Person {
     private Integer householdSize;
 
     @Transient
+    private Integer membershipLevelCap;
+
+    @Transient
     private boolean bulkSignupWarning;
 
     @Transient
@@ -199,6 +202,22 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membershipLevel}: the new
+     * owner's level cannot exceed one above the maximum level among the other members of its
+     * household. Not a persisted column — populated by the create pipeline, which alone has the
+     * repository access to read the household's members. {@code null} when no cap applies (the
+     * owner has no existing household member), leaving the level uncapped.
+     */
+    @Transient
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Integer getNamesakeCount() {
@@ -390,22 +409,31 @@ public class Owner extends Person {
     /**
      * The owner's numeric membership level, mapped from {@link #getMembershipPoints()
      * membershipPoints}: {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
-     * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more. Not persisted — derived
-     * from {@link #getMembershipPoints()}.
+     * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more, then capped at
+     * {@link #getMembershipLevelCap() membershipLevelCap} when one applies (a new owner's level
+     * cannot exceed one above the maximum level among its existing household members). Not
+     * persisted — derived from {@link #getMembershipPoints()} and {@link #getMembershipLevelCap()}.
      */
     @Transient
     public int getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points >= 6) {
-            return 4;
+            level = 4;
         }
-        if (points >= 4) {
-            return 3;
+        else if (points >= 4) {
+            level = 3;
         }
-        if (points >= 2) {
-            return 2;
+        else if (points >= 2) {
+            level = 2;
         }
-        return 1;
+        else {
+            level = 1;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**

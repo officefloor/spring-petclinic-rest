@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
+import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -105,6 +106,32 @@ final class Household {
             }
         }
         return count;
+    }
+
+    /**
+     * The maximum {@link Owner#getMembershipLevel() membershipLevel} among the members of
+     * {@code householdId} other than {@code exclude}, or {@link OptionalInt#empty()} when the
+     * household has no such member (so no cap applies). Each member's household size is resolved
+     * first — exactly as {@link LoadOwner} does on read — so its level is scored on a fully
+     * populated household rather than as a lone member. Scans only {@link ActiveOwners active
+     * owners}, consistent with {@link #size} and {@link #hasMember}, so a soft-deleted owner does
+     * not raise the ceiling. {@link OptionalInt#empty()} for a {@code null}/blank id.
+     */
+    static OptionalInt maxMemberLevel(String householdId, Owner exclude, OwnerRepository ownerRepository) {
+        if (householdId == null || householdId.isBlank()) {
+            return OptionalInt.empty();
+        }
+        int max = -1;
+        for (Owner existing : ActiveOwners.list(ownerRepository)) {
+            if (exclude != null && exclude.getId() != null && exclude.getId().equals(existing.getId())) {
+                continue;
+            }
+            if (householdId.equals(existing.getHouseholdId())) {
+                existing.setHouseholdSize(Math.max(1, size(householdId, ownerRepository)));
+                max = Math.max(max, existing.getMembershipLevel());
+            }
+        }
+        return max < 0 ? OptionalInt.empty() : OptionalInt.of(max);
     }
 
     /**
