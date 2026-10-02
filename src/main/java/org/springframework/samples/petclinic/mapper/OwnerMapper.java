@@ -28,6 +28,7 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
     @Mapping(target = "salutation", source = "owner", qualifiedByName = "formatSalutation")
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
@@ -43,6 +44,22 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's self-link, as required by the API's read-only {@code selfLink}
+     * field: the canonical API path {@code '/api/owners/'} followed by the owner's id.
+     * Returns {@code null} when the owner has no id yet.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatSelfLink")
+    default String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Formats an owner's salutation, as required by the API's read-only {@code salutation}
