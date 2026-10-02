@@ -74,6 +74,9 @@ public class Owner extends Person {
     private Integer namesakeCount;
 
     @Transient
+    private Integer householdSize;
+
+    @Transient
     private Boolean bulkSignupWarning;
 
     @Transient
@@ -203,6 +206,17 @@ public class Owner extends Person {
     }
 
     /**
+     * Sets the number of owners that belong to this owner's household (same last name and postcode; see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.Household}), including this owner.
+     * Computed per request and used only by {@link #getMembershipPoints()} — a household of three or more
+     * contributes points. Not persisted and not serialized into the response (no getter is exposed); the
+     * count is recomputed on each read because household membership changes as owners come and go.
+     */
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
+    /**
      * Whether this response should carry a bulk-signup warning: {@code true} when more than 80 owners
      * have already been created for this owner's registration day. Computed per request, not persisted.
      */
@@ -243,29 +257,50 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. Starts at 1; add 1 when an email is present;
-     * add 1 when {@code namesakeCount} is 0; these pre-tenure factors are capped at 3. Level 4 requires
-     * tenure of more than 365 days (measured from {@code registrationDate} to today); it adds a further
-     * level, capped at 4. Because a newly created owner has zero tenure, a new owner never exceeds
-     * level 3 — even one with an email and a {@code namesakeCount} of 0 lands at level 3, not 4.
+     * The owner's membership points: start at 0; add 2 when an email is present; add 1 when
+     * {@code namesakeCount} is 0; add 2 for a household of 3 or more members (see
+     * {@link #setHouseholdSize(Integer)}); add 3 for tenure of more than 365 days (measured from
+     * {@code registrationDate} to today). A newly created owner has zero tenure, so a fresh owner scores
+     * at most 5 points (2 + 1 + 2).
      */
-    public int getMembershipLevel() {
-        int level = 1;
+    public int getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         if (unique) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        if (largeHousehold) {
+            points += 2;
+        }
         boolean tenured = this.registrationDate != null
             && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
         if (tenured) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level, derived from {@link #getMembershipPoints() membershipPoints}:
+     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     */
+    public int getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
