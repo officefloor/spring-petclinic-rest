@@ -29,6 +29,7 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", source = "owner", qualifiedByName = "formatSalutation")
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
@@ -42,6 +43,26 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's salutation, as required by the API's read-only {@code salutation}
+     * field: the owner's title and last name separated by a single space (e.g. {@code 'DR Who'})
+     * when a title is present, or just the last name when no title was supplied.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatSalutation")
+    default String formatSalutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        if (title == null || title.isEmpty()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
+    }
 
     /**
      * Formats an owner's name as {@code 'LastName, FirstName'} from the stored first and
@@ -288,7 +309,23 @@ public interface OwnerMapper {
     @Mapping(target = "address", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+    @Mapping(target = "title", source = "title", qualifiedByName = "mapTitle")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Unwraps the owner-fields' optional honorific {@code title} enum into the stored
+     * {@code String} form (its canonical value, e.g. {@code 'DR'}), or {@code null} when no
+     * title was supplied. This is the single place the inbound title conversion lives: it runs
+     * on the create path via {@link #toOwner(OwnerFieldsDto)} and is called directly on the
+     * update path, keeping both consistent.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("mapTitle")
+    default String mapTitle(OwnerFieldsDto.TitleEnum title) {
+        return title == null ? null : title.getValue();
+    }
 
     /**
      * Sets an owner's structured and composed address fields from the supplied owner-fields,
