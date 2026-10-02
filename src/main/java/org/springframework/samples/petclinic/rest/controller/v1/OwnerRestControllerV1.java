@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -104,7 +105,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateTelephone(telephone);
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -251,10 +254,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *                                     non-digit characters are removed, yielding a 400 response
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String digits = digitsOnly(telephone);
         if (digits.length() != 10) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Strips every non-digit character from a telephone value, returning an empty string for
+     * {@code null}. This is the same normalization applied on create, so numbers that differ only
+     * in formatting (spaces, dashes, parentheses) compare equal.
+     *
+     * @param telephone the raw telephone value
+     * @return the value reduced to its digits
+     */
+    private String digitsOnly(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Rejects creation of an owner whose normalized telephone is already used by any other owner.
+     * Stored telephones are normalized here as well so the comparison is independent of the format
+     * each owner was originally saved with.
+     *
+     * @param telephone the normalized telephone of the owner being created
+     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone,
+     *                                          yielding a 409 Conflict response
+     */
+    private void rejectDuplicateTelephone(String telephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .map(this::digitsOnly)
+            .anyMatch(telephone::equals);
+        if (inUse) {
+            throw new DuplicateOwnerTelephoneException(telephone);
+        }
     }
 }
