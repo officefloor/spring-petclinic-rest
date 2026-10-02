@@ -23,7 +23,9 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
@@ -283,8 +285,8 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getHouseholdId() == null) {
                 owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
             }
-            if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(generateCustomerCode(owner));
+            if (owner.getMemberId() == null) {
+                owner.setMemberId(generateMemberId(owner));
             }
             if (owner.getNamesakeCount() == null) {
                 owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -319,31 +321,36 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a customer code formatted {@code '<REGION>-<HASH8>'}, where {@code REGION} is the
+     * Build a member id formatted {@code '<REGION><FY><HASH8><CHK>'}, where {@code REGION} is the
      * canonical region derived from the owner's postcode (falling back to the city-to-region
-     * table, then {@code 'UNKNOWN'}, as resolved by {@link LocalityResolver}) and {@code HASH8}
-     * is the first 8 upper-case hexadecimal characters of the SHA-256 digest over the owner's
-     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}).
+     * table, then {@code 'UNKNOWN'}, as resolved by {@link LocalityResolver}), {@code FY} is the
+     * two-digit fiscal year (the fiscal year starting on 1 July) of the business-day-adjusted
+     * registration date, {@code HASH8} is the first 8 upper-case hexadecimal characters of the
+     * SHA-256 digest over the owner's normalized telephone concatenated with the last name (the
+     * same region-and-hash identity), and {@code CHK} is a single Luhn check digit computed over
+     * the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW261A2B3C4D7'}).
      * <p>
-     * If the computed code collides with an existing owner's {@code customerCode}, it is
-     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
-     * makes it unique (e.g. {@code 'NSW-1A2B3C4D-2'}).
+     * If the computed id collides with an existing owner's {@code memberId}, it is de-duplicated
+     * by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it unique
+     * (e.g. {@code 'NSW261A2B3C4D7-2'}).
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = region + "-" + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
+        String fiscalYear = String.format("%02d", FiscalYear.startYear(owner.getRegistrationDate()) % 100);
+        String body = region + fiscalYear + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
+        String base = body + LuhnCheckDigit.compute(body);
 
-        Set<String> existingCodes = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
+        Set<String> existingIds = ownerRepository.findAll().stream()
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!existingCodes.contains(base)) {
+        if (!existingIds.contains(base)) {
             return base;
         }
         int n = 2;
-        while (existingCodes.contains(base + "-" + n)) {
+        while (existingIds.contains(base + "-" + n)) {
             n++;
         }
         return base + "-" + n;
@@ -403,7 +410,7 @@ public class ClinicServiceImpl implements ClinicService {
      * holiday is advanced one day at a time until a non-holiday weekday is reached, while a plain
      * weekday is returned unchanged. Applied to the effective registration date (whether supplied
      * or defaulted to the server date) so that the stored {@code registrationDate}, every value
-     * derived from it (such as the membership number's year segment) and the per-day create-limit
+     * derived from it (such as the member id's fiscal-year segment) and the per-day create-limit
      * all use the adjusted business day.
      */
     private static LocalDate toBusinessDay(LocalDate date) {

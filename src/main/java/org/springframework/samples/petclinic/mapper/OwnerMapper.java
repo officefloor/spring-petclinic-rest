@@ -12,8 +12,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.LocalityResolver;
-import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.time.LocalDate;
@@ -33,8 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
-    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
-    @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+    @Mapping(target = "memberId", source = "owner", qualifiedByName = "formatMemberId")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "formatFiscalYear")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
@@ -133,68 +132,48 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where
-     * {@code customerCode} is the owner's {@code '<REGION>-<HASH8>'} customer code and
-     * {@code YY} is the last two digits of the fiscal year (the fiscal year starting on
-     * 1 July) of the business-day-adjusted registration date (e.g. {@code 'NSW-1A2B3C4D-M26'}),
-     * as required by the API's read-only {@code membershipNumber} field. Returns {@code null}
-     * when either the customer code or registration date is absent.
+     * Formats an owner's member id, as required by the API's read-only {@code memberId} field:
+     * the stored {@code '<REGION><FY><HASH8><CHK>'} identifier (the region code, the 2-digit
+     * fiscal year, the 8 upper-hex characters of the SHA-256 digest over the normalized telephone
+     * concatenated with the last name, and a single Luhn check digit over the digits of
+     * {@code <REGION><FY><HASH8>}), de-duplicated with a trailing {@code '-<n>'} on collision.
+     * Returns {@code null} when the member id is absent.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
      */
-    @Named("formatMembershipNumber")
-    default String formatMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            fiscalYearStart(owner.getRegistrationDate()) % 100);
+    @Named("formatMemberId")
+    default String formatMemberId(Owner owner) {
+        return owner == null ? null : owner.getMemberId();
     }
 
     /**
      * Formats an owner's fiscal year as {@code 'FY<YY>'}, as required by the API's read-only
-     * {@code fiscalYear} field: the fiscal year of the business-day-adjusted registration date,
-     * where the fiscal year starts on 1 July and {@code YY} is the last two digits of the
-     * calendar year in which that fiscal year begins (so a registration date of
-     * {@code 2026-10-02} yields {@code 'FY26'} and {@code 2026-03-02} yields {@code 'FY25'}).
-     * Returns {@code null} when no registration date is present.
+     * {@code fiscalYear} field: the {@code FY} segment carried by the owner's {@code memberId}
+     * (the two digits following the region code), so the fiscal year is read from the same member
+     * id that encodes it. The fiscal year starts on 1 July and {@code YY} is the last two digits
+     * of the calendar year in which that fiscal year begins (so a registration date of
+     * {@code 2026-10-02} yields {@code 'FY26'} and {@code 2026-03-02} yields {@code 'FY25'}). When
+     * no member id is present (e.g. an owner that predates it), the fiscal year is computed
+     * directly from the business-day-adjusted registration date, which yields the same value the
+     * member id would have carried. Returns {@code null} when neither is available.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
      */
     @Named("formatFiscalYear")
     default String formatFiscalYear(Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        if (owner == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearStart(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Returns the calendar year in which the fiscal year containing {@code date} begins. The
-     * fiscal year starts on 1 July, so dates in July through December belong to the fiscal year
-     * starting in their own calendar year, while dates in January through June belong to the
-     * fiscal year that started in the previous calendar year.
-     */
-    private static int fiscalYearStart(LocalDate date) {
-        return date.getMonthValue() >= 7 ? date.getYear() : date.getYear() - 1;
-    }
-
-    /**
-     * Computes an owner's check digit, as required by the API's read-only {@code checkDigit}
-     * field: a single Luhn check digit (0-9) over the digits contained in the owner's customer
-     * code. Returns {@code null} when the customer code is absent.
-     *
-     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
-     * applied only where referenced via {@code qualifiedByName}.
-     */
-    @Named("formatCheckDigit")
-    default Integer formatCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
+        String fy = memberIdFiscalYear(owner.getMemberId());
+        if (fy != null) {
+            return "FY" + fy;
+        }
+        if (owner.getRegistrationDate() == null) {
             return null;
         }
-        return LuhnCheckDigit.compute(owner.getCustomerCode());
+        return String.format("FY%02d", FiscalYear.startYear(owner.getRegistrationDate()) % 100);
     }
 
     /**
@@ -224,7 +203,7 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && fiscalYearStart(LocalDate.now()) - fiscalYearStart(owner.getRegistrationDate()) >= 1) {
+                && FiscalYear.startYear(LocalDate.now()) - FiscalYear.startYear(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
@@ -271,11 +250,11 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's locality, as required by the API's read-only {@code locality} field:
-     * the {@code REGION} segment of the owner's {@code '<REGION>-<HASH8>'} customer code, so the
-     * locality is read from the same region-and-hash identity that the customer code encodes.
-     * When no customer code is present (e.g. an owner that predates the code), the region is
-     * resolved directly from the postcode (falling back to the city-to-region table, else
-     * {@code 'UNKNOWN'}), which yields the same region the code would have carried.
+     * the {@code REGION} segment of the owner's {@code '<REGION><FY><HASH8><CHK>'} member id, so
+     * the locality is read from the same region-and-hash identity that the member id encodes.
+     * When no member id is present (e.g. an owner that predates it), the region is resolved
+     * directly from the postcode (falling back to the city-to-region table, else {@code 'UNKNOWN'}),
+     * which yields the same region the member id would have carried.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -285,14 +264,39 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
+        String region = memberIdRegion(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Returns the fixed-length body of a {@code memberId} — the {@code '<REGION><FY><HASH8><CHK>'}
+     * portion before any {@code '-<n>'} de-duplication suffix — or {@code null} when the member id
+     * is absent or too short to contain the mandatory trailing {@code FY<2> + HASH8<8> + CHK<1>}
+     * (11 characters) after a non-empty region. The region segment never contains a {@code '-'},
+     * so the de-duplication suffix is split off at the first hyphen.
+     */
+    private static String memberIdBody(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int dash = memberId.indexOf('-');
+        String body = dash >= 0 ? memberId.substring(0, dash) : memberId;
+        return body.length() > 11 ? body : null;
+    }
+
+    /** The {@code REGION} segment of a member id (everything before the trailing 11 characters). */
+    private static String memberIdRegion(String memberId) {
+        String body = memberIdBody(memberId);
+        return body == null ? null : body.substring(0, body.length() - 11);
+    }
+
+    /** The two-digit {@code FY} segment of a member id (the two characters following the region). */
+    private static String memberIdFiscalYear(String memberId) {
+        String body = memberIdBody(memberId);
+        return body == null ? null : body.substring(body.length() - 11, body.length() - 9);
     }
 
     /**

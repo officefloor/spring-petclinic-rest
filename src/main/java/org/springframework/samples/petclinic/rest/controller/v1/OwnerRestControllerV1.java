@@ -161,9 +161,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner, sharesHousehold);
         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.formatMembershipLevel(owner), ownerMapper.formatMembershipNumber(owner));
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerMapper.formatMembershipLevel(owner));
         this.auditEventPublisher.ownerCreated(owner, ownerMapper.formatMembershipLevel(owner));
         OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

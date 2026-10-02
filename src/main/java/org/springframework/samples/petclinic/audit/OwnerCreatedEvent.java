@@ -22,15 +22,14 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured audit event emitted once per owner create, alongside the
  * human-readable audit line.
  *
- * <p>The {@code customerCode} component carries the owner's <em>current primary
- * identifier</em>: today that is the {@link Owner#getCustomerCode() customerCode},
- * but it is sourced through {@link #primaryIdentifier(Owner)} so that when the
- * customerCode is later unified into the memberId the event automatically carries
- * the memberId instead — the single place to change lives there, not at the call site.
+ * <p>The {@code memberId} component carries the owner's <em>current primary
+ * identifier</em>, the unified {@link Owner#getMemberId() memberId}, sourced through
+ * {@link #primaryIdentifier(Owner)} so the single place to change it lives there, not
+ * at the call site.
  *
  * <p>Being a {@code record} the event is immutable once published.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
 
     /** The fixed {@code event} discriminator for an owner-created event. */
@@ -52,11 +51,10 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
     }
 
     /**
-     * The owner's current primary identifier. Today this is the customerCode; when the
-     * customerCode is unified into the memberId, change this one expression and every
-     * emitted event carries the memberId instead.
+     * The owner's current primary identifier, the unified memberId. Change this one expression
+     * to re-source every emitted event's primary identifier.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }
