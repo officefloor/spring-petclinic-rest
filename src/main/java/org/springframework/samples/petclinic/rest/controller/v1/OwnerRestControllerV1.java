@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitReachedException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -177,7 +178,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
-        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        String email = normalizeEmail(ownerFieldsDto.getEmail());
+        rejectDuplicateEmail(email);
+        owner.setEmail(email);
         owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
@@ -545,6 +548,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(telephone::equals);
         if (inUse) {
             throw new DuplicateOwnerTelephoneException(telephone);
+        }
+    }
+
+    /**
+     * Rejects creation of an owner whose lower-cased email is already used by any other owner.
+     * The email has already been normalized to its lower-cased form, and stored emails are
+     * lower-cased here as well, so the comparison is case-insensitive. An owner being created
+     * without an email ({@code null}) is never a duplicate, and stored owners without an email
+     * are ignored rather than matched.
+     *
+     * @param email the normalized (lower-cased) email of the owner being created, or {@code null}
+     *              if none was supplied
+     * @throws DuplicateOwnerEmailException if another owner already uses this email, yielding a
+     *                                      409 Conflict response
+     */
+    private void rejectDuplicateEmail(String email) {
+        if (email == null) {
+            return;
+        }
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.toLowerCase(Locale.ROOT))
+            .anyMatch(email::equals);
+        if (inUse) {
+            throw new DuplicateOwnerEmailException(email);
         }
     }
 
