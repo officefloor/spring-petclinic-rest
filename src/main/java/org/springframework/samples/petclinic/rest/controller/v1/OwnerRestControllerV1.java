@@ -142,7 +142,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        owners.forEach(this::applyHouseholdSize);
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
@@ -153,7 +152,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        applyHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
@@ -186,7 +184,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
-        applyHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -622,34 +619,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         newOwner.setHouseholdId(householdId);
         return householdId;
-    }
-
-    /**
-     * Populates an owner's transient {@code householdSize} with the number of owners currently
-     * sharing its {@code householdId} (itself included), so the membership tier computed when the
-     * response is produced reflects the household's current size. An owner with no {@code householdId}
-     * belongs to no shared household and is left with a size of zero.
-     *
-     * @param owner the owner whose household size is being populated
-     */
-    private void applyHouseholdSize(Owner owner) {
-        owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()));
-    }
-
-    /**
-     * Counts the owners that share the given {@code householdId}. Returns zero when the identifier is
-     * absent, so an owner that belongs to no shared household is never treated as having members.
-     *
-     * @param householdId the shared household identifier, possibly {@code null}
-     * @return the number of owners carrying that household id
-     */
-    private int countHouseholdMembers(String householdId) {
-        if (householdId == null || householdId.isBlank()) {
-            return 0;
-        }
-        return (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
     }
 
     /**
