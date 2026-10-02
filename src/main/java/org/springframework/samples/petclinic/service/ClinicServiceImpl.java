@@ -20,6 +20,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
+import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.LocalityResolver;
@@ -71,6 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
+    private final OwnerMapper ownerMapper;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -78,13 +80,15 @@ public class ClinicServiceImpl implements ClinicService {
         OwnerRepository ownerRepository,
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
-        PetTypeRepository petTypeRepository) {
+        PetTypeRepository petTypeRepository,
+        OwnerMapper ownerMapper) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
+        this.ownerMapper = ownerMapper;
     }
 
     @Override
@@ -288,6 +292,9 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setPossibleDuplicateOf(possibleDuplicateOf);
                 owner.setPossibleDuplicate(possibleDuplicateOf != null);
             }
+            if (owner.getMembershipLevelCap() == null) {
+                owner.setMembershipLevelCap(computeMembershipLevelCap(owner));
+            }
         }
         ownerRepository.save(owner);
         decorateWithHouseholdMemberCount(owner);
@@ -432,16 +439,53 @@ public class ClinicServiceImpl implements ClinicService {
             .orElse(null);
     }
 
+    /**
+     * Compute the membership-level ceiling for a new owner, as required by the level-cap rule: a new
+     * owner's {@code membershipLevel} cannot exceed one above the current maximum membership level
+     * among its household members (existing owners sharing the same {@code householdId}, excluding
+     * soft-deleted ones and the owner itself). Returns one above that maximum, or {@code null} when
+     * the owner has no household id or no existing household member, in which case no cap applies.
+     *
+     * <p>Each existing member's level is read through {@link OwnerMapper#formatMembershipLevel},
+     * after decorating the members with their current household member counts, so the maximum
+     * reflects the same effective (already-capped) level the API returns for those members.
+     */
+    private Integer computeMembershipLevelCap(Owner newOwner) {
+        String householdId = newOwner.getHouseholdId();
+        if (householdId == null) {
+            return null;
+        }
+        List<Owner> members = ownerRepository.findAll().stream()
+            .filter(existing -> existing != newOwner && existing.getId() != null)
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .collect(Collectors.toList());
+        if (members.isEmpty()) {
+            return null;
+        }
+        decorateWithHouseholdMemberCount(members, members);
+        int maxLevel = members.stream()
+            .mapToInt(member -> ownerMapper.formatMembershipLevel(member))
+            .max()
+            .getAsInt();
+        return maxLevel + 1;
+    }
+
     @Override
     @Transactional(readOnly = true)
     public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
-        String householdId = owner.getHouseholdId() != null
-            ? owner.getHouseholdId()
-            : householdIdFor(owner.getLastName(), owner.getPostcode());
+        // Per the create endpoint's sharesHousehold contract, a household duplicate is an existing
+        // owner with the same last name AND the same address (compared case-insensitively with runs
+        // of whitespace collapsed). Owners that merely share a household id (same last name and
+        // postcode) but live at different addresses are distinct members and are not duplicates, so
+        // they may be created without declaring sharesHousehold.
+        String lastNameKey = normalizeHouseholdValue(owner.getLastName());
+        String addressKey = normalizeHouseholdValue(owner.getAddress());
         return ownerRepository.findAll().stream()
             .filter(existing -> existing != owner && existing.getId() != null)
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .anyMatch(existing -> lastNameKey.equals(normalizeHouseholdValue(existing.getLastName()))
+                && addressKey.equals(normalizeHouseholdValue(existing.getAddress())));
     }
 
     @Override

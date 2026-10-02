@@ -87,15 +87,16 @@ public interface ClinicService {
 	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
-	 * Returns {@code true} if another owner already belongs to the same household as the given
-	 * (not yet persisted) owner, i.e. an existing owner has the identical computed
-	 * {@link #householdIdFor household id}. Because the household is keyed on (last name, postcode),
-	 * this holds exactly when an existing owner shares the new owner's last name and postcode, making
-	 * the new owner a household duplicate. The create endpoint rejects such an owner with 409 unless
-	 * it declares itself a household member ({@code sharesHousehold}).
+	 * Returns {@code true} if the given (not yet persisted) owner is a household duplicate of an
+	 * existing owner, i.e. an existing non-deleted owner has the same last name <em>and</em> the same
+	 * address (both compared case-insensitively with runs of whitespace collapsed), as described by
+	 * the {@code sharesHousehold} field. The create endpoint rejects such an owner with 409 unless it
+	 * declares itself a household member ({@code sharesHousehold}). Owners that merely share a
+	 * {@link #householdIdFor household id} (same last name and postcode) but live at different
+	 * addresses are distinct members and are not duplicates.
 	 *
 	 * @param owner the (not yet persisted) owner whose household to check
-	 * @return whether an existing owner already belongs to the same household
+	 * @return whether an existing owner is a household duplicate of this one
 	 */
 	boolean isHouseholdInUse(Owner owner) throws DataAccessException;
 

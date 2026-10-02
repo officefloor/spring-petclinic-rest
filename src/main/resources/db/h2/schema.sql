@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 

@@ -234,6 +234,12 @@ public interface OwnerMapper {
      * {@link #formatMembershipPoints membership points} — level 1 for 0-1 points, level 2 for
      * 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more points.
      *
+     * <p>The result is then capped by the owner's {@link Owner#getMembershipLevelCap()
+     * membershipLevelCap}, when present: a new owner's level cannot exceed one above the highest
+     * membership level among the household members that already existed when it was created, so the
+     * returned level is the lower of the derived level and that stored cap. When no cap applies (no
+     * existing household member on creation) the derived level stands.
+     *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName} (and when called directly, e.g.
      * to record the membership level on the create audit line).
@@ -244,16 +250,21 @@ public interface OwnerMapper {
             return null;
         }
         int points = formatMembershipPoints(owner);
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        Integer cap = owner.getMembershipLevelCap();
+        return (cap != null && cap < level) ? cap : level;
     }
 
     /**

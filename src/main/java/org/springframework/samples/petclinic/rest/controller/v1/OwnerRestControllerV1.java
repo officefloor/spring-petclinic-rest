@@ -142,8 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // and postcode are automatically the same household.
         owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getPostcode()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        // A second owner in an existing household is a duplicate unless it declares itself a member,
-        // which bypasses the household duplicate block.
+        // An owner with the same last name and address as an existing one is a household duplicate
+        // unless it declares itself a member, which bypasses the household duplicate block. Distinct
+        // members of the same household (same last name and postcode, different address) are allowed.
         if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }

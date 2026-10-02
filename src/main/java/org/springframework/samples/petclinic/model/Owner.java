@@ -86,6 +86,15 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    /**
+     * The ceiling applied to this owner's derived {@code membershipLevel}, captured once when the
+     * owner is created: a new owner's level cannot exceed one above the highest membership level
+     * among the household members that already existed at that time. Null when no cap applies (the
+     * owner had no existing household member on creation), in which case the derived level stands.
+     */
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted", nullable = false)
     private boolean deleted = false;
 
@@ -218,6 +227,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public boolean isDeleted() {
