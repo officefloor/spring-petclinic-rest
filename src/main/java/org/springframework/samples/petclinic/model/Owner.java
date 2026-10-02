@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -53,6 +54,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -110,6 +114,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -317,6 +329,25 @@ public class Owner extends Person {
     public String getContactPreference() {
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * The owner's age band as of the {@link #getRegistrationDate() registrationDate}, derived
+     * from {@link #getBirthDate() birthDate}: {@code 'MINOR'} when under 18, {@code 'ADULT'} for
+     * 18 to 64 inclusive, {@code 'SENIOR'} for 65 and over. {@code null} when no birthDate is
+     * supplied. Not persisted — derived from {@link #getBirthDate()} and
+     * {@link #getRegistrationDate()}.
+     */
+    @Transient
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        return age < 65 ? "ADULT" : "SENIOR";
     }
 
     protected Set<Pet> getPetsInternal() {
