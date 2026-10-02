@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Transient
+    private boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -188,6 +191,20 @@ public class Owner extends Person {
     @Transient
     public String getLocality() {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
+     * Whether more than 80 owners had already been created today when this response was
+     * built. Not persisted — populated for the response by the create and fetch pipelines
+     * and defaults to {@code false} so every owner serialization carries the flag.
+     */
+    @Transient
+    public boolean isBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     protected Set<Pet> getPetsInternal() {
