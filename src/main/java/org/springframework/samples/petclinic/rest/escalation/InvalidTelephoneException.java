@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown by the owner-create pipeline when the supplied telephone, once every
- * non-digit character is stripped, is not exactly 10 digits.
+ * Thrown by the owner-create pipeline when the supplied telephone cannot be normalized
+ * to a valid E.164 number (8 to 15 digits after the {@code '+'}).
  *
  * <p>Handled by {@link InvalidTelephoneExceptionHandler}, which responds 400.
  */

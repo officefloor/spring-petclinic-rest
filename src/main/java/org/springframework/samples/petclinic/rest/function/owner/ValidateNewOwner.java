@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}. Rejects a body that is missing or blank in any
  * required field (firstName, lastName, address, city, telephone) with a 400 listing the
- * offending field names, normalizes the telephone to its 10 digits, then publishes the
- * body for {@link BuildOwner}.
+ * offending field names, normalizes the telephone to E.164 form (400 if it cannot form a
+ * valid E.164 number), then publishes the body for {@link BuildOwner}.
  *
  * <p>Runs before {@link BuildOwner} and binds {@code @RequestBody} without {@code @Valid}
  * so the required-field check produces the {@code errors} response shape rather than the
@@ -43,12 +43,12 @@ public class ValidateNewOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String digits = OwnerTelephone.normalize(request.getTelephone());
-        if (digits.length() != 10) {
+        String e164 = OwnerTelephone.normalize(request.getTelephone());
+        if (e164 == null) {
             throw new InvalidTelephoneException(
-                    "Telephone must be exactly 10 digits after stripping; got " + digits.length());
+                    "Telephone is not a valid E.164 number: " + request.getTelephone());
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
         String email = OwnerEmail.normalize(request.getEmail());
         if (email != null && !OwnerEmail.isValid(email)) {
             throw new InvalidEmailException("Email is not a valid address: " + request.getEmail());
