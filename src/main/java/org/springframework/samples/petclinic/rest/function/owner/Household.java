@@ -44,11 +44,11 @@ final class Household {
      */
     static List<Owner> membersOf(OwnerFieldsDto request, OwnerRepository ownerRepository) {
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = OwnerAddress.normalize(request.getAddress());
         List<Owner> members = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(OwnerAddress.normalize(existing.getAddress()))) {
                 members.add(existing);
             }
         }
@@ -61,7 +61,7 @@ final class Household {
      * derives the same value regardless of creation order.
      */
     static Id idFor(OwnerFieldsDto request) {
-        String seed = normalize(request.getLastName()) + "\n" + normalize(request.getAddress());
+        String seed = normalize(request.getLastName()) + "\n" + OwnerAddress.normalize(request.getAddress());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));
