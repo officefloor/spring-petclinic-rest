@@ -313,7 +313,7 @@ public class Owner extends Person {
      * Whether this owner has been soft-deleted. A {@code DELETE /api/owners/{id}} sets this true and
      * retains the record rather than removing it; a newly created owner is false. Soft-deleted owners
      * are still returned by {@code GET /api/owners/{id}} but are ignored by the create endpoint's
-     * duplicate/identity checks (see {@code CheckHouseholdUnique}).
+     * duplicate/identity checks (see {@code CheckIdentityUnique}).
      */
     public boolean isDeleted() {
         return this.deleted;
@@ -348,10 +348,10 @@ public class Owner extends Person {
 
     /**
      * Whether this owner is a <em>possible</em> (soft) duplicate of another owner: {@code true} when some
-     * other owner shares this owner's last name (case-insensitively) and postcode but has a different
-     * telephone — a near match. Always false for an owner admitted as a declared household member (via
-     * {@code sharesHousehold}), which is not a suspected duplicate.
-     * Computed per request, not persisted. See {@link #getPossibleDuplicateOf()} for the matched owner.
+     * other owner has a <em>different</em> {@link #getIdentityKey() identity key} yet shares both this
+     * owner's last-name {@link #soundex(String) Soundex} and postcode — a near match that is not the same
+     * identity. Computed per request, not persisted. See {@link #getPossibleDuplicateOf()} for the matched
+     * owner.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -362,9 +362,10 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the existing owner this owner possibly duplicates (same last name and postcode, different
-     * telephone), or {@code null} when {@link #getPossibleDuplicate() possibleDuplicate} is false. When
-     * several owners match, this is the earliest (lowest id). Computed per request, not persisted.
+     * The id of the existing owner this owner possibly duplicates (same last-name Soundex and postcode, but
+     * a different identity key), or {@code null} when {@link #getPossibleDuplicate() possibleDuplicate} is
+     * false. When several owners match, this is the earliest (lowest id). Computed per request, not
+     * persisted.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
@@ -582,29 +583,86 @@ public class Owner extends Person {
     }
 
     /**
-     * The single canonical format of an owner's derived identity key:
-     * {@code telephone + "|" + (email or empty) + "|" + (householdId or empty)}. The telephone and
-     * household id are used as given (they are expected to already be canonical: E.164 and an assigned
-     * household id); the email is lower-cased here and a null/blank email, telephone or household id
-     * contributes an empty component. This is the only place the {@code "|"}-join lives; the stored-owner
-     * {@link #getIdentityKey()} routes through here so the format cannot drift. The key is a descriptive,
-     * returned field; create-time duplicate detection itself is keyed on the household alone (see
-     * {@code CheckHouseholdUnique}).
+     * The single canonical definition of an owner's derived identity key: the lower-case SHA-256 hex
+     * digest (64 hex characters) of {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
+     * The telephone is used as given (it is expected to already be canonical E.164); the email is
+     * lower-cased here and a null/blank email or telephone contributes an empty component; the last name is
+     * reduced to its {@link #soundex(String) Soundex} code so near-spellings share a key component. This is
+     * the only place the key is composed and hashed; the stored-owner {@link #getIdentityKey()} routes
+     * through here so the format cannot drift. The key is both a descriptive, returned field and the single
+     * basis for create-time duplicate detection (two owners with an equal identity key are the same
+     * identity — a 409; see {@code CheckIdentityUnique}).
      */
-    public static String identityKey(String telephone, String email, String householdId) {
+    public static String identityKey(String telephone, String email, String lastName) {
         String tel = (telephone == null) ? "" : telephone;
         String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
-        String household = (householdId == null || householdId.isBlank()) ? "" : householdId;
-        return tel + "|" + mail + "|" + household;
+        return Sha256.hex(tel + "|" + mail + "|" + soundex(lastName));
     }
 
     /**
-     * The owner's derived identity key, built from its stored canonical telephone (E.164), email and
-     * household id via {@link #identityKey(String, String, String)}. A descriptive, returned value;
-     * create-time duplicate detection is keyed on the household (see {@code CheckHouseholdUnique}).
+     * The owner's derived identity key, built from its stored canonical telephone (E.164), email and the
+     * Soundex of its last name via {@link #identityKey(String, String, String)}. Both a descriptive,
+     * returned value and the single basis for create-time duplicate detection (see
+     * {@code CheckIdentityUnique}).
      */
     public String getIdentityKey() {
-        return identityKey(this.telephone, this.email, this.householdId);
+        return identityKey(this.telephone, this.email, this.getLastName());
+    }
+
+    /**
+     * The American Soundex code of {@code name}: the upper-cased first letter followed by three digits
+     * derived from the remaining consonants (vowels and the letters H/W are not coded; adjacent letters
+     * with the same code, and same-coded letters separated only by H/W, collapse to one; a vowel between
+     * same-coded letters keeps both). Padded with zeros or truncated to exactly four characters. Empty
+     * when {@code name} holds no letters (or is {@code null}). Used as the last-name component of the
+     * {@link #identityKey(String, String, String) identity key} so near-spellings share it.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previous = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char ch = letters.charAt(i);
+            if (ch == 'H' || ch == 'W') {
+                continue; // acts as a separator: keep 'previous' so the flanking letters still collapse
+            }
+            char digit = soundexDigit(ch);
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            previous = digit; // a vowel ('0') resets, so same-coded letters it separates are both coded
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /** The Soundex digit for a single upper-case letter; {@code '0'} for vowels and H/W (not coded). */
+    private static char soundexDigit(char ch) {
+        switch (ch) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

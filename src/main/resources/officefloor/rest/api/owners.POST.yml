@@ -28,11 +28,18 @@ validateRegistrationDate:
 
 validatePostcode:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerPostcode
+  next: checkIdentity
+
+# Duplicate detection is the single identity key (SHA-256 over normalizedTelephone | lowerEmail |
+# soundex(lastName)): a new owner whose identity key matches a non-deleted owner is a 409. The email-domain
+# blocklist is applied first (in ValidateNewOwner). Two owners sharing a last name + postcode but with
+# different telephones have different keys, so they are NOT rejected here (they are flagged as a soft
+# near-match by FlagPossibleDuplicate); the former householdId-based 409 block no longer applies.
+checkIdentity:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdentityUnique
+  govern: [ transaction ]
   next: checkCityCapacity
 
-# A second owner sharing a household (same last name + postcode) is no longer rejected: households may
-# now hold multiple members, and a new member is admitted with its membershipLevel capped to one above
-# the household maximum (see CapMembershipLevel). The former CheckHouseholdUnique 409 block is retired.
 checkCityCapacity:
   class: org.springframework.samples.petclinic.rest.function.owner.CheckCityCapacity
   govern: [ transaction ]

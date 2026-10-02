@@ -1,13 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
@@ -18,9 +16,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <p>The {@link #id(String, String)} derived from that normalized (lastName, postcode) pair is
  * deterministic: the same last name and postcode always map to the same value, so every owner at the
  * same household receives an identical {@code householdId} automatically — it is no longer something an
- * owner "joins" via {@code sharesHousehold}. The household is therefore the basis for duplicate
- * detection ({@link CheckHouseholdUnique}): two owners belong to the same household exactly when their
- * ids are equal.
+ * owner "joins" via {@code sharesHousehold}. The household groups members for membership counting and
+ * level capping; duplicate detection itself is no longer keyed on the household but on the owner's
+ * identity key (see {@link CheckIdentityUnique}).
  */
 final class Household {
 
@@ -44,8 +42,16 @@ final class Household {
      * component).
      */
     static String key(String lastName, String postcode) {
-        String pc = (postcode == null) ? "" : postcode.trim();
-        return normalize(lastName) + "|" + pc;
+        return normalize(lastName) + "|" + normalizePostcode(postcode);
+    }
+
+    /**
+     * The canonical form of a postcode for household/soft-match comparison: trimmed, or {@code ""} when
+     * {@code null}. The single definition shared by {@link #key} and the soft-match
+     * ({@link FlagPossibleDuplicate}) so the two cannot diverge if the rule changes.
+     */
+    static String normalizePostcode(String postcode) {
+        return (postcode == null) ? "" : postcode.trim();
     }
 
     /**
@@ -70,17 +76,6 @@ final class Household {
      * the first 12 hex characters of the SHA-256 of the {@link #key household key}.
      */
     static String id(String lastName, String postcode) {
-        String key = key(lastName, postcode);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("H-");
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return "H-" + Sha256.hex(key(lastName, postcode)).substring(0, 12);
     }
 }
