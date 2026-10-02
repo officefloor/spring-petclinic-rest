@@ -1,6 +1,20 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotency gate (runs first): when the request carries an 'Idempotency-Key' already seen by a
+# previous create, respond with the originally created owner and 200 OK, short-circuiting the
+# pipeline so no duplicate is made. Otherwise take the 'proceed' flow into the normal create.
+idempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
+  outputs:
+    hit: respondExisting
+    proceed: validate
+
+# Idempotent repeat: respond with the originally created owner and 200 OK, reusing the standard
+# owner responder rather than re-mapping the DTO in the gate.
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+
 # Validate required fields first, so a missing/blank field is a 400 listing the
 # offending field names before any entity is built or persisted.
 validate:
@@ -52,6 +66,14 @@ build:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Associate the request's Idempotency-Key (if any) with the saved owner's id, so a repeat of the
+# same key is served the original owner above. Runs after save so the id is populated; a no-op
+# when no key was supplied.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
   govern: [ transaction ]
   next: audit
 
