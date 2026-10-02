@@ -2,9 +2,11 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,8 +26,17 @@ import org.springframework.web.bind.annotation.RequestBody;
  */
 public class ValidateNewOwner {
 
+    /**
+     * Syntactic email check (the HTML5/Hibernate-Validator {@code @Email} form): a local part of the
+     * permitted characters, an {@code @}, then a dot-separated domain of label segments. Used only to
+     * decide between accept and 400; a valid value is then lower-cased and written back onto the request.
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+                    + "(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         // This list mirrors OwnerFieldsDto's required fields by hand: it must track the schema's
         // `required` set. We check presence/non-blankness only, a narrower rule than the DTO's full
         // constraints (@Size/@Pattern), so bean validation is intentionally not used here.
@@ -46,6 +57,17 @@ public class ValidateNewOwner {
             throw new InvalidTelephoneException(normalized);
         }
         request.setTelephone(normalized);
+
+        // Email is optional: only an email that is present (non-blank) must be a valid address. A valid
+        // value is lower-cased and written back (like telephone above) so downstream steps store and
+        // return the canonical form.
+        String email = request.getEmail();
+        if (email != null && !email.isBlank()) {
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new InvalidEmailException(email);
+            }
+            request.setEmail(email.toLowerCase());
+        }
 
         validated.set(request);
     }
