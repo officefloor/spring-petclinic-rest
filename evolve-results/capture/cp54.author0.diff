@@ -1,0 +1,155 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cc8adcf10..2d1203833 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -94,6 +94,9 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    @Transient
++    private Boolean capacityWarning;
++
+     @Transient
+     private Boolean possibleDuplicate;
+ 
+@@ -346,6 +349,19 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this response should carry a per-city capacity warning: {@code true} when this owner's city
++     * already contains between 40 and 49 owners (inclusive), approaching the per-city capacity limit of 50.
++     * Computed per request, not persisted.
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * Whether this owner is a <em>possible</em> (soft) duplicate of another owner: {@code true} when some
+      * other owner has a <em>different</em> {@link #getIdentityKey() identity key} yet shares both this
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckCityCapacity.java
+index 2312b90ee..2753f3e0d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckCityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckCityCapacity.java
+@@ -18,9 +18,26 @@ public class CheckCityCapacity {
+     /** Maximum number of owners permitted per city. */
+     static final int CAPACITY = 50;
+ 
++    /**
++     * Lowest per-city owner count at which a {@code capacityWarning} is raised (inclusive); the city is
++     * "approaching capacity" once it holds this many owners but is not yet {@link #CAPACITY full}.
++     */
++    static final int WARNING_THRESHOLD = 40;
++
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws CityAtCapacityException {
+         String city = request.getCity();
++        if (countInCity(city, ownerRepository) >= CAPACITY) {
++            throw new CityAtCapacityException(city, CAPACITY);
++        }
++    }
++
++    /**
++     * Counts the owners whose city matches {@code city} in its {@link OwnerCity#normalize normalized}
++     * form — the single source of the per-city owner count shared by the capacity check and the
++     * {@link FlagCityCapacityWarning capacity warning}.
++     */
++    static int countInCity(String city, OwnerRepository ownerRepository) {
+         String normalizedCity = OwnerCity.normalize(city);
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+@@ -28,8 +45,6 @@ public class CheckCityCapacity {
+                 count++;
+             }
+         }
+-        if (count >= CAPACITY) {
+-            throw new CityAtCapacityException(city, CAPACITY);
+-        }
++        return count;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCityCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCityCapacityWarning.java
+new file mode 100644
+index 000000000..98e858483
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCityCapacityWarning.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags the response with {@code capacityWarning}: {@code true} when this owner's city already contains
++ * between {@link CheckCityCapacity#WARNING_THRESHOLD 40} and 49 owners (inclusive) — i.e. it is
++ * approaching, but has not yet reached, the per-city {@link CheckCityCapacity#CAPACITY capacity limit of
++ * 50} — otherwise {@code false}. The per-city count is taken over all owners sharing this owner's
++ * {@link OwnerCity#normalize normalized} city via {@link CheckCityCapacity#countInCity}, the same
++ * accumulation path as the hard {@link CheckCityCapacity capacity check}. Computed per request and mutated
++ * onto the loaded owner in place, not persisted; the hard rejection at 50 is unchanged.
++ */
++public class FlagCityCapacityWarning {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        int count = CheckCityCapacity.countInCity(owner.getCity(), ownerRepository);
++        owner.setCapacityWarning(
++            count >= CheckCityCapacity.WARNING_THRESHOLD && count < CheckCityCapacity.CAPACITY);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index ae8b7b861..0531e6d16 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -104,6 +104,11 @@ flagPossibleDuplicate:
+ countHouseholdMembers:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+   govern: [ transaction ]
++  next: flagCityCapacityWarning
++
++flagCityCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagCityCapacityWarning
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ # Associate the request's Idempotency-Key (if any) with the saved owner so a repeat replays it.
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index cd5a1033b..7f3c2c4b9 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -19,6 +19,11 @@ flagPossibleDuplicate:
+ countHouseholdMembers:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+   govern: [ readonly-transaction ]
++  next: flagCityCapacityWarning
++
++flagCityCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagCityCapacityWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f981ed2a0..f0b109dd1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2257,6 +2257,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already contains between 40 and 49 owners
++                (inclusive) - approaching the per-city capacity limit of 50 - otherwise false.
++                Derived per response.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when another non-deleted owner has a different identityKey yet shares this
