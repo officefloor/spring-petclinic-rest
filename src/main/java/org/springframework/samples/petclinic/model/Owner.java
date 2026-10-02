@@ -23,7 +23,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -297,14 +296,37 @@ public class Owner extends Person {
     }
 
     /**
+     * The calendar year in which {@code date}'s fiscal year starts. The fiscal year starts on
+     * 1 July, so a date in July–December belongs to the fiscal year starting that calendar year,
+     * while a date in January–June belongs to the fiscal year that started the previous calendar
+     * year.
+     */
+    private static int fiscalYearStart(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} where YY is the last two digits of the
+     * calendar year in which the fiscal year starts (the fiscal year starts on 1 July), derived
+     * from the business-day-adjusted {@link #getRegistrationDate() registrationDate}
+     * (e.g. a registration date in October 2026 yields {@code 'FY26'}). Not persisted — derived
+     * from {@link #getRegistrationDate()}.
+     */
+    @Transient
+    public String getFiscalYear() {
+        return "FY" + String.format("%02d", fiscalYearStart(this.registrationDate) % 100);
+    }
+
+    /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
-     * the last two digits of the {@link #getRegistrationDate() registrationDate} year
+     * the last two digits of the {@link #getFiscalYear() fiscal year} derived from the
+     * business-day-adjusted {@link #getRegistrationDate() registrationDate}
      * (e.g. {@code 'NSW-1A2B3C4D-M26'}).
      * Not persisted — derived from {@link #getCustomerCode()} and {@link #getRegistrationDate()}.
      */
     @Transient
     public String getMembershipNumber() {
-        return this.customerCode + "-M" + String.format("%02d", this.registrationDate.getYear() % 100);
+        return this.customerCode + "-M" + String.format("%02d", fiscalYearStart(this.registrationDate) % 100);
     }
 
     /**
@@ -339,10 +361,10 @@ public class Owner extends Person {
      * The owner's membership points. Starts at {@code 0}; adds {@code 2} when an
      * {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
      * namesakeCount} is {@code 0}; adds {@code 2} for a household of {@code 3} or more members
-     * ({@link #getHouseholdSize() householdSize}); adds {@code 3} for a tenure of more than
-     * {@code 365} days since the {@link #getRegistrationDate() registration date}. Not persisted
-     * — derived from {@link #getEmail()}, {@link #getNamesakeCount()}, {@link #getHouseholdSize()}
-     * and {@link #getRegistrationDate()}.
+     * ({@link #getHouseholdSize() householdSize}); adds {@code 3} for a tenure of one or more
+     * elapsed fiscal years since the {@link #getRegistrationDate() registration date}'s fiscal
+     * year (the fiscal year starts on 1 July). Not persisted — derived from {@link #getEmail()},
+     * {@link #getNamesakeCount()}, {@link #getHouseholdSize()} and {@link #getRegistrationDate()}.
      */
     @Transient
     public int getMembershipPoints() {
@@ -359,7 +381,7 @@ public class Owner extends Person {
             points += 2;
         }
         if (this.registrationDate != null
-                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+                && fiscalYearStart(LocalDate.now()) - fiscalYearStart(this.registrationDate) >= 1) {
             points += 3;
         }
         return points;
