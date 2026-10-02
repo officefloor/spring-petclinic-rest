@@ -1,37 +1,34 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * Runs after {@link ResolveHousehold} (which derives the deterministic {@link Household.Id} from
- * the request's last name and postcode) and before {@link BuildOwner}. The duplicate-detection
- * gate: because a household is now keyed on {@code (lastName, postcode)}, owners sharing a last
- * name and postcode are the same household, so a second owner in an existing household is a
- * duplicate and is rejected with a 409.
+ * The single duplicate-detection gate of {@code POST /api/owners}, running before {@link BuildOwner}.
+ * Duplicate detection is now the one identity key (see {@link OwnerIdentity}): the create is rejected
+ * with a 409 when an existing active owner carries the identical identity key, derived from the
+ * request's normalized telephone, lower-cased email and {@link Soundex soundex} of the last name.
  *
- * <p>The write-only {@code sharesHousehold} flag only bypasses this block: when set, the new
- * owner is created as a declared household member instead of being rejected. Publishes nothing;
- * it only escalates on conflict.
+ * <p>The scan ignores owners flagged soft-deleted (see {@link ActiveOwners}), and the email-domain
+ * blocklist is applied earlier in {@link ValidateNewOwner}, so a disposable-domain email is a 400
+ * before this gate runs. Because the telephone is part of the key, two owners with the same last
+ * name and postcode but different telephones are no longer a hard duplicate — they are created and
+ * surfaced as a soft match (see {@link PossibleDuplicate}). Publishes nothing; it only escalates on
+ * conflict.
  */
 public class ValidateUniqueIdentity {
 
-    public void service(@Val OwnerFieldsDto request, @Val Household.Id householdId,
-            OwnerRepository ownerRepository) throws DuplicateIdentityException {
-        if (householdId == null || !householdId.isPresent()) {
-            // No postcode means no household, so there is nothing to collide with.
-            return;
-        }
-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
-            // Declared household member: bypass the duplicate block.
-            return;
-        }
-        // No self to exclude yet: the new owner is not persisted at this point.
-        if (Household.hasMember(householdId.value(), null, ownerRepository)) {
-            throw new DuplicateIdentityException("Household " + householdId.value()
-                    + " already has an owner (same last name and postcode)");
+    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+            throws DuplicateIdentityException {
+        String key = OwnerIdentity.of(request.getTelephone(), request.getEmail(), request.getLastName());
+        for (Owner existing : ActiveOwners.list(ownerRepository)) {
+            if (key.equals(OwnerIdentity.of(existing))) {
+                throw new DuplicateIdentityException(
+                        "An owner with the same identity key already exists: " + key);
+            }
         }
     }
 }

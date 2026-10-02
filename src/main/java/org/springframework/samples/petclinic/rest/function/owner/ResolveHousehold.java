@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * when the request carries a postcode, {@link Household.Id#ABSENT} otherwise. It writes nothing
  * to the database.
  *
- * <p>The household id is now derived purely from {@code (lastName, postcode)}, so every owner
- * with a postcode carries one and owners sharing a last name and postcode share it. The gate in
- * {@link ValidateUniqueIdentity} rejects a second owner in the same household unless the request
- * declares {@code sharesHousehold}; {@link BuildOwner} stamps the resolved id on the new owner.
+ * <p>The household id is derived purely from {@code (lastName, postcode)}, so every owner with a
+ * postcode carries one and owners sharing a last name and postcode share it. It groups owners for
+ * the household-size and membership-level rules — {@link BuildOwner} stamps the resolved id on the
+ * new owner — but no longer gates duplicate detection, which is now the single owner identity key
+ * ({@link OwnerIdentity}, checked by {@link ValidateUniqueIdentity}).
  */
 public class ResolveHousehold {
 

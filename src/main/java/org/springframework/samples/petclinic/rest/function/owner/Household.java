@@ -15,8 +15,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * {@code (lastName, postcode)}: every owner with a postcode derives a deterministic
  * {@link Id} from its normalized last name and postcode, so owners with the same last name
  * and postcode share the same id automatically, regardless of creation order. The id is
- * defined once here so the resolver ({@link ResolveHousehold}), the duplicate gate
- * ({@link ValidateUniqueIdentity}) and the new owner ({@link BuildOwner}) all agree on it.
+ * defined once here so the resolver ({@link ResolveHousehold}) and the new owner
+ * ({@link BuildOwner}) agree on it; it groups owners for the household-size and membership-level
+ * rules but no longer gates duplicate detection, which is now the single owner identity key
+ * ({@link OwnerIdentity}).
  */
 final class Household {
 
@@ -65,35 +67,11 @@ final class Household {
     }
 
     /**
-     * Whether an owner other than {@code exclude} already carries {@code householdId}. The single
-     * household-membership lookup, shared by the duplicate gate ({@link ValidateUniqueIdentity},
-     * which passes {@code exclude = null} because the new owner is not yet persisted) and the
-     * soft-match rule ({@link PossibleDuplicate}, which excludes the owner itself). Always
-     * {@code false} for a {@code null}/blank id (an owner with no postcode has no household).
-     * Scans only {@link ActiveOwners active owners}, so a soft-deleted owner no longer blocks a
-     * household create.
-     */
-    static boolean hasMember(String householdId, Owner exclude, OwnerRepository ownerRepository) {
-        if (householdId == null || householdId.isBlank()) {
-            return false;
-        }
-        for (Owner existing : ActiveOwners.list(ownerRepository)) {
-            if (exclude != null && exclude.getId() != null && exclude.getId().equals(existing.getId())) {
-                continue;
-            }
-            if (householdId.equals(existing.getHouseholdId())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * The number of owners carrying {@code householdId}. The single household-size lookup, reused
      * wherever the membership points rule needs a household's member count. {@code 0} for a
      * {@code null}/blank id (an owner with no postcode has no household). Scans only
-     * {@link ActiveOwners active owners}, consistent with {@link #hasMember}, so a soft-deleted
-     * owner does not count towards a household's size.
+     * {@link ActiveOwners active owners}, so a soft-deleted owner does not count towards a
+     * household's size.
      */
     static int size(String householdId, OwnerRepository ownerRepository) {
         if (householdId == null || householdId.isBlank()) {
@@ -114,8 +92,8 @@ final class Household {
      * household has no such member (so no cap applies). Each member's household size is resolved
      * first — exactly as {@link LoadOwner} does on read — so its level is scored on a fully
      * populated household rather than as a lone member. Scans only {@link ActiveOwners active
-     * owners}, consistent with {@link #size} and {@link #hasMember}, so a soft-deleted owner does
-     * not raise the ceiling. {@link OptionalInt#empty()} for a {@code null}/blank id.
+     * owners}, consistent with {@link #size}, so a soft-deleted owner does not raise the ceiling.
+     * {@link OptionalInt#empty()} for a {@code null}/blank id.
      */
     static OptionalInt maxMemberLevel(String householdId, Owner exclude, OwnerRepository ownerRepository) {
         if (householdId == null || householdId.isBlank()) {

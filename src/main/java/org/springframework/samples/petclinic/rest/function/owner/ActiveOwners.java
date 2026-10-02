@@ -10,9 +10,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * The owners that the duplicate-detection and household-membership scans consider: every persisted
  * owner except those flagged soft-deleted. A soft-delete ({@code DELETE /api/owners/{id}}) retains
  * the owner's row but flags it deleted, so it must no longer take part in those scans. Defining the
- * exclusion here once keeps every such scan — the duplicate gate ({@link ValidateUniqueIdentity}
- * via {@link Household#hasMember}), the household size ({@link Household#size}) and the soft-match
- * rule ({@link PossibleDuplicate}) — agreeing on it, rather than each loop re-deciding inline.
+ * exclusion here once keeps every such scan — the duplicate gate ({@link ValidateUniqueIdentity}),
+ * the household size ({@link Household#size}) and the soft-match rule ({@link PossibleDuplicate}) —
+ * agreeing on it, rather than each loop re-deciding inline.
  */
 final class ActiveOwners {
 

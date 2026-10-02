@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Populates the response-only {@link Owner#isPossibleDuplicate() possibleDuplicate} and
  * {@link Owner#getPossibleDuplicateOf() possibleDuplicateOf} fields from the shared
  * {@link PossibleDuplicate} rule: true, with the matching owner id, when this owner shares an
- * existing owner's last name and postcode with a different telephone; otherwise false with no
- * id. A declared household member is never flagged (see {@link PossibleDuplicate}). Mutates the
- * loaded owner in place so the responder's mapper carries the flag onto the DTO.
+ * existing owner's last-name {@link Soundex soundex} and postcode but carries a different
+ * identity key; otherwise false with no id. Mutates the loaded owner in place so the responder's
+ * mapper carries the flag onto the DTO.
  */
 public class FlagPossibleDuplicate {
 
