@@ -123,16 +123,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "1", 10);
 
     /**
-     * Fixed region-to-postcode-range lookup used to validate an owner's optional postcode against the
-     * region derived from the owner's city ({@link Owner#getLocality()}). Each value is the inclusive
+     * Fixed region-to-postcode-range lookup used both to validate an owner's optional postcode against
+     * the region derived from the owner's city ({@link #regionForCity}) and to derive the postcode's own
+     * region for the {@code customerCode} ({@link #regionForPostcode}). Each value is the inclusive
      * {@code {low, high}} 4-digit range for that region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A
-     * city whose region is not listed (locality {@code 'UNKNOWN'}) carries no range and accepts any
-     * 4-digit postcode.
+     * region that is not listed ({@code 'UNKNOWN'}) carries no range and accepts any 4-digit postcode.
      */
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099},
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
+
+    /**
+     * Fixed city-to-region lookup used to validate an owner's optional postcode against the region
+     * derived from the owner's city. Any city not listed has region {@code 'UNKNOWN'} and so accepts
+     * any 4-digit postcode.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
 
     private final ClinicService clinicService;
 
@@ -198,11 +208,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(email);
-        owner.setPostcode(validatePostcode(ownerFieldsDto.getPostcode(), owner.getLocality()));
+        owner.setPostcode(validatePostcode(ownerFieldsDto.getPostcode(), regionForCity(owner.getCity())));
         rejectDuplicateIdentity(owner);
         owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(generateCustomerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -345,7 +355,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Validates an owner's optional postcode. A {@code null} value means the field was omitted and is
      * left unset, keeping the create contract backward-compatible. When a value is present it must be
-     * exactly 4 digits, and when the owner's region (derived from its city, {@link Owner#getLocality()})
+     * exactly 4 digits, and when the owner's region (derived from its city, {@link #regionForCity})
      * has a known postcode range in {@link #REGION_POSTCODES} the postcode must fall within that
      * inclusive range. A region with no known range ({@code 'UNKNOWN'}) accepts any 4-digit postcode.
      * The returned value is stored and returned unchanged.
@@ -488,32 +498,79 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}. {@code CITY3}
-     * is the upper-cased first three letters of the city, {@code LAST3} the upper-cased first three
-     * letters of the last name, and {@code NNNN} a per-city 4-digit zero-padded sequence equal to one
-     * more than the number of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+     * Builds the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'}. {@code REGION} is
+     * the region code derived from the owner's postcode ({@link #regionForPostcode}, {@code 'UNKNOWN'}
+     * when the postcode is absent or in no known range), and {@code HASH8} is the first eight
+     * upper-cased hex characters of the SHA-256 digest of the owner's normalized telephone followed by
+     * the last name (e.g. {@code 'NSW-1A2B3C4D'}). The identity carries no sequence number, so the
+     * same postcode region, telephone and last name always yield the same customer code.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param postcode  the owner's validated postcode, or {@code null} if none was supplied
+     * @param telephone the owner's normalized (E.164) telephone
+     * @param lastName  the owner's last name
      * @return the formatted customer code
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String city3 = first3Letters(city);
-        String last3 = first3Letters(lastName);
-        int sequence = countOwnersInCity(city) + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String generateCustomerCode(String postcode, String telephone, String lastName) {
+        String region = regionForPostcode(postcode);
+        String hash8 = hash8(telephone + lastName);
+        return region + "-" + hash8;
     }
 
     /**
-     * Returns the upper-cased first three letters of the given value, with any non-letter characters
-     * removed first, used to build the city and last-name segments of a {@code customerCode}.
+     * Resolves the region code for a postcode by its known 4-digit range in {@link #REGION_POSTCODES}
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), returning {@code 'UNKNOWN'}
+     * when the postcode is {@code null}, not exactly 4 digits, or falls in no known range. This is the
+     * {@code <REGION>} segment baked into the {@code customerCode}.
      *
-     * @param value the value to abbreviate
-     * @return the upper-cased first three letters, or fewer if the value has fewer letters
+     * @param postcode the owner's postcode, or {@code null}
+     * @return the region code, or {@code 'UNKNOWN'}
      */
-    private String first3Letters(String value) {
-        String letters = value.replaceAll("[^\\p{L}]", "");
-        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+    private String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return "UNKNOWN";
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    /**
+     * Resolves the region code for a city via the fixed {@link #CITY_REGION} table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), returning {@code 'UNKNOWN'}
+     * when the city is not listed. Used to validate an owner's optional postcode against its city's
+     * region.
+     *
+     * @param city the owner's city
+     * @return the region code, or {@code 'UNKNOWN'}
+     */
+    private String regionForCity(String city) {
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Returns the first eight upper-cased hex characters of the SHA-256 digest of the given input,
+     * used as the {@code <HASH8>} segment of a {@code customerCode}.
+     *
+     * @param input the value to hash
+     * @return the first eight upper-cased hex characters of its SHA-256 digest
+     */
+    private String hash8(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 8).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
     }
 
     /**
