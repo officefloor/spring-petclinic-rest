@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 47b156b67..468d57788 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -69,6 +70,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Common street-type abbreviations expanded during address normalization. Keys are the
++     * upper-cased abbreviation as it appears as a whole whitespace-delimited token; values are the
++     * expanded form it is replaced with.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -118,10 +129,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        String address = normalizeAddress(ownerFieldsDto.getAddress());
++        owner.setAddress(address);
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+-            assignHousehold(owner, ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
++            assignHousehold(owner, ownerFieldsDto.getLastName(), address);
+         } else {
+-            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
++            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), address);
+         }
+         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+         rejectDuplicateTelephone(telephone);
+@@ -249,7 +262,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isBlank(ownerFieldsDto.getLastName())) {
+             missingFields.add("lastName");
+         }
+-        if (isBlank(ownerFieldsDto.getAddress())) {
++        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+             missingFields.add("address");
+         }
+         if (isBlank(ownerFieldsDto.getCity())) {
+@@ -398,10 +411,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private List<Owner> findHouseholdMembers(String lastName, String address) {
+         String normalizedLastName = normalizeForComparison(lastName);
+-        String normalizedAddress = normalizeForComparison(address);
++        String normalizedAddress = normalizeAddress(address);
+         return this.clinicService.findAllOwners().stream()
+             .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+-                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
++                && normalizeAddress(existing.getAddress()).equals(normalizedAddress))
+             .toList();
+     }
+ 
+@@ -429,7 +442,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .map(Owner::getHouseholdId)
+             .filter(existing -> existing != null && !existing.isBlank())
+             .findFirst()
+-            .orElseGet(() -> generateHouseholdId(normalizeForComparison(lastName), normalizeForComparison(address)));
++            .orElseGet(() -> generateHouseholdId(normalizeForComparison(lastName), normalizeAddress(address)));
+         for (Owner member : members) {
+             if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+                 member.setHouseholdId(householdId);
+@@ -478,4 +491,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
++
++    /**
++     * Normalizes an owner address for storage, display and comparison. Surrounding whitespace is
++     * trimmed, every internal run of whitespace is collapsed to a single space, the value is
++     * upper-cased, and common street-type abbreviations appearing as whole tokens are expanded
++     * ({@code ST} to {@code STREET}, {@code RD} to {@code ROAD}, {@code AVE} to {@code AVENUE}).
++     * This normalized value is what gets stored and returned, and it is the form every address
++     * comparison (household duplicate detection and the shared household id) uses.
++     *
++     * @param address the raw address value submitted by the client, possibly {@code null}
++     * @return the normalized address, or an empty string if {@code address} is {@code null}
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder normalized = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return normalized.toString();
++    }
+ }
