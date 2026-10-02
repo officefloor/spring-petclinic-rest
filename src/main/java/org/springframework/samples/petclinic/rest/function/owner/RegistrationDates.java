@@ -40,6 +40,14 @@ final class RegistrationDates {
     }
 
     /**
+     * Whether a {@code supplied} registration date lies in the future, i.e. later than the server's
+     * current date. A {@code null} date (none supplied) is never in the future.
+     */
+    static boolean isFuture(LocalDate supplied) {
+        return supplied != null && supplied.isAfter(LocalDate.now());
+    }
+
+    /**
      * The effective, business-day registration date: {@code supplied} when non-null, otherwise the
      * server's current date, rolled forward to the next Monday when it lands on a weekend.
      */
