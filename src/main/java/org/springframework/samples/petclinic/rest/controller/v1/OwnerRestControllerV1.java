@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.IdempotencyKeyRegistry;
 import org.springframework.samples.petclinic.util.AddressValidator;
 import org.springframework.samples.petclinic.util.DisposableEmailValidator;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
@@ -69,14 +70,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final IdempotencyKeyRegistry idempotencyKeyRegistry;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 IdempotencyKeyRegistry idempotencyKeyRegistry) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.idempotencyKeyRegistry = idempotencyKeyRegistry;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -101,14 +106,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        return new ResponseEntity<>(toOwnerDtoWithWarning(owner), HttpStatus.OK);
+    }
+
+    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} flag the same way
+     *  for every owner response. */
+    private OwnerDto toOwnerDtoWithWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        // A create retried with an already-seen idempotency key returns the originally created
+        // owner with 200, rather than creating a duplicate.
+        Integer existingId = this.idempotencyKeyRegistry.findOwnerId(idempotencyKey).orElse(null);
+        if (existingId != null) {
+            Owner existing = this.clinicService.findOwnerById(existingId);
+            if (existing != null) {
+                return new ResponseEntity<>(toOwnerDtoWithWarning(existing), HttpStatus.OK);
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         AddressValidator.validate(owner.getAddress());
@@ -136,11 +156,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.clinicService.saveOwner(owner, sharesHousehold);
+        this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner), ownerMapper.formatMembershipNumber(owner));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
+        OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
