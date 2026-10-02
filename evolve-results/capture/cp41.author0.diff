@@ -1,0 +1,43 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 805d785bc..ea516df54 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -20,7 +20,7 @@ public class BuildOwner {
+         // current date, then rolls any weekend forward to the next Monday so derived values
+         // (e.g. the membership number's year) use the adjusted business day.
+         owner.setRegistrationDate(BusinessDay.effectiveRegistrationDate(owner.getRegistrationDate()));
+-        owner.setCustomerCode(customerCode(owner));
++        owner.setCustomerCode(deduplicate(customerCode(owner), ownerRepository));
+         // Record how many existing owners already share this first+last name (case-insensitive),
+         // counted before this owner is persisted so the value is fixed at creation time.
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
+@@ -48,6 +48,29 @@ public class BuildOwner {
+         return region + "-" + hash8(seed);
+     }
+ 
++    /**
++     * Return a customerCode that no existing owner already uses. When {@code code} collides with an
++     * existing owner's customerCode, append '-&lt;n&gt;' with the smallest n of 2 or more that makes
++     * it unique (e.g. 'NSW-1A2B3C4D' → 'NSW-1A2B3C4D-2'). The un-suffixed code is returned unchanged
++     * when it does not collide.
++     */
++    private static String deduplicate(String code, OwnerRepository ownerRepository) {
++        java.util.Set<String> existing = new java.util.HashSet<>();
++        for (Owner owner : ownerRepository.findAll()) {
++            if (owner.getCustomerCode() != null) {
++                existing.add(owner.getCustomerCode());
++            }
++        }
++        if (!existing.contains(code)) {
++            return code;
++        }
++        int n = 2;
++        while (existing.contains(code + "-" + n)) {
++            n++;
++        }
++        return code + "-" + n;
++    }
++
+     /**
+      * The first 8 upper-case hex characters of the SHA-256 of the UTF-8 bytes of {@code seed}.
+      */
