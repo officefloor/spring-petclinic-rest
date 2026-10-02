@@ -1,0 +1,267 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f52c4bbb7..b74272e49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -108,6 +111,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     /**
+      * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
+      * Not persisted — derived from {@link #getLastName()} and {@link #getFirstName()}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 5f59b3dc1..0a598ac76 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -11,7 +11,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ public class BuildOwner {
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper,
++    public void service(@Val OwnerFieldsDto request,
++            @Val ValidateUniqueHousehold.HouseholdId householdId, OwnerMapper ownerMapper,
+             OwnerRepository ownerRepository, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
+         // Default an unsupplied registration date to the server's current date.
+@@ -19,6 +20,10 @@ public class BuildOwner {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
++        // Join a shared household when ValidateUniqueHousehold resolved an identifier.
++        if (householdId != null && !householdId.value().isBlank()) {
++            owner.setHouseholdId(householdId.value());
++        }
+         built.set(owner);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateUniqueHousehold.java
+index 13725ae7d..b9c6bd34f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateUniqueHousehold.java
+@@ -1,7 +1,13 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Locale;
+ 
++import net.officefloor.plugin.variable.Out;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -9,28 +15,75 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
+ 
+ /**
+- * Runs after {@link ValidateUniqueTelephone} and before {@link BuildOwner}. Rejects the create
+- * with a 409 when another owner already shares the same household — the same last name at the
+- * same address, compared case-insensitively with collapsed whitespace — unless the request
+- * opts in with {@code sharesHousehold = true}. Publishes nothing; it is a validation gate that
+- * only escalates on conflict.
++ * Runs after {@link ValidateUniqueTelephone} and before {@link BuildOwner}. A household is a set
++ * of owners with the same last name at the same address, compared case-insensitively with
++ * collapsed whitespace.
++ *
++ * <p>When the request does not opt in with {@code sharesHousehold = true} and another owner
++ * already shares the household, rejects the create with a 409.
++ *
++ * <p>When {@code sharesHousehold = true} and another owner already shares the household, the
++ * create is allowed and all members of the household are assigned the same stable
++ * {@code householdId} (a deterministic function of the normalized last name and address): any
++ * existing members missing it are back-filled and saved, and the identifier is published for
++ * {@link BuildOwner} to stamp onto the new owner. Always publishes the household identifier
++ * variable (empty when the new owner is not joining a shared household).
+  */
+ public class ValidateUniqueHousehold {
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateHouseholdException {
+-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+-            return;
+-        }
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
++            Out<HouseholdId> householdIdOut) throws DuplicateHouseholdException {
+         String lastName = normalize(request.getLastName());
+         String address = normalize(request.getAddress());
++
++        List<Owner> household = new ArrayList<>();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+                     && address.equals(normalize(existing.getAddress()))) {
+-                throw new DuplicateHouseholdException("An owner named " + request.getLastName()
+-                        + " already exists at " + request.getAddress());
++                household.add(existing);
++            }
++        }
++
++        if (household.isEmpty()) {
++            // No existing household member: nothing to share, nothing to reject.
++            householdIdOut.set(new HouseholdId(""));
++            return;
++        }
++
++        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
++            throw new DuplicateHouseholdException("An owner named " + request.getLastName()
++                    + " already exists at " + request.getAddress());
++        }
++
++        // Sharing a household: give every member the same stable identifier.
++        String householdId = householdId(lastName, address);
++        for (Owner member : household) {
++            if (!householdId.equals(member.getHouseholdId())) {
++                member.setHouseholdId(householdId);
++                ownerRepository.save(member);
+             }
+         }
++        householdIdOut.set(new HouseholdId(householdId));
++    }
++
++    /**
++     * Stable identifier for the household: the first 12 upper-case hex characters of the
++     * SHA-256 of the normalized last name and address, so every owner in the same household
++     * derives the same value regardless of creation order.
++     */
++    private static String householdId(String lastName, String address) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest((lastName + "\n" + address).getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (int i = 0; i < 6; i++) {
++                sb.append(String.format("%02X", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
+     }
+ 
+     /**
+@@ -43,4 +96,13 @@ public class ValidateUniqueHousehold {
+         }
+         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
++
++    /**
++     * Carrier for the resolved household identifier published to {@link BuildOwner}. A dedicated
++     * type keeps the variable unambiguous (matched by type) and distinct from other strings in
++     * the pipeline. An empty {@link #value()} means the new owner is not joining a shared
++     * household.
++     */
++    public record HouseholdId(String value) {
++    }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..a3ba7e5a4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..82270213a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 81c873f1f..7cee6c655 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -13,11 +13,14 @@ uniqueTelephone:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateUniqueTelephone
+   next: uniqueHousehold
+ 
+-# Reject a create that shares a household with an existing owner — same last name at the same
+-# address (case-insensitive, whitespace collapsed) — with a 409, unless the request set
+-# 'sharesHousehold' true. Runs before any entity is built or persisted.
++# A household is same last name at the same address (case-insensitive, whitespace collapsed).
++# Reject a create that joins an existing household with a 409, unless the request set
++# 'sharesHousehold' true — in which case the whole household is assigned one stable
++# 'householdId' (back-filling existing members) and it is published for 'build' to stamp onto
++# the new owner. Runs before any entity is built or persisted.
+ uniqueHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateUniqueHousehold
++  govern: [ transaction ]
+   next: build
+ 
+ build:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 73b2ca772..98eedf772 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2091,6 +2091,12 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: A stable shared identifier assigned to owners that share a household (same last name at the same address) when created with 'sharesHousehold' true. Owners not in a shared household have no household ID.
++              type: string
++              example: 'A1B2C3D4E5F6'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
