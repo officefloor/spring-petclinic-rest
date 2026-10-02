@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -55,6 +57,12 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic check for an email address: a non-empty local part, a single {@code @}, and a
+     * domain containing at least one dot, with no whitespace in any part.
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final ClinicService clinicService;
 
@@ -108,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -127,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -271,6 +281,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String digitsOnly(String telephone) {
         return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Normalizes an optional owner email address. A {@code null} value means the field was omitted and
+     * is left unset. When a value is present it must be a syntactically valid address; the stored and
+     * returned value is that address lower-cased.
+     *
+     * @param email the raw email value submitted by the client, or {@code null} if omitted
+     * @return the lower-cased email, or {@code null} if none was supplied
+     * @throws InvalidOwnerFieldsException if a value is present but not a syntactically valid address,
+     *                                     yielding a 400 response
+     */
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return email.toLowerCase(Locale.ROOT);
     }
 
     /**
