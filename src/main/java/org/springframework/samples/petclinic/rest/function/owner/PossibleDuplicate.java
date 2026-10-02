@@ -28,7 +28,8 @@ final class PossibleDuplicate {
     /**
      * The id of the existing owner that {@code owner} possibly duplicates, or {@code null} when
      * it is not a possible duplicate. The owner itself (matched by id) is never considered its
-     * own duplicate.
+     * own duplicate, and only {@link ActiveOwners active owners} are scanned so a soft-deleted
+     * owner is never reported as a match.
      */
     static Integer matchOf(Owner owner, OwnerRepository ownerRepository) {
         if (Household.hasMember(owner.getHouseholdId(), owner, ownerRepository)) {
@@ -42,7 +43,7 @@ final class PossibleDuplicate {
         String lastName = normalizeName(owner.getLastName());
         String telephone = OwnerTelephone.normalize(owner.getTelephone());
         Integer match = null;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ActiveOwners.list(ownerRepository)) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }

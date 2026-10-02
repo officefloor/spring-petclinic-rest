@@ -69,12 +69,14 @@ final class Household {
      * which passes {@code exclude = null} because the new owner is not yet persisted) and the
      * soft-match rule ({@link PossibleDuplicate}, which excludes the owner itself). Always
      * {@code false} for a {@code null}/blank id (an owner with no postcode has no household).
+     * Scans only {@link ActiveOwners active owners}, so a soft-deleted owner no longer blocks a
+     * household create.
      */
     static boolean hasMember(String householdId, Owner exclude, OwnerRepository ownerRepository) {
         if (householdId == null || householdId.isBlank()) {
             return false;
         }
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ActiveOwners.list(ownerRepository)) {
             if (exclude != null && exclude.getId() != null && exclude.getId().equals(existing.getId())) {
                 continue;
             }
@@ -86,16 +88,18 @@ final class Household {
     }
 
     /**
-     * The number of persisted owners carrying {@code householdId}. The single household-size
-     * lookup, reused wherever the membership points rule needs a household's member count.
-     * {@code 0} for a {@code null}/blank id (an owner with no postcode has no household).
+     * The number of owners carrying {@code householdId}. The single household-size lookup, reused
+     * wherever the membership points rule needs a household's member count. {@code 0} for a
+     * {@code null}/blank id (an owner with no postcode has no household). Scans only
+     * {@link ActiveOwners active owners}, consistent with {@link #hasMember}, so a soft-deleted
+     * owner does not count towards a household's size.
      */
     static int size(String householdId, OwnerRepository ownerRepository) {
         if (householdId == null || householdId.isBlank()) {
             return 0;
         }
         int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ActiveOwners.list(ownerRepository)) {
             if (householdId.equals(existing.getHouseholdId())) {
                 count++;
             }

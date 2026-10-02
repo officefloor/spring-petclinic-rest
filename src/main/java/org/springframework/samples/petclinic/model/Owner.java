@@ -80,6 +80,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @Transient
     private Integer householdSize;
 
@@ -213,6 +216,20 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted. A soft-delete ({@code DELETE /api/owners/{id}})
+     * flags the owner deleted and retains the row rather than removing it, so the owner is still
+     * returned by a fetch; the create pipeline's duplicate and identity checks ignore owners
+     * flagged deleted. A newly created owner is not deleted.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**
