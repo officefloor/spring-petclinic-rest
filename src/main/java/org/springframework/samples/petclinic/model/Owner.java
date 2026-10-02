@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
     @Transient
     private Integer householdSize;
 
@@ -257,6 +260,20 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted. A {@code DELETE /api/owners/{id}} sets this true and
+     * retains the record rather than removing it; a newly created owner is false. Soft-deleted owners
+     * are still returned by {@code GET /api/owners/{id}} but are ignored by the create endpoint's
+     * duplicate/identity checks (see {@code CheckHouseholdUnique}).
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**
