@@ -18,9 +18,21 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * The canonical REST API path for an owner, {@code "/api/owners/"} followed by the owner's id,
+     * or {@code null} when the owner has no id yet (unsaved). The single source of this route string:
+     * both the serialized {@code selfLink} field and the created-response {@code Location} header are
+     * built from here, keeping the {@code /api/owners/} namespace confined to the REST boundary.
+     */
+    default String selfLink(Owner owner) {
+        Integer id = owner == null ? null : owner.getId();
+        return id == null ? null : "/api/owners/" + id;
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
