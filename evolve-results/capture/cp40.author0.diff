@@ -1,0 +1,190 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1e6247c9f..bfff2d62b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Transient
++    private Integer householdSize;
++
+     @Transient
+     private boolean bulkSignupWarning;
+ 
+@@ -147,6 +150,22 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    /**
++     * The number of owners in this owner's household (owners sharing its householdId, counting
++     * this owner). Not a persisted column — populated by the owner pipelines (create and read)
++     * that have repository access, and consumed only by {@link #getMembershipPoints()}. {@code
++     * null} when it has not been resolved, which the points rule treats as a single-member
++     * household.
++     */
++    @Transient
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Integer getNamesakeCount() {
+         return this.namesakeCount;
+     }
+@@ -254,33 +273,54 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's numeric membership level. Starts at {@code 1}; adds {@code 1} when an
++     * The owner's membership points. Starts at {@code 0}; adds {@code 2} when an
+      * {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
+-     * namesakeCount} is {@code 0}. These factors cap at {@code 3}: level {@code 4} requires a
+-     * tenure of more than {@code 365} days since the {@link #getRegistrationDate() registration
+-     * date}. A newly created owner has zero tenure, so it can never exceed level {@code 3}.
+-     * Not persisted — derived from {@link #getEmail()}, {@link #getNamesakeCount()} and
+-     * {@link #getRegistrationDate()}.
++     * namesakeCount} is {@code 0}; adds {@code 2} for a household of {@code 3} or more members
++     * ({@link #getHouseholdSize() householdSize}); adds {@code 3} for a tenure of more than
++     * {@code 365} days since the {@link #getRegistrationDate() registration date}. Not persisted
++     * — derived from {@link #getEmail()}, {@link #getNamesakeCount()}, {@link #getHouseholdSize()}
++     * and {@link #getRegistrationDate()}.
+      */
+     @Transient
+-    public int getMembershipLevel() {
+-        int level = 1;
++    public int getMembershipPoints() {
++        int points = 0;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+         if (hasEmail) {
+-            level++;
++            points += 2;
+         }
+         boolean uniqueName = this.namesakeCount != null && this.namesakeCount == 0;
+         if (uniqueName) {
+-            level++;
++            points += 1;
++        }
++        if (this.householdSize != null && this.householdSize >= 3) {
++            points += 2;
+         }
+-        // The email and namesake factors cap at level 3; level 4 is reserved for owners whose
+-        // tenure exceeds 365 days. A newly created owner has zero tenure, so it stays at level 3.
+-        level = Math.min(level, 3);
+         if (this.registrationDate != null
+                 && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The owner's numeric membership level, mapped from {@link #getMembershipPoints()
++     * membershipPoints}: {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
++     * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more. Not persisted — derived
++     * from {@link #getMembershipPoints()}.
++     */
++    @Transient
++    public int getMembershipLevel() {
++        int points = getMembershipPoints();
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 7abc2c99b..805d785bc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -28,6 +28,9 @@ public class BuildOwner {
+         if (householdId != null && householdId.isPresent()) {
+             owner.setHouseholdId(householdId.value());
+         }
++        // Record the household's member count (existing members plus this not-yet-persisted
++        // owner) so the membership points rule can score a household of 3 or more.
++        owner.setHouseholdSize(Household.size(owner.getHouseholdId(), ownerRepository) + 1);
+         built.set(owner);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index f68440468..82f87b22e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -85,6 +85,24 @@ final class Household {
+         return false;
+     }
+ 
++    /**
++     * The number of persisted owners carrying {@code householdId}. The single household-size
++     * lookup, reused wherever the membership points rule needs a household's member count.
++     * {@code 0} for a {@code null}/blank id (an owner with no postcode has no household).
++     */
++    static int size(String householdId, OwnerRepository ownerRepository) {
++        if (householdId == null || householdId.isBlank()) {
++            return 0;
++        }
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
+     /**
+      * Normalize a last name for the household key: trim, collapse any run of whitespace to a
+      * single space, and lower-case. Yields {@code ""} for a {@code null} input.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LoadOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LoadOwner.java
+index 3ae25c0a8..e67a646d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LoadOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LoadOwner.java
+@@ -11,6 +11,11 @@ public class LoadOwner {
+ 
+     public void service(@PathVariable(name = "ownerId") Integer ownerId,
+             OwnerRepository ownerRepository, Out<Owner> loaded) throws NotFoundException {
+-        loaded.set(Lookups.findOrNotFound(() -> ownerRepository.findById(ownerId), "Owner not found: " + ownerId));
++        Owner owner = Lookups.findOrNotFound(() -> ownerRepository.findById(ownerId),
++                "Owner not found: " + ownerId);
++        // Resolve the household's member count (this persisted owner is included) so the
++        // membership points rule can score a household of 3 or more on read.
++        owner.setHouseholdSize(Math.max(1, Household.size(owner.getHouseholdId(), ownerRepository)));
++        loaded.set(owner);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f85a44c04..60504273b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,9 +2159,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points. Starts at 0; adds 2 when an email is present; adds 1 when namesakeCount is 0; adds 2 for a household of 3 or more members; adds 3 for a tenure of more than 365 days since the registrationDate.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's numeric membership level, fixed at creation. Starts at 1; adds 1 when an email is present; adds 1 when namesakeCount is 0; capped at 3 (level 4 is reserved for tenure).
++              description: The owner's numeric membership level, mapped from membershipPoints as 1 (0-1 points), 2 (2-3 points), 3 (4-5 points), 4 (6 or more points).
+               type: integer
+               format: int32
+               minimum: 1
