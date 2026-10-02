@@ -18,6 +18,10 @@ public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws InvalidEmailException {
+        // Normalize whichever address form was supplied (structured addressLine1/addressLine2
+        // preferred, else the flat address) and compose the canonical address, so the update
+        // stores and returns the same form as the create pipeline.
+        OwnerAddress.apply(request);
         String email = OwnerEmail.normalize(request.getEmail());
         if (email != null && !OwnerEmail.isValid(email)) {
             throw new InvalidEmailException("Email is not a valid address: " + request.getEmail());

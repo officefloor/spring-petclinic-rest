@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * First step of {@code POST /api/owners}. Rejects a body that is missing or blank in any
- * required field (firstName, lastName, address, city, telephone) with a 400 listing the
- * offending field names, normalizes the telephone to E.164 form (400 if it cannot form a
- * valid E.164 number), then publishes the body for {@link BuildOwner}.
+ * required field (firstName, lastName, an address in either form, city, telephone) with a 400
+ * listing the offending field names, normalizes the telephone to E.164 form (400 if it cannot
+ * form a valid E.164 number), then publishes the body for {@link BuildOwner}.
  *
  * <p>Runs before {@link BuildOwner} and binds {@code @RequestBody} without {@code @Valid}
  * so the required-field check produces the {@code errors} response shape rather than the
@@ -26,8 +26,10 @@ public class ValidateNewOwner {
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         // Normalize the address up front so the required-field check sees the canonical form
         // (an address blank after normalization is rejected) and every later step — storage,
-        // the response and household comparisons — carries the same normalized value.
-        request.setAddress(OwnerAddress.normalize(request.getAddress()));
+        // the response and household comparisons — carries the same normalized value. The
+        // structured addressLine1/addressLine2 are preferred when supplied, falling back to the
+        // flat address; the composed address is what the later steps carry.
+        OwnerAddress.apply(request);
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -35,6 +37,9 @@ public class ValidateNewOwner {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
+        // Accepted in either form: a non-blank structured addressLine1, or the flat address.
+        // OwnerAddress.apply has composed the effective address, so a blank address means
+        // neither form supplied one.
         if (isBlank(request.getAddress())) {
             missing.add("address");
         }
