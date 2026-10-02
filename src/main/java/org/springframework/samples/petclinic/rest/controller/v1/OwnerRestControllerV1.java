@@ -122,6 +122,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "61", 9,
         "1", 10);
 
+    /**
+     * Fixed region-to-postcode-range lookup used to validate an owner's optional postcode against the
+     * region derived from the owner's city ({@link Owner#getLocality()}). Each value is the inclusive
+     * {@code {low, high}} 4-digit range for that region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A
+     * city whose region is not listed (locality {@code 'UNKNOWN'}) carries no range and accepts any
+     * 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -186,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(email);
+        owner.setPostcode(validatePostcode(ownerFieldsDto.getPostcode(), owner.getLocality()));
         rejectDuplicateIdentity(owner);
         owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -327,6 +340,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Validates an owner's optional postcode. A {@code null} value means the field was omitted and is
+     * left unset, keeping the create contract backward-compatible. When a value is present it must be
+     * exactly 4 digits, and when the owner's region (derived from its city, {@link Owner#getLocality()})
+     * has a known postcode range in {@link #REGION_POSTCODES} the postcode must fall within that
+     * inclusive range. A region with no known range ({@code 'UNKNOWN'}) accepts any 4-digit postcode.
+     * The returned value is stored and returned unchanged.
+     *
+     * @param postcode the raw postcode value submitted by the client, or {@code null} if omitted
+     * @param region   the owner's region derived from its city
+     * @return the postcode to store, or {@code null} if none was supplied
+     * @throws InvalidOwnerFieldsException if a value is present but not a valid 4-digit postcode, or is
+     *                                     out of range for the city's region, yielding a 400 response
+     */
+    private String validatePostcode(String postcode, String region) {
+        if (postcode == null) {
+            return null;
+        }
+        if (!postcode.matches("[0-9]{4}")) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+        int[] range = REGION_POSTCODES.get(region);
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                throw new InvalidOwnerFieldsException(List.of("postcode"));
+            }
+        }
+        return postcode;
     }
 
     /**
