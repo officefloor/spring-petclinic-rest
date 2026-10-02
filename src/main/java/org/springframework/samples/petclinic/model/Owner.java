@@ -87,6 +87,15 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /**
+     * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
+     * Not persisted — derived from {@link #getLastName()} and {@link #getFirstName()}.
+     */
+    @Transient
+    public String getDisplayName() {
+        return this.getLastName() + ", " + this.getFirstName();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
