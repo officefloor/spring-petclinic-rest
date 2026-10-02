@@ -1,10 +1,9 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown by the owner-create pipeline when a new owner's whole identity key
- * (normalized telephone, email and household id) equals that of an existing owner.
- * This single check consolidates the former separate telephone, email and household
- * duplicate checks.
+ * Thrown by the owner-create pipeline when a new owner would be a household duplicate: an
+ * existing owner already carries the household id derived from the new owner's last name and
+ * postcode. Bypassed when the request declares {@code sharesHousehold}.
  *
  * <p>Handled by {@link DuplicateIdentityExceptionHandler}, which responds 409.
  */

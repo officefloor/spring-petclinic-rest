@@ -3,8 +3,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
@@ -12,11 +10,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Shared household rules for the owner-create pipeline. A household is the set of owners with
- * the same last name at the same address, compared case-insensitively with collapsed
- * whitespace. The membership match and the stable identifier are defined once here so the
- * resolver ({@link ResolveHousehold}), the back-fill ({@link ApplySharedHousehold}) and the new
- * owner ({@link BuildOwner}) all agree on them.
+ * Shared household rules for the owner-create pipeline. A household is now keyed on
+ * {@code (lastName, postcode)}: every owner with a postcode derives a deterministic
+ * {@link Id} from its normalized last name and postcode, so owners with the same last name
+ * and postcode share the same id automatically, regardless of creation order. The id is
+ * defined once here so the resolver ({@link ResolveHousehold}), the duplicate gate
+ * ({@link ValidateUniqueIdentity}) and the new owner ({@link BuildOwner}) all agree on it.
  */
 final class Household {
 
@@ -26,8 +25,8 @@ final class Household {
     /**
      * The household identifier published between steps. A dedicated type keeps the variable
      * unambiguous (OfficeFloor matches variables by type) and distinct from other strings in
-     * the pipeline. {@link #ABSENT} (an empty value) means the new owner is not joining a
-     * shared household.
+     * the pipeline. {@link #ABSENT} (an empty value) means the new owner has no postcode and
+     * therefore no household.
      */
     record Id(String value) {
 
@@ -39,29 +38,17 @@ final class Household {
     }
 
     /**
-     * Existing owners that share the request's household (same normalized last name and
-     * address).
-     */
-    static List<Owner> membersOf(OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        String lastName = normalize(request.getLastName());
-        String address = OwnerAddress.normalize(request.getAddress());
-        List<Owner> members = new ArrayList<>();
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(OwnerAddress.normalize(existing.getAddress()))) {
-                members.add(existing);
-            }
-        }
-        return members;
-    }
-
-    /**
      * Stable identifier for the request's household: the first 12 upper-case hex characters of
-     * the SHA-256 of the normalized last name and address, so every owner in the same household
-     * derives the same value regardless of creation order.
+     * the SHA-256 of {@code normalizedLastName + "|" + postcode}, so every owner with the same
+     * last name and postcode derives the same value regardless of creation order.
+     * {@link Id#ABSENT} when the request carries no postcode (no postcode means no household).
      */
     static Id idFor(OwnerFieldsDto request) {
-        String seed = normalize(request.getLastName()) + "\n" + OwnerAddress.normalize(request.getAddress());
+        String postcode = normalizePostcode(request.getPostcode());
+        if (postcode == null) {
+            return Id.ABSENT;
+        }
+        String seed = normalizeName(request.getLastName()) + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));
@@ -77,13 +64,43 @@ final class Household {
     }
 
     /**
-     * Normalize a name or address for household comparison: trim, collapse any run of
-     * whitespace to a single space, and lower-case. Yields {@code ""} for a {@code null} input.
+     * Whether an owner other than {@code exclude} already carries {@code householdId}. The single
+     * household-membership lookup, shared by the duplicate gate ({@link ValidateUniqueIdentity},
+     * which passes {@code exclude = null} because the new owner is not yet persisted) and the
+     * soft-match rule ({@link PossibleDuplicate}, which excludes the owner itself). Always
+     * {@code false} for a {@code null}/blank id (an owner with no postcode has no household).
      */
-    private static String normalize(String value) {
+    static boolean hasMember(String householdId, Owner exclude, OwnerRepository ownerRepository) {
+        if (householdId == null || householdId.isBlank()) {
+            return false;
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            if (exclude != null && exclude.getId() != null && exclude.getId().equals(existing.getId())) {
+                continue;
+            }
+            if (householdId.equals(existing.getHouseholdId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Normalize a last name for the household key: trim, collapse any run of whitespace to a
+     * single space, and lower-case. Yields {@code ""} for a {@code null} input.
+     */
+    private static String normalizeName(String value) {
         if (value == null) {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** Trimmed postcode, or {@code null} when absent/blank (no postcode means no household). */
+    private static String normalizePostcode(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

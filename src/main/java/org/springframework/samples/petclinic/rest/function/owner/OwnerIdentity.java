@@ -3,15 +3,14 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Single source of truth for an owner's duplicate-detection identity key, shared by the
- * owner-create pipeline. The key consolidates the former separate telephone, email and
- * household duplicate checks into one derived value so two owners conflict only when their
- * whole keys are equal.
+ * Derives an owner's identity key for the informational {@code identityKey} response field,
+ * computed once at the Owner-to-DTO boundary ({@code OwnerMapper}). The key is
+ * {@code normalizedTelephone + "|" + (email or "") + "|" + (householdId or "")}.
  *
- * <p>The key is {@code normalizedTelephone + "|" + (email or "") + "|" + (householdId or "")}.
- * Because the telephone is part of the key, two members of the same household (same
- * {@code householdId}) with different telephones derive different keys and are both allowed;
- * only an exact full-key match is a duplicate.
+ * <p>It no longer gates duplicate detection. A create is now rejected as a <em>household</em>
+ * duplicate when an existing owner already carries the household id derived from
+ * {@code (lastName, postcode)} — see {@link ValidateUniqueIdentity} — so this key survives only
+ * to populate the response field for callers.
  */
 public final class OwnerIdentity {
 

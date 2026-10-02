@@ -15,6 +15,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * by its trimmed value and the telephone by its normalized E.164 form. A possible duplicate is
  * only possible when the owner itself has a postcode. When several existing owners match, the one
  * with the lowest id (the earliest created) is reported for a deterministic result.
+ *
+ * <p>A declared household member — an owner whose {@link Household} id is shared by another owner,
+ * only possible when it was created with {@code sharesHousehold} — is never a suspected duplicate,
+ * so the match is suppressed for it.
  */
 final class PossibleDuplicate {
 
@@ -27,6 +31,10 @@ final class PossibleDuplicate {
      * own duplicate.
      */
     static Integer matchOf(Owner owner, OwnerRepository ownerRepository) {
+        if (Household.hasMember(owner.getHouseholdId(), owner, ownerRepository)) {
+            // Declared household member: not a suspected duplicate.
+            return null;
+        }
         String postcode = normalizePostcode(owner.getPostcode());
         if (postcode == null) {
             return null;

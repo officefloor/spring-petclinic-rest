@@ -19,16 +19,16 @@ validatePostcode:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidatePostcode
   next: resolveHousehold
 
-# A household is same last name at the same address (case-insensitive, whitespace collapsed).
-# Read-only step: publishes the household's stable 'householdId' (part of the identity key)
-# for the steps below. It no longer rejects on its own. Runs before any entity is persisted.
+# A household is keyed on (lastName, postcode). Read-only step: derives the deterministic
+# 'householdId' from the last name and postcode and publishes it for the steps below. It does
+# not reject on its own. Runs before any entity is persisted.
 resolveHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.ResolveHousehold
   next: uniqueIdentity
 
-# Single duplicate-detection gate: derive the new owner's identityKey
-# (normalizedTelephone + '|' + email + '|' + householdId) and reject the create with a 409
-# when its WHOLE key equals an existing owner's. Runs before any entity is persisted.
+# Duplicate-detection gate: because owners sharing a last name and postcode are the same
+# household, reject the create with a 409 when an existing owner already has the resolved
+# householdId, unless the request sets 'sharesHousehold'. Runs before any entity is persisted.
 uniqueIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateUniqueIdentity
   next: cityCapacity
@@ -43,13 +43,6 @@ cityCapacity:
 # registrationDate) with a 429, before any entity is built or persisted.
 dailyLimit:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateDailyOwnerLimit
-  next: applyHousehold
-
-# When joining a shared household, back-fill the published 'householdId' onto existing members
-# so the whole household carries the same id. A no-op otherwise.
-applyHousehold:
-  class: org.springframework.samples.petclinic.rest.function.owner.ApplySharedHousehold
-  govern: [ transaction ]
   next: build
 
 build:
@@ -78,7 +71,8 @@ bulkWarning:
 
 # Populate the response-only possibleDuplicate / possibleDuplicateOf fields: true with the
 # matching owner id when this owner shares an existing owner's last name and postcode with a
-# different telephone (a soft, non-rejecting match), otherwise false.
+# different telephone (a soft, non-rejecting match), otherwise false. A declared household
+# member is never flagged.
 possibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
   govern: [ transaction ]
