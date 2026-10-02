@@ -1,0 +1,246 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 74b78a3d6..1af4fc895 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -100,6 +100,9 @@ public class Owner extends Person {
+     @Transient
+     private Integer possibleDuplicateOf;
+ 
++    @Transient
++    private Boolean riskFlag;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -396,6 +399,20 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this response should carry an overall risk flag: {@code true} when any of the soft risk
++     * signals hold — this owner is a {@link #getPossibleDuplicate() possible duplicate}, its email is on a
++     * disposable-adjacent domain, or its city is over its soft capacity — otherwise {@code false}. A
++     * roll-up of the individual signals. Computed per request, not persisted.
++     */
++    public Boolean getRiskFlag() {
++        return this.riskFlag;
++    }
++
++    public void setRiskFlag(Boolean riskFlag) {
++        this.riskFlag = riskFlag;
++    }
++
+     /**
+      * The owner's membership points: start at 0; add 2 when an email is present; add 1 when
+      * {@code namesakeCount} is 0; add 2 for a household of 3 or more members (see
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagRisk.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagRisk.java
+new file mode 100644
+index 000000000..e07ca2f8f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagRisk.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Computes this owner's overall {@code riskFlag} response field, on both the create and read pipelines.
++ *
++ * <p>The flag is {@code true} when <em>any</em> of three soft risk signals hold, otherwise {@code false}:
++ * <ul>
++ * <li>the owner is a {@link Owner#getPossibleDuplicate() possible duplicate} (a soft near-match of another
++ * owner, as decided earlier by {@link FlagPossibleDuplicate});</li>
++ * <li>the email domain is {@link OwnerEmail#isDisposableAdjacent disposable-adjacent};</li>
++ * <li>the city is over its soft capacity — it holds at least {@link FlagCityCapacityWarning#WARNING_THRESHOLD}
++ * owners (the per-city soft limit, below the hard {@link CheckCityCapacity#CAPACITY} cap).</li>
++ * </ul>
++ *
++ * <p>A roll-up of signals that are themselves computed per request; it is therefore also computed per
++ * request, mutated onto the loaded owner in place, and not persisted. Runs after the individual flag steps
++ * so {@code possibleDuplicate} is already set.
++ */
++public class FlagRisk {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean overSoftCapacity = OwnerCity.countInCity(owner.getCity(), ownerRepository)
++                >= FlagCityCapacityWarning.WARNING_THRESHOLD;
++
++        owner.setRiskFlag(possibleDuplicate
++                || OwnerEmail.isDisposableAdjacent(owner.getEmail())
++                || overSoftCapacity);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+new file mode 100644
+index 000000000..cb5638051
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -0,0 +1,72 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++/**
++ * Single source of truth for owner email-domain classification, used by the create-time validation and the
++ * per-response risk roll-up. Owns the "domain = everything after the last '@', lower-cased" rule
++ * ({@link #domain}) and the disposable-provider blocklist, so the exact-match rejection and the softer
++ * adjacency signal stay in step. Sibling to {@link OwnerCity}, {@link OwnerAddress} and {@link OwnerTelephone}.
++ *
++ * <p>The blocklist ({@link #DISPOSABLE_DOMAINS}) is the set of throwaway-inbox providers whose exact
++ * domains {@link ValidateNewOwner} rejects with a 400. {@link #isDisposableAdjacent} is the related soft
++ * signal: a domain whose second-level label matches one of those providers — catching both subdomains of a
++ * blocked provider ({@code inbox.mailinator.com}) and look-alikes under another TLD ({@code mailinator.net}).
++ * The exact blocklisted domains are rejected before an owner is persisted, so only adjacent ones reach the
++ * risk roll-up.
++ */
++final class OwnerEmail {
++
++    private OwnerEmail() {
++    }
++
++    /** Disposable-email providers whose exact domains are rejected (a 400) at create time. */
++    static final Set<String> DISPOSABLE_DOMAINS = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /**
++     * The second-level labels of {@link #DISPOSABLE_DOMAINS} (e.g. {@code mailinator}, {@code tempmail},
++     * {@code guerrillamail}), derived so the adjacency rule tracks the blocklist as its single source.
++     */
++    private static final Set<String> DISPOSABLE_BASES = DISPOSABLE_DOMAINS.stream()
++            .map(OwnerEmail::secondLevelLabel)
++            .collect(Collectors.toUnmodifiableSet());
++
++    /**
++     * The domain of {@code email}: everything after the last {@code '@'}, lower-cased, or {@code null} when
++     * the email is {@code null} or blank.
++     */
++    static String domain(String email) {
++        if (email == null || email.isBlank()) {
++            return null;
++        }
++        return email.substring(email.lastIndexOf('@') + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /** Whether {@code email}'s domain is on the exact disposable {@link #DISPOSABLE_DOMAINS blocklist}. */
++    static boolean isDisposable(String email) {
++        String domain = domain(email);
++        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Whether {@code email}'s domain is disposable-adjacent: its second-level label matches that of a known
++     * disposable provider (see {@link #DISPOSABLE_BASES}). A null or blank email is not adjacent.
++     */
++    static boolean isDisposableAdjacent(String email) {
++        String domain = domain(email);
++        return domain != null && DISPOSABLE_BASES.contains(secondLevelLabel(domain));
++    }
++
++    /**
++     * The label immediately to the left of a domain's final dot (its second-level label): {@code mailinator}
++     * for both {@code mailinator.com} and {@code inbox.mailinator.com}. A domain with no dot is returned as
++     * is.
++     */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length >= 2 ? labels[labels.length - 2] : domain;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+index 8de07fdaa..7fb26f039 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+@@ -2,7 +2,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import net.officefloor.plugin.variable.Out;
+@@ -39,14 +38,6 @@ public class ValidateNewOwner {
+             "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+                     + "(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$");
+ 
+-    /**
+-     * Disposable-email providers whose domains are rejected: a syntactically valid address on one of
+-     * these is a 400, so throwaway inboxes cannot be used to register an owner. Lower-cased to compare
+-     * against the canonicalized (lower-cased) email domain.
+-     */
+-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+-            "mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+             DisposableEmailException {
+@@ -97,9 +88,9 @@ public class ValidateNewOwner {
+             }
+             String canonical = email.toLowerCase();
+             // Reject throwaway inboxes: a syntactically valid address on a disposable-email domain is a
+-            // 400, so the owner is never persisted. Domain is everything after the last '@'.
+-            String domain = canonical.substring(canonical.lastIndexOf('@') + 1);
+-            if (DISPOSABLE_DOMAINS.contains(domain)) {
++            // 400, so the owner is never persisted. The blocklist and the "domain = everything after the
++            // last '@'" rule live in OwnerEmail, shared with the FlagRisk adjacency check.
++            if (OwnerEmail.isDisposable(canonical)) {
+                 throw new DisposableEmailException(email);
+             }
+             request.setEmail(canonical);
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index aaa4f8cbf..2db93bec7 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -108,6 +108,11 @@ countHouseholdMembers:
+ flagCityCapacityWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagCityCapacityWarning
+   govern: [ transaction ]
++  next: flagRisk
++
++flagRisk:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagRisk
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ # Associate the request's Idempotency-Key (if any) with the saved owner so a repeat replays it.
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 7f3c2c4b9..268dfecea 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -24,6 +24,11 @@ countHouseholdMembers:
+ flagCityCapacityWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagCityCapacityWarning
+   govern: [ readonly-transaction ]
++  next: flagRisk
++
++flagRisk:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagRisk
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2b8f60562..4535fcc11 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2268,6 +2268,16 @@ components:
+               format: int32
+               example: 42
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any soft risk signal holds - this owner is a possibleDuplicate, its
++                email domain is disposable-adjacent (its second-level label matches a known disposable
++                provider, e.g. a subdomain of or look-alike TLD for mailinator/tempmail/guerrillamail),
++                or its city is over its soft capacity (40 or more owners) - otherwise false. A roll-up of
++                those signals. Derived per response.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, 'EMAIL' when an email is present,
