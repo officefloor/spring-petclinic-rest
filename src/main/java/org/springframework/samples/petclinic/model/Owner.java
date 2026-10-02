@@ -43,6 +43,9 @@ public class Owner extends Person {
     @NotEmpty
     private String city;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "telephone")
     @NotEmpty
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form (+ then 8 to 15 digits)")
@@ -86,6 +89,14 @@ public class Owner extends Person {
 
     public void setCity(String city) {
         this.city = city;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getTelephone() {
@@ -183,12 +194,22 @@ public class Owner extends Person {
         "Brisbane", "QLD");
 
     /**
+     * The canonical region for {@code city} derived from the fixed city-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the
+     * city is not in the table. The single source of truth for both {@link #getLocality() locality} and
+     * the create-time postcode range check.
+     */
+    public static String regionOf(String city) {
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
      * The owner's locality: the canonical region derived from {@link #getCity() city} via the fixed
      * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or
      * {@code "UNKNOWN"} when the city is not in the table.
      */
     public String getLocality() {
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        return regionOf(this.city);
     }
 
     /**
