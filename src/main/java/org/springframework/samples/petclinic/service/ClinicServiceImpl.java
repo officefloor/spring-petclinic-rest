@@ -301,15 +301,30 @@ public class ClinicServiceImpl implements ClinicService {
      * canonical region derived from the owner's postcode (falling back to the city-to-region
      * table, then {@code 'UNKNOWN'}, as resolved by {@link LocalityResolver}) and {@code HASH8}
      * is the first 8 upper-case hexadecimal characters of the SHA-256 digest over the owner's
-     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). There
-     * is no sequence number: identity is fully determined by the region and the telephone/last
-     * name hash.
+     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}).
+     * <p>
+     * If the computed code collides with an existing owner's {@code customerCode}, it is
+     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
+     * makes it unique (e.g. {@code 'NSW-1A2B3C4D-2'}).
      */
     private String generateCustomerCode(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return region + "-" + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
+        String base = region + "-" + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
+
+        Set<String> existingCodes = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existingCodes.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existingCodes.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
