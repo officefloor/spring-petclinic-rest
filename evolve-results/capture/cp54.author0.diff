@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 090e804a9..047c84ae3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -91,6 +91,9 @@ public class Owner extends Person {
+     @Transient
+     private boolean bulkSignupWarning;
+ 
++    @Transient
++    private boolean capacityWarning;
++
+     @Transient
+     private boolean possibleDuplicate;
+ 
+@@ -541,6 +544,21 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this owner's city already held between 40 and 49 owners when this response was
++     * built, approaching the hard capacity limit of 50 (compared case-insensitively). Not
++     * persisted — populated for the response by the create and fetch pipelines and defaults to
++     * {@code false} so every owner serialization carries the flag.
++     */
++    @Transient
++    public boolean isCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * Whether this owner is a possible (soft) duplicate: not a hard duplicate, but shares an
+      * existing owner's last name and postcode with a different telephone. Not persisted —
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java
+new file mode 100644
+index 000000000..30da98fd5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Populates the response-only {@link Owner#isCapacityWarning() capacityWarning} flag: true when
++ * the owner's city already holds between 40 and 49 owners (compared case-insensitively),
++ * approaching the hard capacity limit of 50 that {@link ValidateCityCapacity} rejects at;
++ * otherwise false. Mutates the loaded owner in place so the responder's mapper carries the flag
++ * onto the DTO.
++ */
++public class FlagCapacityWarning {
++
++    private static final int WARN_FROM = 40;
++    private static final int WARN_TO = 49;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city != null && city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        owner.setCapacityWarning(count >= WARN_FROM && count <= WARN_TO);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 2dc0ed8c8..f2a714c3b 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -97,6 +97,13 @@ audit:
+ bulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ transaction ]
++  next: capacityWarning
++
++# Populate the response-only capacityWarning flag: true when the owner's city already holds
++# between 40 and 49 owners (approaching the hard capacity limit of 50).
++capacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagCapacityWarning
++  govern: [ transaction ]
+   next: possibleDuplicate
+ 
+ # Populate the response-only possibleDuplicate / possibleDuplicateOf fields: true with the
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index de543adfe..bf72c5e60 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -10,6 +10,13 @@ load:
+ bulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ readonly-transaction ]
++  next: capacityWarning
++
++# Populate the response-only capacityWarning flag: true when the owner's city already holds
++# between 40 and 49 owners (approaching the hard capacity limit of 50).
++capacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagCapacityWarning
++  govern: [ readonly-transaction ]
+   next: possibleDuplicate
+ 
+ # Populate the response-only possibleDuplicate / possibleDuplicateOf fields: true with the
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 273cc5a52..451e56fb3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2232,6 +2232,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already holds between 40 and 49 owners (counted case-insensitively), approaching the hard capacity limit of 50, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when this owner is not a hard duplicate but shares an existing owner's last-name soundex and postcode while carrying a different identity key, otherwise false.
