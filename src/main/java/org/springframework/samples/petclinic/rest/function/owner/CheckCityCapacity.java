@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
  * Rejects a new owner whose city already contains {@link #CAPACITY} or more owners, so the request is
  * answered with a 409 Conflict rather than exceeding the per-city capacity. Cities are compared in
  * their {@link OwnerCity#normalize normalized} form (whitespace collapsed, lower-cased), consistent
- * with the other create-time checks. Runs after {@link CheckHouseholdUnique} and before
+ * with the other create-time checks. Runs after {@link CheckIdentityUnique} and before
  * {@link BuildOwner}.
  */
 public class CheckCityCapacity {

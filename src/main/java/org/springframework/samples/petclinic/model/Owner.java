@@ -200,6 +200,31 @@ public class Owner extends Person {
         return hasEmail ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The single canonical format of an owner's identity key — the one value all duplicate detection is
+     * expressed through: {@code telephone + "|" + (email or empty) + "|" + (householdId or empty)}. The
+     * telephone and household id are used as given (they are expected to already be canonical: E.164 and
+     * an assigned household id); the email is lower-cased here and a null/blank email, telephone or
+     * household id contributes an empty component. This is the only place the {@code "|"}-join lives;
+     * every producer of the key (the stored-owner {@link #getIdentityKey()} and the create-time check in
+     * {@code OwnerIdentity}) routes through here so the formats cannot drift.
+     */
+    public static String identityKey(String telephone, String email, String householdId) {
+        String tel = (telephone == null) ? "" : telephone;
+        String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
+        String household = (householdId == null || householdId.isBlank()) ? "" : householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
+    /**
+     * The owner's derived identity key, built from its stored canonical telephone (E.164), email and
+     * household id via {@link #identityKey(String, String, String)}. Two owners are duplicates exactly
+     * when their whole identity keys are equal.
+     */
+    public String getIdentityKey() {
+        return identityKey(this.telephone, this.email, this.householdId);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
