@@ -1,5 +1,9 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Out;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -16,7 +20,7 @@ public class BuildOwner {
         // current date, then rolls any weekend forward to the next Monday so derived values
         // (e.g. the membership number's year) use the adjusted business day.
         owner.setRegistrationDate(BusinessDay.effectiveRegistrationDate(owner.getRegistrationDate()));
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
+        owner.setCustomerCode(customerCode(owner));
         // Record how many existing owners already share this first+last name (case-insensitive),
         // counted before this owner is persisted so the value is fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
@@ -28,29 +32,35 @@ public class BuildOwner {
     }
 
     /**
-     * Build the '<CITY3>-<LAST3>-<NNNN>' customer code: CITY3 is the upper-cased first three
-     * letters of the city, LAST3 the upper-cased first three letters of the last name, and NNNN
-     * a per-city 4-digit zero-padded sequence equal to one more than the number of owners
-     * already in that city (e.g. 'LON-SMI-0007').
+     * Build the '<REGION>-<HASH8>' customer code: REGION is the region derived from the owner's
+     * postcode and city ({@link Owner#regionFor(String, String)}, e.g. 'NSW' or 'UNKNOWN'), and
+     * HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone
+     * followed by the last name (e.g. 'NSW-1A2B3C4D'). There is no sequence number, so the code
+     * is stable for an owner regardless of creation order.
      */
-    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = countOwnersInCity(city, ownerRepository) + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private static String customerCode(Owner owner) {
+        String region = Owner.regionFor(owner.getPostcode(), owner.getCity());
+        String normalizedTelephone = OwnerTelephone.normalize(owner.getTelephone());
+        String seed = (normalizedTelephone == null ? "" : normalizedTelephone) + owner.getLastName();
+        return region + "-" + hash8(seed);
     }
 
     /**
-     * Count the existing owners in the given city, compared case-insensitively.
+     * The first 8 upper-case hex characters of the SHA-256 of the UTF-8 bytes of {@code seed}.
      */
-    private static int countOwnersInCity(String city, OwnerRepository ownerRepository) {
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (city.equalsIgnoreCase(existing.getCity())) {
-                count++;
+    private static String hash8(String seed) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(seed.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
             }
+            return sb.toString();
         }
-        return count;
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**

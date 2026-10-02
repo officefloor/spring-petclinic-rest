@@ -167,7 +167,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
      * the last two digits of the {@link #getRegistrationDate() registrationDate} year
-     * (e.g. {@code 'LON-SMI-0007-M26'}).
+     * (e.g. {@code 'NSW-1A2B3C4D-M26'}).
      * Not persisted — derived from {@link #getCustomerCode()} and {@link #getRegistrationDate()}.
      */
     @Transient
@@ -224,15 +224,14 @@ public class Owner extends Person {
     }
 
     /**
-     * Fixed city-to-region table used as the fall-back when deriving
-     * {@link #getLocality() locality}.
+     * Fixed city-to-region table used as the fall-back when deriving an owner's region.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
      * Region -> inclusive 4-digit postcode range {low, high}, the primary source for
-     * deriving {@link #getLocality() locality} (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     * deriving an owner's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
      */
     private static final Map<String, int[]> REGION_RANGE = Map.of(
         "NSW", new int[] {2000, 2099},
@@ -240,29 +239,37 @@ public class Owner extends Person {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * The owner's locality: the canonical region derived first from {@link #getPostcode()
-     * postcode} by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the
-     * fixed {@link #CITY_REGION} city table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when
-     * the postcode is absent or in no known range, or {@code 'UNKNOWN'} when neither matches.
-     * Preferring the postcode disambiguates cities that share a name. Not persisted — derived
-     * from {@link #getPostcode()} and {@link #getCity()}.
+     * The canonical region for a postcode/city pair, derived first from {@code postcode} by range
+     * ({@link #regionForPostcode}), falling back to the fixed city table ({@link #regionForCity})
+     * when the postcode is absent or in no known range, or {@code 'UNKNOWN'} when neither matches.
+     * Preferring the postcode disambiguates cities that share a name. This is the REGION prefix of
+     * the owner's {@link #getCustomerCode() customerCode}, so the create pipeline and
+     * {@link #getLocality() locality} agree on it. The single authority on the region rule, reused
+     * by the owner pipelines (e.g. postcode validation) rather than copied.
      */
-    @Transient
-    public String getLocality() {
-        String region = regionFromPostcode();
+    public static String regionFor(String postcode, String city) {
+        String region = regionForPostcode(postcode);
         if (region != null) {
             return region;
         }
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        String cityRegion = regionForCity(city);
+        return cityRegion != null ? cityRegion : "UNKNOWN";
     }
 
-    /** Region whose range contains this owner's postcode, or {@code null} when the postcode is
-     * absent, not 4 digits, or in no known range. */
-    private String regionFromPostcode() {
-        if (this.postcode == null || !this.postcode.matches("[0-9]{4}")) {
+    /** The canonical region for a city by exact name match (Sydney->NSW, Melbourne->VIC,
+     * Brisbane->QLD), or {@code null} when the city has no known region. */
+    public static String regionForCity(String city) {
+        return city == null ? null : CITY_REGION.get(city);
+    }
+
+    /** Region whose inclusive range contains the given postcode (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), or {@code null} when the postcode is absent, not 4 digits, or in no known
+     * range. */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
             return null;
         }
-        int value = Integer.parseInt(this.postcode);
+        int value = Integer.parseInt(postcode);
         for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
             int[] range = entry.getValue();
             if (value >= range[0] && value <= range[1]) {
@@ -270,6 +277,21 @@ public class Owner extends Person {
             }
         }
         return null;
+    }
+
+    /**
+     * The owner's locality: the REGION prefix of the {@link #getCustomerCode() customerCode}
+     * (the portion before the first {@code '-'}), which the create pipeline derives from the
+     * postcode-and-city region. {@code 'UNKNOWN'} when no customerCode is set. Not persisted —
+     * derived from {@link #getCustomerCode()}.
+     */
+    @Transient
+    public String getLocality() {
+        if (this.customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = this.customerCode.indexOf('-');
+        return dash <= 0 ? "UNKNOWN" : this.customerCode.substring(0, dash);
     }
 
     /**

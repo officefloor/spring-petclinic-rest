@@ -1,6 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
+import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Canonical postcode rules for the owner pipelines, the single authority shared by the create
@@ -10,18 +10,12 @@ import java.util.Map;
  * region (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) and each region to an inclusive 4-digit
  * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a present postcode must fall within its
  * city's region range. A city with no known region accepts any 4-digit postcode.
+ *
+ * <p>The city->region and region->range tables are not kept here: they are the single authority
+ * on {@link Owner} ({@link Owner#regionForCity} and {@link Owner#regionForPostcode}), reused so
+ * postcode validation and the region-and-hash identity cannot drift apart.
  */
 final class OwnerPostcode {
-
-    /** City -> canonical region. Matched exactly, mirroring {@code Owner.getLocality()}. */
-    private static final Map<String, String> CITY_REGION = Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region -> inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_RANGE = Map.of(
-            "NSW", new int[] {2000, 2099},
-            "VIC", new int[] {3000, 3099},
-            "QLD", new int[] {4000, 4099});
 
     private OwnerPostcode() {
     }
@@ -39,15 +33,13 @@ final class OwnerPostcode {
         if (!postcode.matches("[0-9]{4}")) {
             return false;
         }
-        String region = city == null ? null : CITY_REGION.get(city);
+        String region = Owner.regionForCity(city);
         if (region == null) {
             return true;
         }
-        int[] range = REGION_RANGE.get(region);
-        if (range == null) {
-            return true;
-        }
-        int value = Integer.parseInt(postcode);
-        return value >= range[0] && value <= range[1];
+        // The postcode is valid for the city exactly when its own region range matches the
+        // city's region; regions have distinct ranges, so a mismatch (or no containing range)
+        // is out of range.
+        return region.equals(Owner.regionForPostcode(postcode));
     }
 }
