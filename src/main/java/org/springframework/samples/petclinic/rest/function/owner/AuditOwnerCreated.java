@@ -13,9 +13,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Emits, on the dedicated {@code AUDIT} logger, the audit side-effects for a successfully created owner:
  * <ul>
  * <li>a human-readable audit line carrying the owner id (assigned by the preceding save), the
- * customerCode, the registrationDate, the membershipLevel and the membershipNumber; and</li>
+ * memberId, the registrationDate and the membershipLevel; and</li>
  * <li>an immutable structured {@link OwnerCreatedEvent} serialised to JSON — {@code
- * {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} — where {@code seq} is a
+ * {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} — where {@code seq} is a
  * monotonically increasing integer across creates.</li>
  * </ul>
  */
@@ -29,9 +29,9 @@ public class AuditOwnerCreated {
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.from(SEQUENCE.incrementAndGet(), owner);
         AUDIT.info(JSON.writeValueAsString(event));
     }

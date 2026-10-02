@@ -70,11 +70,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -219,17 +216,20 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the last two digits of the
-     * {@link #fiscalYear(LocalDate) fiscal year} of the business-day-adjusted
-     * {@link #getRegistrationDate() registrationDate} (e.g. a registration on 2026-10-02 falls in the
-     * fiscal year ending June 2027, so {@code "FY27"}). {@code null} when no registration date is
-     * present. Derived per response.
+     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the two-digit FY segment of the
+     * {@link #getMemberId() memberId} (the last two digits of the {@link #fiscalYear(LocalDate) fiscal
+     * year} of the business-day-adjusted {@link #getRegistrationDate() registrationDate} captured at
+     * creation — e.g. a registration on 2026-10-02 falls in the fiscal year ending June 2027, so the
+     * memberId carries {@code "27"} and this reads {@code "FY27"}). The memberId is the single owner
+     * identity, so the fiscal year reads straight off it. {@code null} when no memberId is assigned.
+     * Derived per response.
      */
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        String region = memberIdRegion();
+        if (region == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYear(this.registrationDate) % 100);
+        return "FY" + this.memberId.substring(region.length(), region.length() + 2);
     }
 
     public LocalDate getBirthDate() {
@@ -260,20 +260,25 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, the single owner identity, formatted {@code <REGION><FY><HASH8><CHK>} and
+     * assigned at creation (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMemberId}). REGION is the
+     * region code derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, else
+     * {@code "UNKNOWN"}); FY is the two-digit fiscal year of the business-day-adjusted
+     * {@link #getRegistrationDate() registrationDate}; HASH8 is the first 8 upper-case hex characters of
+     * SHA-256 over the normalized (E.164) telephone concatenated with the last name; and CHK is a single
+     * {@link #luhnCheckDigit(String) Luhn check digit} over the digits of {@code <REGION><FY><HASH8>}.
+     * Collisions are de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more
+     * that makes it unique. The {@link #getLocality() locality}, {@link #getFiscalYear() fiscalYear} and
+     * the create audit record all read this value.
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -507,7 +512,7 @@ public class Owner extends Person {
      * The inclusive {low, high} four-digit postcode band for {@code region} (NSW 2000-2099,
      * VIC 3000-3099, QLD 4000-4099), or {@code null} when the region has no band. This is the single
      * source of truth for the bands, shared by {@link #regionOfPostcode(String) the postcode-to-region
-     * lookup} (which feeds the customerCode's region, and hence the locality) and the create-time
+     * lookup} (which feeds the memberId's region, and hence the locality) and the create-time
      * postcode range check.
      */
     public static int[] postcodeRangeOf(String region) {
@@ -534,18 +539,31 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION segment of the {@link #getCustomerCode() customerCode}, which is
+     * The owner's locality: the leading REGION segment of the {@link #getMemberId() memberId}, which is
      * the region code derived from the postcode at creation (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099,
-     * else {@code "UNKNOWN"}). The customer code is the single region-and-hash owner identity, so the
-     * locality reads straight off it rather than re-deriving the region. {@code "UNKNOWN"} when no
-     * customer code is assigned.
+     * else {@code "UNKNOWN"}). The memberId is the single owner identity, so the locality reads straight
+     * off it rather than re-deriving the region. {@code "UNKNOWN"} when no memberId is assigned.
      */
     public String getLocality() {
-        if (this.customerCode == null) {
-            return "UNKNOWN";
+        String region = memberIdRegion();
+        return region == null ? "UNKNOWN" : region;
+    }
+
+    /**
+     * The leading REGION segment of the {@link #getMemberId() memberId}: its run of leading letters, up
+     * to the first digit of the two-digit FY segment. {@code null} when no memberId is assigned. REGION
+     * is always alphabetic (NSW, VIC, QLD or UNKNOWN) and is immediately followed by the numeric FY, so
+     * the leading letters delimit it exactly.
+     */
+    private String memberIdRegion() {
+        if (this.memberId == null) {
+            return null;
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash > 0 ? this.customerCode.substring(0, dash) : "UNKNOWN";
+        int i = 0;
+        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? null : this.memberId.substring(0, i);
     }
 
     /**
@@ -572,20 +590,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The single Luhn check digit (0-9) computed over the digits contained in the
-     * {@link #getCustomerCode() customerCode}: non-digit characters are ignored, each second digit from
-     * the right is doubled (subtracting 9 when the double exceeds 9), the results are summed, and the
-     * check digit is {@code (10 - sum % 10) % 10}. {@code 0} when no customer code is assigned.
+     * The single Luhn check digit (0-9) computed over the digits contained in {@code value}: non-digit
+     * characters are ignored, each second digit from the right is doubled (subtracting 9 when the double
+     * exceeds 9), the results are summed, and the check digit is {@code (10 - sum % 10) % 10}. This is
+     * the CHK segment of the {@link #getMemberId() memberId}, computed over its {@code <REGION><FY><HASH8>}
+     * prefix.
      */
-    public int getCheckDigit() {
-        String code = this.customerCode;
-        if (code == null) {
-            return 0;
-        }
+    public static int luhnCheckDigit(String value) {
         int sum = 0;
         boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }
