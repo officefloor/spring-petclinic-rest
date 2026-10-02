@@ -38,6 +38,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -86,6 +89,14 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
     public String getAddress() {
         return this.address;
@@ -225,6 +236,19 @@ public class Owner extends Person {
     @Transient
     public String getDisplayName() {
         return this.getLastName() + ", " + this.getFirstName();
+    }
+
+    /**
+     * The owner's salutation: the honorific {@link #getTitle() title} and the last name separated by
+     * a single space (e.g. {@code 'DR who'}), or just the last name when the owner has no title.
+     * Derived from the owner's own fields.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
     }
 
     /**
