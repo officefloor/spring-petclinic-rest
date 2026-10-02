@@ -41,7 +41,7 @@ public class ValidateNewOwner {
 
         // Normalize the telephone: keep only digits, then require exactly ten. Store the stripped
         // value back so BuildOwner/SaveOwner persist it and the response echoes the 10-digit form.
-        String normalized = request.getTelephone().replaceAll("\\D", "");
+        String normalized = OwnerTelephone.normalize(request.getTelephone());
         if (normalized.length() != 10) {
             throw new InvalidTelephoneException(normalized);
         }
