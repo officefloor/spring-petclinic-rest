@@ -200,6 +200,23 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's identity key: a single derived value that consolidates all duplicate detection,
+     * formatted {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. The
+     * telephone is the stored E.164 value, the email its stored lower-cased form (empty when the
+     * owner has none), and the household id the stored shared identifier (empty when the owner is
+     * not part of a shared household). Two owners are duplicates only when their whole identity keys
+     * are equal; because the telephone is part of the key, two members of the same household with
+     * different telephones have different identity keys.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = this.email == null ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
+    /**
      * The owner's preferred contact channel, derived from the owner's own fields:
      * {@code 'EMAIL'} when an email address is present, otherwise {@code 'PHONE'}.
      */

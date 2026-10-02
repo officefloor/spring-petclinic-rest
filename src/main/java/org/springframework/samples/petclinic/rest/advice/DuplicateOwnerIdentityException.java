@@ -17,20 +17,21 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an owner is created whose lower-cased email is already in use by another owner.
- * Email addresses must be unique across owners (compared case-insensitively), so the duplicate
+ * Thrown when an owner is created whose derived {@code identityKey} — the single value that
+ * consolidates all duplicate detection, formed from the normalized telephone, email and household
+ * id — exactly matches an existing owner's. Only a whole-key match is a duplicate, so the conflict
  * is rejected with a {@code 409 Conflict} response.
  */
-public class DuplicateOwnerEmailException extends RuntimeException {
+public class DuplicateOwnerIdentityException extends RuntimeException {
 
-    private final transient String email;
+    private final transient String identityKey;
 
-    public DuplicateOwnerEmailException(String email) {
-        super("An owner with email " + email + " already exists");
-        this.email = email;
+    public DuplicateOwnerIdentityException(String identityKey) {
+        super("An owner with identity key " + identityKey + " already exists");
+        this.identityKey = identityKey;
     }
 
-    public String getEmail() {
-        return this.email;
+    public String getIdentityKey() {
+        return this.identityKey;
     }
 }
