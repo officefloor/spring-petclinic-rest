@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -211,6 +212,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(email);
         owner.setPostcode(validatePostcode(ownerFieldsDto.getPostcode(), regionForCity(owner.getCity())));
         rejectDuplicateIdentity(owner);
+        applyPossibleDuplicate(owner);
         owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(generateCustomerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
@@ -707,6 +709,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(identityKey::equals);
         if (inUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
+        }
+    }
+
+    /**
+     * Flags the owner being created as a possible (soft) duplicate. A possible duplicate is an owner
+     * that is not a hard duplicate (its identity key is unique, so it has already passed
+     * {@link #rejectDuplicateIdentity}) yet shares an existing owner's last name and postcode while
+     * carrying a different telephone. Last names are compared case-insensitively with collapsed
+     * whitespace, consistent with the other owner-field comparisons, and postcodes must both be
+     * present and equal. When such a match exists the owner is still created, with
+     * {@code possibleDuplicate} set to {@code true} and {@code possibleDuplicateOf} set to the matching
+     * owner's id (the earliest matching owner by id); otherwise {@code possibleDuplicate} is
+     * {@code false} and {@code possibleDuplicateOf} is left unset.
+     *
+     * @param owner the owner being created, with its last name, postcode and telephone already set
+     */
+    private void applyPossibleDuplicate(Owner owner) {
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        Owner match = null;
+        if (postcode != null) {
+            match = this.clinicService.findAllOwners().stream()
+                .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                    && postcode.equals(existing.getPostcode())
+                    && !Objects.equals(telephone, existing.getTelephone()))
+                .min(Comparator.comparingInt(Owner::getId))
+                .orElse(null);
+        }
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
+        } else {
+            owner.setPossibleDuplicate(false);
         }
     }
 

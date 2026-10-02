@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   postcode VARCHAR(4),
   birth_date DATE,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INT,
   INDEX(last_name)
 ) engine=InnoDB;
 

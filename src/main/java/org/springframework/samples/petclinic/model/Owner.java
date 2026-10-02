@@ -70,6 +70,12 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -151,6 +157,32 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * Whether this owner was flagged a possible (soft) duplicate at creation time: it was not a
+     * hard duplicate, but shared an existing owner's last name and postcode while carrying a
+     * different telephone. {@code false} (or {@code null} for owners created before the check) when
+     * no such match was found.
+     */
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this one was flagged a possible duplicate of, or {@code null}
+     * when {@code possibleDuplicate} is not set.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**
