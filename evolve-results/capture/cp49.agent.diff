@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f100923d0..3d9d0e6e9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -18,10 +18,22 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+ 
++    /**
++     * The canonical REST API path for an owner, {@code "/api/owners/"} followed by the owner's id,
++     * or {@code null} when the owner has no id yet (unsaved). The single source of this route string:
++     * both the serialized {@code selfLink} field and the created-response {@code Location} header are
++     * built from here, keeping the {@code /api/owners/} namespace confined to the REST boundary.
++     */
++    default String selfLink(Owner owner) {
++        Integer id = owner == null ? null : owner.getId();
++        return id == null ? null : "/api/owners/" + id;
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..16c5ba8ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,6 +14,6 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
++        response.send(ResponseEntity.created(URI.create(ownerMapper.selfLink(owner))).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7cbaeaac0..e4ed498b2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,6 +2121,13 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            selfLink:
++              title: Self link
++              description: The canonical API path for this owner, '/api/owners/' followed by the
++                owner's id. Derived per response.
++              type: string
++              example: '/api/owners/1'
++              readOnly: true
+             displayName:
+               title: Display name
+               description: The owner's name formatted as 'LastName, FirstName'.
