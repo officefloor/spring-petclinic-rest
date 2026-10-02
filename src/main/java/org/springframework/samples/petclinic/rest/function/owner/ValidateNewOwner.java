@@ -2,10 +2,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
@@ -37,8 +39,17 @@ public class ValidateNewOwner {
             "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
                     + "(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$");
 
+    /**
+     * Disposable-email providers whose domains are rejected: a syntactically valid address on one of
+     * these is a 400, so throwaway inboxes cannot be used to register an owner. Lower-cased to compare
+     * against the canonicalized (lower-cased) email domain.
+     */
+    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+            "mailinator.com", "tempmail.com", "guerrillamail.com");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+            DisposableEmailException {
         // This list mirrors OwnerFieldsDto's required fields by hand: it must track the schema's
         // `required` set. We check presence/non-blankness only, a narrower rule than the DTO's full
         // constraints (@Size/@Pattern), so bean validation is intentionally not used here.
@@ -74,7 +85,14 @@ public class ValidateNewOwner {
             if (!EMAIL_PATTERN.matcher(email).matches()) {
                 throw new InvalidEmailException(email);
             }
-            request.setEmail(email.toLowerCase());
+            String canonical = email.toLowerCase();
+            // Reject throwaway inboxes: a syntactically valid address on a disposable-email domain is a
+            // 400, so the owner is never persisted. Domain is everything after the last '@'.
+            String domain = canonical.substring(canonical.lastIndexOf('@') + 1);
+            if (DISPOSABLE_DOMAINS.contains(domain)) {
+                throw new DisposableEmailException(email);
+            }
+            request.setEmail(canonical);
         }
 
         validated.set(request);
