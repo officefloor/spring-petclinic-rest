@@ -326,6 +326,27 @@ public class Owner extends Person {
     }
 
     /**
+     * Fixed region-to-timezone lookup mapping each canonical region to its IANA timezone name:
+     * {@code NSW -> 'Australia/Sydney'}, {@code VIC -> 'Australia/Melbourne'},
+     * {@code QLD -> 'Australia/Brisbane'}.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
+     * The owner's timezone: the IANA name derived from the owner's {@link #getLocality() locality}
+     * via the fixed region-to-timezone table ({@code NSW -> 'Australia/Sydney'},
+     * {@code VIC -> 'Australia/Melbourne'}, {@code QLD -> 'Australia/Brisbane'}). {@code null} when
+     * the locality is not one of these regions.
+     */
+    @Transient
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
+    }
+
+    /**
      * The owner's identity key: a single derived value that consolidates all duplicate detection,
      * formatted {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. The
      * telephone is the stored E.164 value, the email its stored lower-cased form (empty when the
