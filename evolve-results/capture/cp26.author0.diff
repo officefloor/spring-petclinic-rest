@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 735fd2bfb..cfba84e99 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -23,6 +23,7 @@ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -113,6 +114,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+ 
++    /**
++     * E.164 country codes mapped to the exact number of national (significant) digits a telephone for
++     * that country must carry. For example {@code '+61'} (Australia) requires 9 national digits and
++     * {@code '+1'} (NANP) requires 10. A country code listed here enforces that national-number length;
++     * a number whose country code is not listed is accepted at any otherwise-valid E.164 length.
++     */
++    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
++        "61", 9,
++        "1", 10);
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -347,7 +358,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Converts a raw telephone value to E.164 form, or returns {@code null} if it cannot form a valid
+      * E.164 number. Spaces, dashes and brackets are removed; a leading {@code '+'} keeps the supplied
+      * country code, while a bare national number has a single leading {@code '0'} dropped and the
+-     * {@code '+61'} country code prepended. A valid result is a {@code '+'} followed by 8 to 15 digits.
++     * {@code '+61'} country code prepended. A valid result is a {@code '+'} followed by 8 to 15 digits,
++     * and when the supplied country code is one with a known national-number length
++     * ({@link #NATIONAL_NUMBER_LENGTHS}, e.g. {@code '+61'} => 9, {@code '+1'} => 10) the national
++     * number must have exactly that many digits.
+      *
+      * @param telephone the raw telephone value, possibly {@code null}
+      * @return the E.164 string, or {@code null} if the value is not a valid E.164 number
+@@ -365,9 +379,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!nationalSignificant.matches("[0-9]{8,15}")) {
+             return null;
+         }
++        if (!hasValidNationalNumberLength(nationalSignificant)) {
++            return null;
++        }
+         return "+" + nationalSignificant;
+     }
+ 
++    /**
++     * Checks the national-number length of an E.164 number (country code plus national significant
++     * digits, no leading {@code '+'}) against the per-country requirement in
++     * {@link #NATIONAL_NUMBER_LENGTHS}. The longest listed country code that prefixes the number
++     * selects the requirement, and the remaining digits must number exactly that many. A number whose
++     * country code is not listed carries no per-country length requirement and is accepted.
++     *
++     * @param nationalSignificant the digits of the E.164 number, country code first, without the
++     *                            leading {@code '+'}
++     * @return {@code true} if the national-number length is correct for the country code, or the
++     *         country code has no listed requirement; {@code false} otherwise
++     */
++    private boolean hasValidNationalNumberLength(String nationalSignificant) {
++        String countryCode = NATIONAL_NUMBER_LENGTHS.keySet().stream()
++            .filter(nationalSignificant::startsWith)
++            .max(Comparator.comparingInt(String::length))
++            .orElse(null);
++        if (countryCode == null) {
++            return true;
++        }
++        int nationalLength = nationalSignificant.length() - countryCode.length();
++        return nationalLength == NATIONAL_NUMBER_LENGTHS.get(countryCode);
++    }
++
+     /**
+      * Normalizes an optional owner email address. A {@code null} value means the field was omitted and
+      * is left unset. When a value is present it must be a syntactically valid address; the stored and
