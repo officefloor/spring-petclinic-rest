@@ -322,6 +322,16 @@ public class Owner extends Person {
         "QLD", new int[] {4000, 4099});
 
     /**
+     * Fixed region-to-timezone table mapping each known region to its IANA timezone name
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). The single
+     * source of truth for the timezone derivation read by {@link #getTimezone()}.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
      * The canonical region for {@code city} derived from the fixed city-to-region table
      * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the
      * city is not in the table. The single source of truth for the create-time postcode range check in
@@ -374,6 +384,16 @@ public class Owner extends Person {
         }
         int dash = this.customerCode.indexOf('-');
         return dash > 0 ? this.customerCode.substring(0, dash) : "UNKNOWN";
+    }
+
+    /**
+     * The owner's IANA timezone, derived from the {@link #getLocality() locality}/region via the fixed
+     * region-to-timezone table (NSW -> Australia/Sydney, VIC -> Australia/Melbourne,
+     * QLD -> Australia/Brisbane), or {@code null} (so the field is absent from the response) when the
+     * locality maps to no known region.
+     */
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
     }
 
     /**
