@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.mapper;
 
 import org.jspecify.annotations.NonNull;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
@@ -281,10 +283,52 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine1", ignore = true)
+    @Mapping(target = "addressLine2", ignore = true)
+    @Mapping(target = "address", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Sets an owner's structured and composed address fields from the supplied owner-fields,
+     * normalizing each. This is the single place the structured-field normalization rule lives: it
+     * runs automatically after {@link #toOwner(OwnerFieldsDto)} via {@code @AfterMapping}, and is
+     * called directly on the update path to keep both create and update consistent.
+     *
+     * <p>{@code addressLine1} and {@code addressLine2} are stored in their normalized forms and
+     * {@code address} is set to the {@link #composeAddress composed} effective address.
+     */
+    @AfterMapping
+    default void applyAddressFields(OwnerFieldsDto ownerDto, @MappingTarget Owner owner) {
+        if (ownerDto == null) {
+            return;
+        }
+        owner.setAddressLine1(normalizeAddress(ownerDto.getAddressLine1()));
+        owner.setAddressLine2(normalizeAddress(ownerDto.getAddressLine2()));
+        owner.setAddress(composeAddress(ownerDto));
+    }
+
+    /**
+     * Composes the effective, normalized postal address for an owner from the supplied fields,
+     * preferring the structured form over the flat one. When a non-blank {@code addressLine1} is
+     * present, the result is the normalized {@code addressLine1} with the normalized
+     * {@code addressLine2} appended after a single space when an {@code addressLine2} is present;
+     * otherwise it is the normalized flat {@code address}. Each part is normalized through
+     * {@link #normalizeAddress} (trim, collapse whitespace, upper-case, expand {@code ST -> STREET},
+     * {@code RD -> ROAD}, {@code AVE -> AVENUE}).
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        if (ownerDto == null) {
+            return null;
+        }
+        String line1 = normalizeAddress(ownerDto.getAddressLine1());
+        if (line1 != null && !line1.isEmpty()) {
+            String line2 = normalizeAddress(ownerDto.getAddressLine2());
+            return (line2 != null && !line2.isEmpty()) ? line1 + " " + line2 : line1;
+        }
+        return normalizeAddress(ownerDto.getAddress());
+    }
 
     /**
      * Normalizes a postal address into a canonical form: surrounding whitespace is trimmed and
