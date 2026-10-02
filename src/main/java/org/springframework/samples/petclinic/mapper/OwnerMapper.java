@@ -18,7 +18,6 @@ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+    @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "formatFiscalYear")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
@@ -116,10 +116,10 @@ public interface OwnerMapper {
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where
      * {@code customerCode} is the owner's {@code '<REGION>-<HASH8>'} customer code and
-     * {@code YY} is the last two digits of the registration date's year (e.g.
-     * {@code 'NSW-1A2B3C4D-M26'}), as required by the API's read-only
-     * {@code membershipNumber} field. Returns {@code null} when either the customer code
-     * or registration date is absent.
+     * {@code YY} is the last two digits of the fiscal year (the fiscal year starting on
+     * 1 July) of the business-day-adjusted registration date (e.g. {@code 'NSW-1A2B3C4D-M26'}),
+     * as required by the API's read-only {@code membershipNumber} field. Returns {@code null}
+     * when either the customer code or registration date is absent.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -129,7 +129,37 @@ public interface OwnerMapper {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+            fiscalYearStart(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Formats an owner's fiscal year as {@code 'FY<YY>'}, as required by the API's read-only
+     * {@code fiscalYear} field: the fiscal year of the business-day-adjusted registration date,
+     * where the fiscal year starts on 1 July and {@code YY} is the last two digits of the
+     * calendar year in which that fiscal year begins (so a registration date of
+     * {@code 2026-10-02} yields {@code 'FY26'} and {@code 2026-03-02} yields {@code 'FY25'}).
+     * Returns {@code null} when no registration date is present.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatFiscalYear")
+    default String formatFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearStart(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Returns the calendar year in which the fiscal year containing {@code date} begins. The
+     * fiscal year starts on 1 July, so dates in July through December belong to the fiscal year
+     * starting in their own calendar year, while dates in January through June belong to the
+     * fiscal year that started in the previous calendar year.
+     */
+    private static int fiscalYearStart(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() : date.getYear() - 1;
     }
 
     /**
@@ -152,8 +182,9 @@ public interface OwnerMapper {
      * Computes an owner's membership points, as required by the API's read-only
      * {@code membershipPoints} field: starting at 0, plus 2 when an email address is present,
      * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), plus 2 for a household
-     * of 3 or more members, plus 3 when the owner's tenure exceeds 365 days (more than a year
-     * since the registration date).
+     * of 3 or more members, plus 3 when the owner's tenure spans at least one elapsed fiscal year
+     * (the registration date's fiscal year precedes the current fiscal year, the fiscal year
+     * starting on 1 July).
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -174,7 +205,7 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+                && fiscalYearStart(LocalDate.now()) - fiscalYearStart(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
