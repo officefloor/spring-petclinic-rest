@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index da8275548..77412889d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -168,17 +168,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "GOLD"} when the owner's household (owners sharing the same
+-     * {@code householdId}) had 3 or more members after this owner was created; otherwise {@code "SILVER"}
+-     * when {@code namesakeCount} is 0 and an email is present, otherwise {@code "BRONZE"}.
++     * The owner's membership level, a number from 1 to 3 fixed at creation. Starts at 1; add 1 when an
++     * email is present; add 1 when {@code namesakeCount} is 0; capped at 3. Level 4 is reserved for
++     * tenure and is never produced here.
+      */
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
++    public int getMembershipLevel() {
++        int level = 1;
++        boolean hasEmail = this.email != null && !this.email.isBlank();
++        if (hasEmail) {
++            level++;
+         }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+-        boolean hasEmail = this.email != null && !this.email.isBlank();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+index 9630df6cc..df6140190 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+@@ -7,8 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ /**
+  * Computes the owner's {@code householdSize} — the number of members this owner's household (owners
+  * sharing the same {@code householdId}) has after this create: the owners that already exist with the
+- * same {@code householdId} plus this new owner. Assigned at creation and then persisted and returned,
+- * so it fixes the {@code membershipTier} ('GOLD' at 3 or more) at the moment of creation.
++ * same {@code householdId} plus this new owner. Assigned at creation and then persisted and returned.
+  *
+  * <p>Runs after {@link AssignHousehold} (which sets {@code householdId}) and before {@link SaveOwner}
+  * so the new owner is not yet persisted and is counted once via the {@code + 1}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 48f367f4a..dc16d2579 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,17 +2121,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier, 'GOLD' when the owner's household (owners sharing
+-                the same householdId) had 3 or more members after this create; otherwise 'SILVER' when
+-                namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's membership level, a number from 1 to 3 fixed at creation. Starts
++                at 1; add 1 when an email is present; add 1 when namesakeCount is 0; capped at 3. Level 4
++                is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality

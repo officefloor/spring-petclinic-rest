@@ -1,0 +1,195 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index da8275548..d5fcb576c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,9 +66,6 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
+-    @Column(name = "household_size")
+-    private Integer householdSize;
+-
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
+@@ -147,14 +144,6 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
+-    public Integer getHouseholdSize() {
+-        return this.householdSize;
+-    }
+-
+-    public void setHouseholdSize(Integer householdSize) {
+-        this.householdSize = householdSize;
+-    }
+-
+     /**
+      * Whether this response should carry a bulk-signup warning: {@code true} when more than 80 owners
+      * have already been created for this owner's registration day. Computed per request, not persisted.
+@@ -168,17 +157,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "GOLD"} when the owner's household (owners sharing the same
+-     * {@code householdId}) had 3 or more members after this owner was created; otherwise {@code "SILVER"}
+-     * when {@code namesakeCount} is 0 and an email is present, otherwise {@code "BRONZE"}.
++     * The owner's membership level, a number from 1 to 3 fixed at creation. Starts at 1; add 1 when an
++     * email is present; add 1 when {@code namesakeCount} is 0; capped at 3. Level 4 is reserved for
++     * tenure and is never produced here.
+      */
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
++    public int getMembershipLevel() {
++        int level = 1;
++        boolean hasEmail = this.email != null && !this.email.isBlank();
++        if (hasEmail) {
++            level++;
+         }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+-        boolean hasEmail = this.email != null && !this.email.isBlank();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+deleted file mode 100644
+index 9630df6cc..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
++++ /dev/null
+@@ -1,28 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-
+-/**
+- * Computes the owner's {@code householdSize} — the number of members this owner's household (owners
+- * sharing the same {@code householdId}) has after this create: the owners that already exist with the
+- * same {@code householdId} plus this new owner. Assigned at creation and then persisted and returned,
+- * so it fixes the {@code membershipTier} ('GOLD' at 3 or more) at the moment of creation.
+- *
+- * <p>Runs after {@link AssignHousehold} (which sets {@code householdId}) and before {@link SaveOwner}
+- * so the new owner is not yet persisted and is counted once via the {@code + 1}.
+- */
+-public class CountHouseholdMembers {
+-
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String householdId = owner.getHouseholdId();
+-        int count = 1;
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (householdId != null && householdId.equals(existing.getHouseholdId())) {
+-                count++;
+-            }
+-        }
+-        owner.setHouseholdSize(count);
+-    }
+-}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index b64fa9102..53eda85ca 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,8 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER,
+-  household_size INTEGER
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 771b0902e..2d3094f72 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,8 +47,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER,
+-  household_size INTEGER
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4c0efb70c..e56468914 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e5c8ae278..485b78e8a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,8 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER,
+-                                      household_size INTEGER
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 2711c6309..c134e949c 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -33,11 +33,6 @@ build:
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
+-  next: countHouseholdMembers
+-
+-countHouseholdMembers:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+-  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 48f367f4a..dc16d2579 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,17 +2121,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier, 'GOLD' when the owner's household (owners sharing
+-                the same householdId) had 3 or more members after this create; otherwise 'SILVER' when
+-                namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's membership level, a number from 1 to 3 fixed at creation. Starts
++                at 1; add 1 when an email is present; add 1 when namesakeCount is 0; capped at 3. Level 4
++                is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
