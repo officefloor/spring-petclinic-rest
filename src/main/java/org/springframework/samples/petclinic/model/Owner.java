@@ -116,6 +116,15 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * The stored {@link #getTelephone() telephone} formatted for humans by {@link TelephoneFormatter}:
+     * the country code, a space, then the national digits grouped in threes (e.g. {@code +61412345678}
+     * -> {@code +61 412 345 678}). The raw {@link #getTelephone() telephone} stays in E.164 form.
+     */
+    public String getTelephoneDisplay() {
+        return TelephoneFormatter.toDisplay(this.telephone);
+    }
+
     public String getEmail() {
         return this.email;
     }
