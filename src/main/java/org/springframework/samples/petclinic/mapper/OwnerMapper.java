@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+    @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -165,6 +167,31 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derives an owner's age band, as required by the API's read-only {@code ageBand} field:
+     * the owner's age in whole years at the registration date, mapped to {@code 'MINOR'} (under
+     * 18), {@code 'ADULT'} (18 to 64) or {@code 'SENIOR'} (65 or over). Returns {@code null} when
+     * no birth date was supplied (so the field is absent), or when no registration date is yet
+     * known against which to compute the age.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatAgeBand")
+    default String formatAgeBand(Owner owner) {
+        if (owner == null || owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int age = Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     private static String initial(String name) {
