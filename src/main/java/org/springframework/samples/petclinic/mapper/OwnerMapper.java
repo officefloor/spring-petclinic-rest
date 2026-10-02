@@ -22,6 +22,10 @@ public interface OwnerMapper {
     // The identityKey is derived here, at the single Owner-to-DTO boundary, so every response
     // path carries it without any step mutating the entity for presentation.
     @Mapping(target = "identityKey", expression = "java(OwnerIdentity.of(owner))")
+    // selfLink is the canonical path to the owner, the single definition of '/api/owners/' + id
+    // (RespondWithOwnerCreated sources the created Location from it). Absent (null) until the
+    // owner is persisted and has an id.
+    @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
