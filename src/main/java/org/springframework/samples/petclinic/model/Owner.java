@@ -22,7 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
+import java.time.Month;
 import java.util.*;
 
 /**
@@ -202,6 +202,30 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
+    /**
+     * The fiscal year a {@code date} belongs to, as a four-digit year. The fiscal year starts on 1 July
+     * and is identified by the calendar year in which it ends: a date on or after 1 July of year
+     * {@code Y} belongs to the fiscal year ending in {@code Y + 1}, while a date in January to June of
+     * year {@code Y} belongs to the fiscal year ending in {@code Y}.
+     */
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the last two digits of the
+     * {@link #fiscalYear(LocalDate) fiscal year} of the business-day-adjusted
+     * {@link #getRegistrationDate() registrationDate} (e.g. a registration on 2026-10-02 falls in the
+     * fiscal year ending June 2027, so {@code "FY27"}). {@code null} when no registration date is
+     * present. Derived per response.
+     */
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYear(this.registrationDate) % 100);
+    }
+
     public LocalDate getBirthDate() {
         return this.birthDate;
     }
@@ -330,8 +354,9 @@ public class Owner extends Person {
     /**
      * The owner's membership points: start at 0; add 2 when an email is present; add 1 when
      * {@code namesakeCount} is 0; add 2 for a household of 3 or more members (see
-     * {@link #setHouseholdSize(Integer)}); add 3 for tenure of more than 365 days (measured from
-     * {@code registrationDate} to today). A newly created owner has zero tenure, so a fresh owner scores
+     * {@link #setHouseholdSize(Integer)}); add 3 for a tenure of at least one elapsed fiscal year, i.e.
+     * the {@code registrationDate} falls in an earlier {@link #fiscalYear(LocalDate) fiscal year} than
+     * today (fiscal years start 1 July). A newly created owner has zero tenure, so a fresh owner scores
      * at most 5 points (2 + 1 + 2).
      */
     public int getMembershipPoints() {
@@ -349,7 +374,7 @@ public class Owner extends Person {
             points += 2;
         }
         boolean tenured = this.registrationDate != null
-            && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
+            && fiscalYear(LocalDate.now()) - fiscalYear(this.registrationDate) >= 1;
         if (tenured) {
             points += 3;
         }
