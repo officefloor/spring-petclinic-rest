@@ -63,6 +63,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -165,6 +167,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner));
         this.auditEventPublisher.ownerCreated(owner, ownerMapper.formatMembershipLevel(owner));
+        // Enqueue a welcome notification for the newly created owner.
+        NOTIFY.info("welcome notification: owner id={} memberId={}", owner.getId(), owner.getMemberId());
         OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
