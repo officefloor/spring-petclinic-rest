@@ -31,6 +31,44 @@ final class OwnerAddress {
     }
 
     /**
+     * The canonical stored form of a single structured address line: the {@link #normalize(String)
+     * normalized} value, or {@code null} when it is absent/blank. This is the one place the
+     * "blank line is stored as null" policy lives, so both the create ({@link ValidateNewOwner}) and
+     * update ({@link ApplyOwner}) paths canonicalize a line identically.
+     */
+    static String normalizeToNull(String line) {
+        String normalized = normalize(line);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Composes the returned/stored address from the two normalized structured lines: the normalized
+     * {@code line1} with the normalized {@code line2} appended after a single space when {@code line2}
+     * is present (non-blank). Inputs are normalized through {@link #normalize(String)} first, so callers
+     * may pass the raw request values. Returns the empty string when {@code line1} is blank.
+     */
+    private static String compose(String line1, String line2) {
+        String l1 = normalize(line1);
+        String l2 = normalize(line2);
+        if (l1.isEmpty()) {
+            return "";
+        }
+        return l2.isEmpty() ? l1 : l1 + " " + l2;
+    }
+
+    /**
+     * The effective, normalized address for an owner, preferring the structured form: the
+     * {@link #compose(String, String) composed} structured lines when {@code line1} is present,
+     * otherwise the normalized flat {@code address}. The single source of truth for what the stored and
+     * returned {@code address} is and for the "address supplied in either form" validity rule — the
+     * empty string means no address was supplied in either form.
+     */
+    static String effective(String line1, String line2, String address) {
+        String composed = compose(line1, line2);
+        return composed.isEmpty() ? normalize(address) : composed;
+    }
+
+    /**
      * Returns the normalized form of {@code address}, or the empty string when it is {@code null} or
      * blank after trimming.
      */

@@ -53,16 +53,26 @@ public class ValidateNewOwner {
         // This list mirrors OwnerFieldsDto's required fields by hand: it must track the schema's
         // `required` set. We check presence/non-blankness only, a narrower rule than the DTO's full
         // constraints (@Size/@Pattern), so bean validation is intentionally not used here.
-        // Normalize the address first so the required-field check rejects an address that is blank
-        // after normalization (e.g. "   "), and so downstream steps store/return and compare the
-        // canonical form. OwnerAddress.normalize yields "" for a null or all-whitespace address.
-        String normalizedAddress = OwnerAddress.normalize(request.getAddress());
-        request.setAddress(normalizedAddress);
+        // Normalize whichever address fields are supplied first, so the required-field check rejects an
+        // address that is blank after normalization (e.g. "   "), and so downstream steps store/return
+        // and compare the canonical form. The structured form (addressLine1 [+ addressLine2]) is
+        // preferred when present; the flat 'address' input stays accepted for backward compatibility.
+        // OwnerAddress.normalize yields "" for a null or all-whitespace value.
+        request.setAddressLine1(OwnerAddress.normalizeToNull(request.getAddressLine1()));
+        request.setAddressLine2(OwnerAddress.normalizeToNull(request.getAddressLine2()));
+        // The stored/returned 'address' is the effective address: the composed structured lines when
+        // addressLine1 is present, otherwise the normalized flat address. Written back so BuildOwner
+        // persists it and the response (and every later reader of the address) sees the canonical form.
+        String effectiveAddress = OwnerAddress.effective(
+                request.getAddressLine1(), request.getAddressLine2(), request.getAddress());
+        request.setAddress(effectiveAddress);
 
         List<String> missing = new ArrayList<>();
         require(missing, "firstName", request.getFirstName());
         require(missing, "lastName", request.getLastName());
-        require(missing, "address", normalizedAddress);
+        // Valid when an address is supplied in EITHER form: a non-blank addressLine1 or the flat
+        // address. effectiveAddress is "" only when neither was supplied.
+        require(missing, "address", effectiveAddress);
         require(missing, "city", request.getCity());
         require(missing, "telephone", request.getTelephone());
         if (!missing.isEmpty()) {
