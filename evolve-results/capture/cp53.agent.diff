@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 67028f5db..3b71451ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import java.util.Objects;
+ import java.util.OptionalInt;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+@@ -62,6 +63,8 @@ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
+ 
+ /**
+  * @author Vitaliy Fedoriv
+@@ -89,11 +92,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         "guerrillamail.com");
+ 
+     /**
+-     * Dedicated audit logger. On a successful owner create an audit line is emitted here carrying the
+-     * new owner's id, customer code, registration date, membership level and membership number.
++     * Dedicated audit logger. On a successful owner create two records are emitted here: a
++     * human-readable audit line carrying the new owner's id, customer code, registration date,
++     * membership level and membership number, and — separately — an immutable structured
++     * {@code OWNER_CREATED} event ({@link OwnerCreatedEvent}) serialized as JSON.
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Serializer for the structured {@code OWNER_CREATED} audit event. A record's components are
++     * emitted in declaration order, giving the event a stable field layout.
++     */
++    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
++
++    /**
++     * Monotonically increasing sequence stamped onto each structured {@code OWNER_CREATED} event. It
++     * advances by one per emitted event across all creates for the application's lifetime, giving the
++     * audit stream a total order independent of owner ids or timestamps.
++     */
++    private static final AtomicInteger OWNER_CREATED_SEQ = new AtomicInteger(0);
++
+     /**
+      * Common street-type abbreviations expanded during address normalization. Keys are the
+      * upper-cased abbreviation as it appears as a whole whitespace-delimited token; values are the
+@@ -256,6 +274,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), owner.getMembershipNumber());
++        emitOwnerCreatedEvent(owner);
+         rememberIdempotentCreate(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         applyBulkSignupWarning(ownerDto);
+@@ -308,6 +327,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Emits the immutable structured {@code OWNER_CREATED} event for a freshly created owner on the
++     * {@code AUDIT} logger, serialized as a JSON object {@code {seq, ownerId, customerCode,
++     * membershipLevel, event}}. The {@code seq} is drawn from {@link #OWNER_CREATED_SEQ}, advancing by
++     * one per create so the events carry a total order. The {@code customerCode} field carries the
++     * owner's current primary identifier ({@link #primaryIdentifier}) — the customer code today — so
++     * that when a later evolution unifies the customer code into the member id, the event tracks that
++     * identifier with no change here.
++     *
++     * @param owner the owner that was just created and saved
++     */
++    private void emitOwnerCreatedEvent(Owner owner) {
++        OwnerCreatedEvent event = new OwnerCreatedEvent(
++            OWNER_CREATED_SEQ.incrementAndGet(),
++            owner.getId(),
++            primaryIdentifier(owner),
++            owner.getMembershipLevel());
++        AUDIT.info("{}", AUDIT_MAPPER.writeValueAsString(event));
++    }
++
++    /**
++     * Returns the owner's current primary identifier — the single value that externally names the
++     * owner and is carried by the structured audit event. Today that is the {@code customerCode}; this
++     * is the one place to change when a later evolution replaces it (for example when the customer code
++     * is unified into the member id), so every consumer of the primary identifier follows automatically.
++     *
++     * @param owner the owner whose primary identifier is wanted
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Immutable structured audit event emitted on a successful owner create. Serialized to JSON on the
++     * {@code AUDIT} logger, its component order fixes the field order {@code {seq, ownerId,
++     * customerCode, membershipLevel, event}}. The {@code event} discriminator is always
++     * {@code 'OWNER_CREATED'}. The {@code customerCode} component holds the owner's current primary
++     * identifier rather than necessarily the raw customer-code field, so the event follows the primary
++     * identifier if a later evolution changes what that is.
++     *
++     * @param seq             monotonically increasing sequence across all creates
++     * @param ownerId         the new owner's id
++     * @param customerCode    the owner's current primary identifier
++     * @param membershipLevel the owner's stored membership level
++     */
++    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel,
++                                     String event) {
++        private OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++            this(seq, ownerId, customerCode, membershipLevel, "OWNER_CREATED");
++        }
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
