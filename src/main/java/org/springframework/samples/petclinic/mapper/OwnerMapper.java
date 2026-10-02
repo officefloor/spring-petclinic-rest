@@ -14,7 +14,9 @@ import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
+import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -124,8 +126,10 @@ public interface OwnerMapper {
     /**
      * Derives an owner's membership level, as required by the API's read-only
      * {@code membershipLevel} field: starting at 1, plus 1 when an email address is present,
-     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), capped at 3. (Level 4
-     * is reserved for tenure.)
+     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), plus 1 when the owner's
+     * tenure exceeds 365 days (more than a year since the registration date), capped at 4. Because
+     * a newly created owner has zero tenure, a new owner never reaches level 4: a new owner with an
+     * email and no namesakes maxes the pre-tenure factors at level 3.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName} (and when called directly, e.g.
@@ -143,7 +147,11 @@ public interface OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        if (owner.getRegistrationDate() != null
+                && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
