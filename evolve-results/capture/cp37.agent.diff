@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cfa189393..e8ad96833 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
++    @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
+     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+@@ -67,6 +68,24 @@ public interface OwnerMapper {
+         return initial(owner.getFirstName()) + initial(owner.getLastName());
+     }
+ 
++    /**
++     * Formats an owner's stored E.164 telephone for human display, as required by the API's
++     * read-only {@code telephoneDisplay} field: the country code (with its leading {@code '+'}),
++     * a space, then the national digits grouped in threes (e.g. {@code '+61 412 345 678'}). The
++     * raw {@code telephone} field keeps its canonical E.164 form. Returns {@code null} when no
++     * telephone is present.
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
++     * applied only where referenced via {@code qualifiedByName}.
++     */
++    @Named("formatTelephoneDisplay")
++    default String formatTelephoneDisplay(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return TelephoneNormalizer.toDisplay(owner.getTelephone());
++    }
++
+     /**
+      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where
+      * {@code customerCode} is the owner's {@code '<REGION>-<HASH8>'} customer code and
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+index baf42723b..4feec2285 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -69,6 +69,46 @@ public final class TelephoneNormalizer {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Format a canonical E.164 number for human display: the country code (with its leading
++     * {@code '+'}), a space, then the national digits grouped left-to-right in threes and
++     * space-separated. For a recognised country code the national number is the digits after
++     * that code (country codes are matched longest-first so the most specific prefix wins);
++     * for an unrecognised code the whole digit sequence is grouped in threes. So
++     * {@code '+61412345678'} becomes {@code '+61 412 345 678'}.
++     *
++     * @param e164 a canonical E.164 string (a leading {@code '+'} followed by 8-15 digits), or
++     *             {@code null}
++     * @return the display string, or {@code null} if {@code e164} is {@code null}
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null) {
++            return null;
++        }
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        for (String countryCode : NATIONAL_LENGTHS.keySet()) {
++            if (digits.startsWith(countryCode) && digits.length() > countryCode.length()) {
++                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
++            }
++        }
++        return "+" + groupInThrees(digits);
++    }
++
++    /**
++     * Group a run of digits left-to-right into space-separated chunks of three (a trailing chunk
++     * may have one or two digits). So {@code '412345678'} becomes {@code '412 345 678'}.
++     */
++    private static String groupInThrees(String digits) {
++        StringBuilder sb = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                sb.append(' ');
++            }
++            sb.append(digits.charAt(i));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Verify that, for a recognised country code, the national number (the digits following the
+      * country code) has exactly the length that country requires. Country codes are matched
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4208a32ab..aceb2b19e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2131,6 +2131,16 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone (display)
++              description: >-
++                The stored E.164 telephone formatted for humans: the country code (with its
++                leading '+'), a space, then the national digits grouped in threes and
++                space-separated. For example '+61412345678' is displayed as '+61 412 345 678'.
++                The raw 'telephone' field keeps its canonical E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
