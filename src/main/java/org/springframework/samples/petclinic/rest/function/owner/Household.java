@@ -3,7 +3,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Single source of truth for household identity. A household groups owners that share the same last
@@ -41,6 +46,23 @@ final class Household {
     static String key(String lastName, String postcode) {
         String pc = (postcode == null) ? "" : postcode.trim();
         return normalize(lastName) + "|" + pc;
+    }
+
+    /**
+     * All existing owners that belong to the household of the given last name and postcode — those whose
+     * own (recomputed) {@link #id household id} equals this household's. The single definition of
+     * "collect the members of a household", shared by the callers that count members and that cap a new
+     * member's level; soft-deleted owners are included (callers that must exclude them filter the result).
+     */
+    static List<Owner> membersOf(String lastName, String postcode, OwnerRepository repository) {
+        String householdId = id(lastName, postcode);
+        List<Owner> members = new ArrayList<>();
+        for (Owner existing : repository.findAll()) {
+            if (householdId.equals(id(existing.getLastName(), existing.getPostcode()))) {
+                members.add(existing);
+            }
+        }
+        return members;
     }
 
     /**

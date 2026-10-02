@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;

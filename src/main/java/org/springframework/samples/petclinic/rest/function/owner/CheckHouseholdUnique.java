@@ -29,13 +29,9 @@ public class CheckHouseholdUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member: bypass the duplicate block
         }
-        String householdId = Household.id(request.getLastName(), request.getPostcode());
-        for (Owner existing : ownerRepository.findAll()) {
-            if (existing.isDeleted()) {
-                continue; // a soft-deleted owner no longer blocks a matching household
-            }
-            if (householdId.equals(Household.id(existing.getLastName(), existing.getPostcode()))) {
-                throw new HouseholdDuplicateException(householdId);
+        for (Owner existing : Household.membersOf(request.getLastName(), request.getPostcode(), ownerRepository)) {
+            if (!existing.isDeleted()) { // a soft-deleted owner no longer blocks a matching household
+                throw new HouseholdDuplicateException(Household.id(request.getLastName(), request.getPostcode()));
             }
         }
     }

@@ -15,13 +15,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class CountHouseholdMembers {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String householdId = Household.id(owner.getLastName(), owner.getPostcode());
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(Household.id(existing.getLastName(), existing.getPostcode()))) {
-                count++;
-            }
-        }
-        owner.setHouseholdSize(count);
+        owner.setHouseholdSize(
+            Household.membersOf(owner.getLastName(), owner.getPostcode(), ownerRepository).size());
     }
 }

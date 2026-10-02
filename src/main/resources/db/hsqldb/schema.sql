@@ -53,6 +53,7 @@ CREATE TABLE owners (
   membership_number VARCHAR(30),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  membership_level_cap INTEGER,
   deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);

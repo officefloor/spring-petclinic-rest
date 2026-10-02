@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       membership_number TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
+                                      membership_level_cap INTEGER,
                                       deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX ON owners (last_name);

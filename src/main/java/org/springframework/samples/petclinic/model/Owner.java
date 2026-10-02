@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted")
     private boolean deleted;
 
@@ -287,6 +290,26 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membershipLevel}, or {@code null}
+     * when none applies. Set once at creation to one above the maximum membershipLevel among the owner's
+     * existing household members (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel}); a new owner
+     * with no existing household member has no cap.
+     *
+     * <p>Unlike the other inputs to {@link #getMembershipLevel()} (points and household size), which are
+     * recomputed on every read, the cap is a deliberate creation-time snapshot: the rule is about the
+     * household as it stood when this owner joined, so the ceiling is persisted and reapplied on later
+     * reads rather than re-derived from the household's current membership.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * Whether this owner has been soft-deleted. A {@code DELETE /api/owners/{id}} sets this true and
      * retains the record rather than removing it; a newly created owner is false. Soft-deleted owners
      * are still returned by {@code GET /api/owners/{id}} but are ignored by the create endpoint's
@@ -360,6 +383,13 @@ public class Owner extends Person {
      * at most 5 points (2 + 1 + 2).
      */
     public int getMembershipPoints() {
+        return membershipPoints(this.householdSize);
+    }
+
+    /** The membership points this owner would score for the given household size; see
+     * {@link #getMembershipPoints()}. Read-only, so a level can be derived for a hypothetical household
+     * size without mutating this owner's transient {@link #setHouseholdSize(Integer) householdSize}. */
+    private int membershipPoints(Integer householdSize) {
         int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
@@ -369,7 +399,7 @@ public class Owner extends Person {
         if (unique) {
             points += 1;
         }
-        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        boolean largeHousehold = householdSize != null && householdSize >= 3;
         if (largeHousehold) {
             points += 2;
         }
@@ -383,20 +413,39 @@ public class Owner extends Person {
 
     /**
      * The owner's membership level, derived from {@link #getMembershipPoints() membershipPoints}:
-     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. When a
+     * {@link #getMembershipLevelCap() membershipLevelCap} applies, the derived level is capped to it, so
+     * a new owner cannot exceed one above the maximum level among their household members.
      */
     public int getMembershipLevel() {
-        int points = getMembershipPoints();
+        return membershipLevelForHouseholdSize(this.householdSize);
+    }
+
+    /**
+     * This owner's membership level as it would be derived for the given household size — i.e. the value
+     * this owner's own {@code GET} would report when its household holds {@code householdSize} members —
+     * after applying any {@link #getMembershipLevelCap() cap}. Read-only: used to size a new household
+     * member's cap from the existing members' levels without mutating their transient household size.
+     */
+    public int membershipLevelForHouseholdSize(Integer householdSize) {
+        int points = membershipPoints(householdSize);
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**
