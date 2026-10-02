@@ -72,6 +72,9 @@ public class Owner extends Person {
     private String postcode;
 
     @Transient
+    private Integer householdSize;
+
+    @Transient
     private boolean bulkSignupWarning;
 
     @Transient
@@ -145,6 +148,22 @@ public class Owner extends Person {
 
     public void setHouseholdId(String householdId) {
         this.householdId = householdId;
+    }
+
+    /**
+     * The number of owners in this owner's household (owners sharing its householdId, counting
+     * this owner). Not a persisted column — populated by the owner pipelines (create and read)
+     * that have repository access, and consumed only by {@link #getMembershipPoints()}. {@code
+     * null} when it has not been resolved, which the points rule treats as a single-member
+     * household.
+     */
+    @Transient
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     public Integer getNamesakeCount() {
@@ -254,33 +273,54 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level. Starts at {@code 1}; adds {@code 1} when an
+     * The owner's membership points. Starts at {@code 0}; adds {@code 2} when an
      * {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
-     * namesakeCount} is {@code 0}. These factors cap at {@code 3}: level {@code 4} requires a
-     * tenure of more than {@code 365} days since the {@link #getRegistrationDate() registration
-     * date}. A newly created owner has zero tenure, so it can never exceed level {@code 3}.
-     * Not persisted — derived from {@link #getEmail()}, {@link #getNamesakeCount()} and
-     * {@link #getRegistrationDate()}.
+     * namesakeCount} is {@code 0}; adds {@code 2} for a household of {@code 3} or more members
+     * ({@link #getHouseholdSize() householdSize}); adds {@code 3} for a tenure of more than
+     * {@code 365} days since the {@link #getRegistrationDate() registration date}. Not persisted
+     * — derived from {@link #getEmail()}, {@link #getNamesakeCount()}, {@link #getHouseholdSize()}
+     * and {@link #getRegistrationDate()}.
      */
     @Transient
-    public int getMembershipLevel() {
-        int level = 1;
+    public int getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean uniqueName = this.namesakeCount != null && this.namesakeCount == 0;
         if (uniqueName) {
-            level++;
+            points += 1;
         }
-        // The email and namesake factors cap at level 3; level 4 is reserved for owners whose
-        // tenure exceeds 365 days. A newly created owner has zero tenure, so it stays at level 3.
-        level = Math.min(level, 3);
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
+        }
         if (this.registrationDate != null
                 && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, mapped from {@link #getMembershipPoints()
+     * membershipPoints}: {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
+     * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more. Not persisted — derived
+     * from {@link #getMembershipPoints()}.
+     */
+    @Transient
+    public int getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     /**

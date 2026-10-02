@@ -11,6 +11,11 @@ public class LoadOwner {
 
     public void service(@PathVariable(name = "ownerId") Integer ownerId,
             OwnerRepository ownerRepository, Out<Owner> loaded) throws NotFoundException {
-        loaded.set(Lookups.findOrNotFound(() -> ownerRepository.findById(ownerId), "Owner not found: " + ownerId));
+        Owner owner = Lookups.findOrNotFound(() -> ownerRepository.findById(ownerId),
+                "Owner not found: " + ownerId);
+        // Resolve the household's member count (this persisted owner is included) so the
+        // membership points rule can score a household of 3 or more on read.
+        owner.setHouseholdSize(Math.max(1, Household.size(owner.getHouseholdId(), ownerRepository)));
+        loaded.set(owner);
     }
 }

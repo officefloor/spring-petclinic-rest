@@ -28,6 +28,9 @@ public class BuildOwner {
         if (householdId != null && householdId.isPresent()) {
             owner.setHouseholdId(householdId.value());
         }
+        // Record the household's member count (existing members plus this not-yet-persisted
+        // owner) so the membership points rule can score a household of 3 or more.
+        owner.setHouseholdSize(Household.size(owner.getHouseholdId(), ownerRepository) + 1);
         built.set(owner);
     }
 

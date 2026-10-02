@@ -86,6 +86,24 @@ final class Household {
     }
 
     /**
+     * The number of persisted owners carrying {@code householdId}. The single household-size
+     * lookup, reused wherever the membership points rule needs a household's member count.
+     * {@code 0} for a {@code null}/blank id (an owner with no postcode has no household).
+     */
+    static int size(String householdId, OwnerRepository ownerRepository) {
+        if (householdId == null || householdId.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
      * Normalize a last name for the household key: trim, collapse any run of whitespace to a
      * single space, and lower-case. Yields {@code ""} for a {@code null} input.
      */
