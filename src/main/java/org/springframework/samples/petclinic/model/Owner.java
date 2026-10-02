@@ -73,6 +73,12 @@ public class Owner extends Person {
     @Transient
     private boolean bulkSignupWarning;
 
+    @Transient
+    private boolean possibleDuplicate;
+
+    @Transient
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -318,6 +324,35 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner is a possible (soft) duplicate: not a hard duplicate, but shares an
+     * existing owner's last name and postcode with a different telephone. Not persisted —
+     * populated for the response by the create and fetch pipelines and defaults to
+     * {@code false} so every owner serialization carries the flag.
+     */
+    @Transient
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this owner possibly duplicates (shared last name and
+     * postcode, different telephone), or {@code null} when it is not a possible duplicate.
+     * Not persisted — populated for the response alongside {@link #isPossibleDuplicate()}.
+     */
+    @Transient
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**
