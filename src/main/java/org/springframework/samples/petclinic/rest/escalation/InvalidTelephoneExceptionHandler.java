@@ -8,15 +8,15 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Responds 400 with an RFC-7807 {@link ProblemDetail} (built through the shared {@link ProblemDetails}
- * helper, like every other handler in this package) when a new owner's telephone is not exactly ten
- * digits once non-digit characters are stripped.
+ * helper, like every other handler in this package) when a new owner's telephone cannot be normalized
+ * to valid E.164.
  */
 public class InvalidTelephoneExceptionHandler {
 
     public void handle(@Parameter InvalidTelephoneException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
-                "The telephone must be exactly 10 digits after removing non-digit characters");
+                "The telephone must be a valid E.164 number (+ then 8 to 15 digits)");
         detail.setProperty("errors", java.util.List.of("telephone"));
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }

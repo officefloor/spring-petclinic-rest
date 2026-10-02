@@ -16,9 +16,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  * city and telephone must be present and non-blank. Any that are missing or blank are collected and
  * reported together as a {@link MissingOwnerFieldsException} (a 400), so the body is never persisted.
  *
- * <p>The telephone is then normalized by stripping every non-digit character and must be exactly ten
- * digits; otherwise an {@link InvalidTelephoneException} (a 400) is raised. The stripped value is
- * written back onto the request so downstream steps store and return the 10-digit telephone.
+ * <p>The telephone is then normalized to E.164 (keep a leading '+' and country code when present,
+ * otherwise assume '+61' and drop a single leading '0' from the national digits, stripping spaces,
+ * dashes and brackets and requiring 8 to 15 digits after the '+'); otherwise an
+ * {@link InvalidTelephoneException} (a 400) is raised. The E.164 value is written back onto the request
+ * so downstream steps store and return it.
  *
  * <p>Deliberately does <em>not</em> use {@code @Valid}: bean validation would raise a
  * {@code MethodArgumentNotValidException} with a different response shape, whereas this rule must
@@ -50,13 +52,13 @@ public class ValidateNewOwner {
             throw new MissingOwnerFieldsException(missing);
         }
 
-        // Normalize the telephone: keep only digits, then require exactly ten. Store the stripped
-        // value back so BuildOwner/SaveOwner persist it and the response echoes the 10-digit form.
-        String normalized = OwnerTelephone.normalize(request.getTelephone());
-        if (normalized.length() != 10) {
-            throw new InvalidTelephoneException(normalized);
+        // Normalize the telephone to E.164. Store the canonical value back so BuildOwner/SaveOwner
+        // persist it and the response echoes the E.164 form.
+        String e164 = OwnerTelephone.toE164(request.getTelephone());
+        if (e164 == null) {
+            throw new InvalidTelephoneException(request.getTelephone());
         }
-        request.setTelephone(normalized);
+        request.setTelephone(e164);
 
         // Email is optional: only an email that is present (non-blank) must be a valid address. A valid
         // value is lower-cased and written back (like telephone above) so downstream steps store and
