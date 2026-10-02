@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(64),
   namesake_count INTEGER,
-  postcode VARCHAR(4)
+  postcode VARCHAR(4),
+  birth_date DATE
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

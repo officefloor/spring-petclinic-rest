@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -56,6 +57,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date", columnDefinition = "DATE")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -115,6 +119,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -263,6 +275,28 @@ public class Owner extends Person {
     public String getContactPreference() {
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * The owner's age band, derived from the owner's own fields: the whole number of years from
+     * {@code birthDate} to {@code registrationDate} placed into a band — {@code 'MINOR'} when under
+     * 18, {@code 'ADULT'} when 18 to 64, and {@code 'SENIOR'} when 65 or older. The age is measured
+     * as of the registration date rather than today, so the band is stable over time. {@code null}
+     * when the owner has no birth date (or no registration date to measure against).
+     */
+    @Transient
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     protected Set<Pet> getPetsInternal() {
