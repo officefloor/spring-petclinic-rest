@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -79,6 +80,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "ST", "STREET",
         "RD", "ROAD",
         "AVE", "AVENUE");
+
+    /**
+     * The maximum number of owners a single city may contain. Once a city holds this many owners it
+     * is at capacity and cannot take any more.
+     */
+    private static final int CITY_CAPACITY = 50;
 
     private final ClinicService clinicService;
 
@@ -131,6 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String address = normalizeAddress(ownerFieldsDto.getAddress());
         owner.setAddress(address);
+        rejectCityAtCapacity(owner.getCity());
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             assignHousehold(owner, ownerFieldsDto.getLastName(), address);
         } else {
@@ -408,6 +416,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
             .count();
+    }
+
+    /**
+     * Rejects creation of an owner whose city already contains the maximum number of owners
+     * ({@value #CITY_CAPACITY}). Owners are counted per city case-insensitively with surrounding and
+     * internal whitespace collapsed, consistent with the other owner-field comparisons.
+     *
+     * @param city the city of the owner being created
+     * @throws OwnerCityAtCapacityException if the city already contains {@value #CITY_CAPACITY} or more
+     *                                      owners, yielding a 409 Conflict response
+     */
+    private void rejectCityAtCapacity(String city) {
+        if (countOwnersInCity(city) >= CITY_CAPACITY) {
+            throw new OwnerCityAtCapacityException(city);
+        }
     }
 
     /**
