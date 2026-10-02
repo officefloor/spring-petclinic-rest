@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 52f39343d..4040405cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -77,6 +78,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Email domains belonging to disposable/throwaway mail providers. An owner whose email domain
++     * (the part after the {@code @}, compared case-insensitively) is listed here is rejected: such
++     * addresses are not durable contact details. Entries are stored lower-cased.
++     */
++    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
++        "mailinator.com",
++        "tempmail.com",
++        "guerrillamail.com");
++
+     /**
+      * Dedicated audit logger. On a successful owner create an audit line is emitted here carrying the
+      * new owner's id, customer code and registration date.
+@@ -482,13 +493,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Normalizes an optional owner email address. A {@code null} value means the field was omitted and
+-     * is left unset. When a value is present it must be a syntactically valid address; the stored and
++     * is left unset. When a value is present it must be a syntactically valid address whose domain is
++     * not on the disposable-domain blocklist ({@link #DISPOSABLE_EMAIL_DOMAINS}); the stored and
+      * returned value is that address lower-cased.
+      *
+      * @param email the raw email value submitted by the client, or {@code null} if omitted
+      * @return the lower-cased email, or {@code null} if none was supplied
+      * @throws InvalidOwnerFieldsException if a value is present but not a syntactically valid address,
+-     *                                     yielding a 400 response
++     *                                     or its domain is a disposable-mail domain, yielding a 400
++     *                                     response
+      */
+     private String normalizeEmail(String email) {
+         if (email == null) {
+@@ -497,7 +510,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!EMAIL_PATTERN.matcher(email).matches()) {
+             throw new InvalidOwnerFieldsException(List.of("email"));
+         }
+-        return email.toLowerCase(Locale.ROOT);
++        String normalized = email.toLowerCase(Locale.ROOT);
++        String domain = normalized.substring(normalized.indexOf('@') + 1);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new InvalidOwnerFieldsException(List.of("email"));
++        }
++        return normalized;
+     }
+ 
+     /**
