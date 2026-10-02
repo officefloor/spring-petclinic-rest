@@ -42,10 +42,16 @@ public class ValidateNewOwner {
         // This list mirrors OwnerFieldsDto's required fields by hand: it must track the schema's
         // `required` set. We check presence/non-blankness only, a narrower rule than the DTO's full
         // constraints (@Size/@Pattern), so bean validation is intentionally not used here.
+        // Normalize the address first so the required-field check rejects an address that is blank
+        // after normalization (e.g. "   "), and so downstream steps store/return and compare the
+        // canonical form. OwnerAddress.normalize yields "" for a null or all-whitespace address.
+        String normalizedAddress = OwnerAddress.normalize(request.getAddress());
+        request.setAddress(normalizedAddress);
+
         List<String> missing = new ArrayList<>();
         require(missing, "firstName", request.getFirstName());
         require(missing, "lastName", request.getLastName());
-        require(missing, "address", request.getAddress());
+        require(missing, "address", normalizedAddress);
         require(missing, "city", request.getCity());
         require(missing, "telephone", request.getTelephone());
         if (!missing.isEmpty()) {

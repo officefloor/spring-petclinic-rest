@@ -31,9 +31,13 @@ final class Household {
      * The canonical household key for a (lastName, address) pair — the single definition of household
      * membership. Two owners belong to the same household exactly when their keys are equal; {@link #id}
      * hashes this same key, so the duplicate check and the assigned id can never diverge.
+     *
+     * <p>Addresses are compared in their {@link OwnerAddress normalized} form (whitespace collapsed,
+     * upper-cased, abbreviations expanded) so that equivalent spellings — "12 main st" and
+     * "12 MAIN STREET" — belong to the same household even when stored data was not normalized.
      */
     static String key(String lastName, String address) {
-        return normalize(lastName) + "\n" + normalize(address);
+        return normalize(lastName) + "\n" + OwnerAddress.normalize(address);
     }
 
     /**
