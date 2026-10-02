@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index 43b7fe13f..0f317cc8b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -1,12 +1,14 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ /**
+  * Single source of truth for the owner email rule, shared by the owner pipelines. An
+  * owner may omit the email, but when supplied it must be a syntactically valid address
+- * and is stored and returned lower-cased. Keeping the validity check and the
+- * lower-casing here keeps the create and update paths consistent.
++ * whose domain is not on the disposable-domain blocklist, and is stored and returned
++ * lower-cased. Keeping the validity check, the blocklist and the lower-casing here keeps
++ * the create and update paths consistent.
+  */
+ final class OwnerEmail {
+ 
+@@ -17,6 +19,13 @@ final class OwnerEmail {
+      */
+     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$");
+ 
++    /**
++     * Disposable email domains that are not accepted for an owner. Compared case-insensitively
++     * against the normalized (lower-cased) address domain.
++     */
++    private static final Set<String> DISPOSABLE_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     private OwnerEmail() {
+     }
+ 
+@@ -25,6 +34,22 @@ final class OwnerEmail {
+         return email != null && EMAIL.matcher(email).matches();
+     }
+ 
++    /**
++     * Whether {@code email}'s domain is on the disposable-domain blocklist. Expects an address
++     * already shown to be syntactically valid (so it contains a single {@code @}); the domain is
++     * the part after the {@code @}, matched case-insensitively.
++     */
++    static boolean isDisposableDomain(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        return DISPOSABLE_DOMAINS.contains(email.substring(at + 1).toLowerCase());
++    }
++
+     /** Lower-case and trim the email, or {@code null} when absent/blank. */
+     static String normalize(String email) {
+         if (email == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+index 4a0d05817..c5a5f353f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+@@ -57,6 +57,10 @@ public class ValidateNewOwner {
+         if (email != null && !OwnerEmail.isValid(email)) {
+             throw new InvalidEmailException("Email is not a valid address: " + request.getEmail());
+         }
++        if (email != null && OwnerEmail.isDisposableDomain(email)) {
++            throw new InvalidEmailException(
++                    "Email domain is a disposable-domain blocklist entry: " + request.getEmail());
++        }
+         request.setEmail(email);
+         validated.set(request);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index d59c574d5..93638a947 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -22,6 +22,10 @@ public class ValidateOwner {
+         if (email != null && !OwnerEmail.isValid(email)) {
+             throw new InvalidEmailException("Email is not a valid address: " + request.getEmail());
+         }
++        if (email != null && OwnerEmail.isDisposableDomain(email)) {
++            throw new InvalidEmailException(
++                    "Email domain is a disposable-domain blocklist entry: " + request.getEmail());
++        }
+         request.setEmail(email);
+         validated.set(request);
+     }
