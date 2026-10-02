@@ -11,14 +11,18 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 public class BuildOwner {
 
-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper,
-            OwnerRepository ownerRepository, Out<Owner> built) {
+    public void service(@Val OwnerFieldsDto request, @Val Household.Id householdId,
+            OwnerMapper ownerMapper, OwnerRepository ownerRepository, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
         // Default an unsupplied registration date to the server's current date.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
+        // Join a shared household when the gate resolved an identifier.
+        if (householdId != null && householdId.isPresent()) {
+            owner.setHouseholdId(householdId.value());
+        }
         built.set(owner);
     }
 
