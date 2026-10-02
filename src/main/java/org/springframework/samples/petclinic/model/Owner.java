@@ -192,6 +192,37 @@ public class Owner extends Person {
     }
 
     /**
+     * A single Luhn check digit (0-9) computed over the digits contained in the owner's
+     * {@code customerCode}. Derived from the owner's own fields; {@code null} until the customer
+     * code is set. The standard Luhn algorithm is applied to the digits of the customer code, from
+     * right to left, doubling every second digit (subtracting 9 when the doubled value exceeds 9).
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The owner's numeric membership level, from 1 to 3. It starts at 1, gains 1 when the owner has
      * an email address, gains 1 when the owner is unique (namesakeCount is 0), and is capped at 3
      * (level 4 is reserved for tenure). The inputs are the owner's own fields.
