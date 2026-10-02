@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ffb53086b..ed1cf0653 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,10 @@ public interface OwnerMapper {
+     // The identityKey is derived here, at the single Owner-to-DTO boundary, so every response
+     // path carries it without any step mutating the entity for presentation.
+     @Mapping(target = "identityKey", expression = "java(OwnerIdentity.of(owner))")
++    // selfLink is the canonical path to the owner, the single definition of '/api/owners/' + id
++    // (RespondWithOwnerCreated sources the created Location from it). Absent (null) until the
++    // owner is persisted and has an id.
++    @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..fe7e636df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,6 +14,8 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
++        // Source the Location from the DTO's selfLink so the canonical owner path has a single
++        // definition (the mapper), rather than re-deriving '/api/owners/' + id here.
++        response.send(ResponseEntity.created(URI.create(dto.getSelfLink())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1eaa1c09d..781ea113b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2267,6 +2267,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            selfLink:
++              title: Self link
++              description: The canonical path to this owner, '/api/owners/' followed by the owner's id. Absent when the owner has no id.
++              type: string
++              example: '/api/owners/1'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
