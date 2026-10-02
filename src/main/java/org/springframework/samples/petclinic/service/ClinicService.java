@@ -73,13 +73,14 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 
 	/**
-	 * Returns {@code true} if the given owner's derived identity key equals that of another owner,
-	 * i.e. the create would introduce a duplicate. The identity key
-	 * ({@link Owner#getIdentityKey()}) is {@code normalizedTelephone + '|' + (email or empty) + '|' +
-	 * (householdId or empty)} and is the single, consolidated criterion for duplicate detection:
-	 * only an exact whole-key match counts. Because the telephone is part of the key, two members of
-	 * the same household (same {@code householdId}) with different telephones have distinct keys and
-	 * are both allowed. Enforces the "no duplicate identity key" invariant on owner creation.
+	 * Returns {@code true} if the given owner's derived identity key equals that of another
+	 * non-deleted owner, i.e. the create would introduce a duplicate. The identity key
+	 * ({@link Owner#getIdentityKey()}) is the full lower-case hexadecimal SHA-256 digest over
+	 * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} and is the single,
+	 * consolidated criterion for duplicate detection: only an exact whole-key match counts. Because
+	 * the telephone is part of the key, two owners with the same last name and postcode but different
+	 * telephones have distinct keys and are both allowed. Enforces the "no duplicate identity key"
+	 * invariant on owner creation, ignoring owners flagged deleted.
 	 *
 	 * @param owner the (not yet persisted) owner whose identity key to check
 	 * @return whether an existing owner already has the same identity key
@@ -87,26 +88,13 @@ public interface ClinicService {
 	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
-	 * Returns {@code true} if the given (not yet persisted) owner is a household duplicate of an
-	 * existing owner, i.e. an existing non-deleted owner has the same last name <em>and</em> the same
-	 * address (both compared case-insensitively with runs of whitespace collapsed), as described by
-	 * the {@code sharesHousehold} field. The create endpoint rejects such an owner with 409 unless it
-	 * declares itself a household member ({@code sharesHousehold}). Owners that merely share a
-	 * {@link #householdIdFor household id} (same last name and postcode) but live at different
-	 * addresses are distinct members and are not duplicates.
-	 *
-	 * @param owner the (not yet persisted) owner whose household to check
-	 * @return whether an existing owner is a household duplicate of this one
-	 */
-	boolean isHouseholdInUse(Owner owner) throws DataAccessException;
-
-	/**
 	 * Returns a deterministic, shared household identifier derived from the given last name and
 	 * postcode: the first 12 hexadecimal characters of the SHA-256 digest over
 	 * {@code normalizedLastName + '|' + postcode}. The last name is normalized (trimmed, runs of
 	 * whitespace collapsed, lower-cased) before hashing, so every owner with the same last name and
 	 * postcode deterministically receives the identical value and therefore shares a household
-	 * automatically. This household id also forms the final component of each owner's identity key.
+	 * automatically. The household id drives the household-derived fields but is no longer part of
+	 * the identity key used for duplicate detection.
 	 *
 	 * @param lastName the last name of the household
 	 * @param postcode the postcode of the household

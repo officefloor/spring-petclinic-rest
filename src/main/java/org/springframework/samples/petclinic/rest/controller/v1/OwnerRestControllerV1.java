@@ -139,17 +139,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         // The household id is deterministic from (lastName, postcode), so owners sharing a last name
-        // and postcode are automatically the same household.
+        // and postcode are automatically the same household. It no longer gates duplicate detection
+        // (that is the identity key alone) but still drives household-derived fields.
         owner.setHouseholdId(this.clinicService.householdIdFor(owner.getLastName(), owner.getPostcode()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        // An owner with the same last name and address as an existing one is a household duplicate
-        // unless it declares itself a member, which bypasses the household duplicate block. Distinct
-        // members of the same household (same last name and postcode, different address) are allowed.
-        if (!sharesHousehold && this.clinicService.isHouseholdInUse(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        // Reject exact identity duplicates: when the new owner's whole identity key
-        // (telephone|email|householdId) matches an existing one.
+        // Duplicate detection is the single identity key: reject only when the new owner's whole
+        // identity key (SHA-256 over normalizedTelephone|lowerEmail|soundex(lastName)) matches an
+        // existing, non-deleted owner's. Two owners with the same last name and postcode but different
+        // telephones have distinct keys and are created as a soft match rather than rejected.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }

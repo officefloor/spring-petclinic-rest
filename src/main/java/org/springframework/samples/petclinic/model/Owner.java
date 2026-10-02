@@ -16,6 +16,8 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.Sha256Hex;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -254,21 +256,24 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived identity key, {@code normalizedTelephone + '|' + (email or empty) + '|' +
-     * (householdId or empty)}. This single key is the sole criterion for duplicate detection on
-     * creation: a new owner is rejected with 409 only when its whole identity key equals an existing
-     * owner's. Because the telephone is part of the key, two members of the same household (same
-     * {@code householdId}) with different telephones have distinct identity keys and are both
-     * allowed; only an exact full-key match is a duplicate. The telephone and email components are
-     * already held in their normalized forms (canonical E.164 and lower-cased) on every write path,
-     * so the key is comparable across owners. Not persisted: it is computed from the current fields.
+     * The owner's derived identity key: the full lower-case hexadecimal SHA-256 digest over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (the normalized E.164
+     * telephone or an empty string, the lower-cased email or an empty string, and the Soundex code
+     * of the last name, joined by {@code '|'}). This single key is the sole criterion for duplicate
+     * detection on creation: a new owner is rejected with 409 only when its whole identity key
+     * equals an existing owner's. Because the telephone is part of the key, two owners with the same
+     * last name and postcode but different telephones have distinct identity keys and are both
+     * allowed (created as a soft match); only an exact full-key match is a duplicate. The telephone
+     * and email components are already held in their normalized forms (canonical E.164 and
+     * lower-cased) on every write path, so the key is comparable across owners. Not persisted: it is
+     * computed from the current fields.
      */
     @Transient
     public String getIdentityKey() {
         String telephoneOrEmpty = this.telephone == null ? "" : this.telephone;
         String emailOrEmpty = this.email == null ? "" : this.email;
-        String householdOrEmpty = this.householdId == null ? "" : this.householdId;
-        return telephoneOrEmpty + "|" + emailOrEmpty + "|" + householdOrEmpty;
+        String lastNameSoundex = Soundex.encode(this.getLastName());
+        return Sha256Hex.lowerHex(telephoneOrEmpty + "|" + emailOrEmpty + "|" + lastNameSoundex);
     }
 
     /**

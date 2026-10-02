@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.Sha256Hex;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -417,23 +418,23 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Resolve the id of an existing owner that the given (not yet persisted) owner is a <em>possible</em>
-     * duplicate of, or {@code null} when there is none. A possible duplicate belongs to an existing
-     * owner's household (same computed {@code householdId}, i.e. same last name and postcode) while
-     * carrying a different telephone, so it is not a hard duplicate (its identity key is unique) but is
-     * worth flagging. When several existing owners match, the one with the lowest id is returned so the
-     * result is deterministic. Computed once, at creation, to drive the read-only
-     * {@code possibleDuplicate}/{@code possibleDuplicateOf} fields.
+     * duplicate of, or {@code null} when there is none. A possible duplicate has a <em>different</em>
+     * identity key from the existing owner (so it is not a hard duplicate) yet shares the Soundex code
+     * of its last name and the same postcode, so it is worth flagging as a soft match. When several
+     * existing owners match, the one with the lowest id is returned so the result is deterministic.
+     * Computed once, at creation, to drive the read-only {@code possibleDuplicate}/
+     * {@code possibleDuplicateOf} fields.
      */
     private Integer findPossibleDuplicateOf(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return null;
-        }
+        String identityKey = owner.getIdentityKey();
+        String lastNameSoundex = Soundex.encode(owner.getLastName());
+        String postcode = owner.getPostcode();
         return ownerRepository.findAll().stream()
             .filter(existing -> existing != owner && existing.getId() != null)
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
+            .filter(existing -> lastNameSoundex.equals(Soundex.encode(existing.getLastName())))
+            .filter(existing -> Objects.equals(postcode, existing.getPostcode()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);
@@ -473,32 +474,15 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
-        // Per the create endpoint's sharesHousehold contract, a household duplicate is an existing
-        // owner with the same last name AND the same address (compared case-insensitively with runs
-        // of whitespace collapsed). Owners that merely share a household id (same last name and
-        // postcode) but live at different addresses are distinct members and are not duplicates, so
-        // they may be created without declaring sharesHousehold.
-        String lastNameKey = normalizeHouseholdValue(owner.getLastName());
-        String addressKey = normalizeHouseholdValue(owner.getAddress());
-        return ownerRepository.findAll().stream()
-            .filter(existing -> existing != owner && existing.getId() != null)
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> lastNameKey.equals(normalizeHouseholdValue(existing.getLastName()))
-                && addressKey.equals(normalizeHouseholdValue(existing.getAddress())));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public String householdIdFor(String lastName, String postcode) throws DataAccessException {
         String key = normalizeHouseholdValue(lastName) + "|" + (postcode == null ? "" : postcode);
         return Sha256Hex.upperHexPrefix(key, 12);
     }
 
     /**
-     * Normalizes a household field (the last name) for duplicate comparison by trimming,
-     * collapsing runs of whitespace to a single space and lower-casing, so differently cased or
-     * spaced but equivalent values compare equal.
+     * Normalizes a household field (the last name) for the {@link #householdIdFor household id}
+     * hash by trimming, collapsing runs of whitespace to a single space and lower-casing, so
+     * differently cased or spaced but equivalent values yield the same household id.
      */
     private static String normalizeHouseholdValue(String value) {
         if (value == null) {
