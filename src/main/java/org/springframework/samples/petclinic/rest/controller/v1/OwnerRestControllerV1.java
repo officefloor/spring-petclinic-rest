@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.DisposableEmailValidator;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
 import org.springframework.samples.petclinic.util.RegistrationDateValidator;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -110,6 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
+        DisposableEmailValidator.validate(owner.getEmail());
         RegistrationDateValidator.validate(owner.getRegistrationDate());
         if (this.clinicService.isDailyRegistrationAtCapacity()) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
@@ -150,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         PostcodeValidator.validate(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
+        DisposableEmailValidator.validate(ownerMapper.normalizeEmail(ownerFieldsDto.getEmail()));
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setPostcode(ownerFieldsDto.getPostcode());
