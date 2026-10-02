@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d39e1aa8b..eaf9007b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Transient
+     private boolean bulkSignupWarning;
+ 
++    @Transient
++    private int householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -165,17 +168,38 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code 'SILVER'} when {@link #getNamesakeCount() namesakeCount}
+-     * is 0 and an {@link #getEmail() email} is present, otherwise {@code 'BRONZE'}.
+-     * Not persisted — derived from {@link #getNamesakeCount()} and {@link #getEmail()}.
++     * The owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing the
++     * same {@link #getHouseholdId() householdId}) has 3 or more members; otherwise {@code 'SILVER'}
++     * when {@link #getNamesakeCount() namesakeCount} is 0 and an {@link #getEmail() email} is
++     * present, and {@code 'BRONZE'} otherwise.
++     * Not persisted — derived from {@link #getHouseholdSize()}, {@link #getNamesakeCount()} and
++     * {@link #getEmail()}.
+      */
+     @Transient
+     public String getMembershipTier() {
++        if (this.householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean uniqueName = this.namesakeCount != null && this.namesakeCount == 0;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+         return (uniqueName && hasEmail) ? "SILVER" : "BRONZE";
+     }
+ 
++    /**
++     * The number of owners sharing this owner's {@link #getHouseholdId() householdId}, as counted
++     * when the response was built. Not persisted — assigned for the response by the create and
++     * fetch pipelines (at least {@code 1}, the owner itself). When no pipeline has populated it the
++     * field is {@code 0}, which the tier derivation treats as not part of a multi-member household.
++     */
++    @Transient
++    public int getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(int householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * Fixed city-to-region table used to derive {@link #getLocality() locality}.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagHouseholdSize.java
+new file mode 100644
+index 000000000..b826baa48
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagHouseholdSize.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Populates the response-only {@link Owner#getHouseholdSize() householdSize}: the number of owners
++ * sharing this owner's {@link Owner#getHouseholdId() householdId}. Owners with no household id are
++ * not part of a shared household, so they are assigned a size of {@code 1} (just themselves). The
++ * membership tier derivation ({@link Owner#getMembershipTier()}) reads this to promote a household
++ * of 3 or more members to {@code GOLD}. Mutates the loaded owner in place so the responder's mapper
++ * carries the derived tier onto the DTO.
++ *
++ * <p>Note this counts by the stamped {@code householdId} — the stable identifier the create
++ * pipeline writes onto joined members — not by {@link Household}'s name+address membership match.
++ * The two keys are deliberately distinct (the spec phrases the GOLD rule in terms of shared
++ * {@code householdId}), so they are not interchangeable.
++ */
++public class FlagHouseholdSize {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            owner.setHouseholdSize(1);
++            return;
++        }
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                count++;
++            }
++        }
++        owner.setHouseholdSize(count);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4927c76fc..32f5bfe8f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -62,6 +62,13 @@ audit:
+ bulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ transaction ]
++  next: householdSize
++
++# Populate the response-only householdSize from the count of owners sharing this owner's
++# householdId (this owner is now saved and counted), so the tier derivation can award GOLD.
++householdSize:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagHouseholdSize
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 330caba75..eeb8faf20 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -10,6 +10,13 @@ load:
+ bulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ readonly-transaction ]
++  next: householdSize
++
++# Populate the response-only householdSize from the count of owners sharing this owner's
++# householdId, so the tier derivation can award GOLD for a 3+ member household.
++householdSize:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagHouseholdSize
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 53254fcb3..08a0ab85b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2113,7 +2113,7 @@ components:
+               readOnly: true
+             membershipTier:
+               title: Membership tier
+-              description: The owner's membership tier, 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
++              description: The owner's membership tier. 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0 and an email is present, and 'BRONZE' otherwise.
+               type: string
+               example: 'SILVER'
+               readOnly: true
