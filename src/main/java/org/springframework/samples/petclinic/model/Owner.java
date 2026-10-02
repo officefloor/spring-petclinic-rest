@@ -440,6 +440,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, formatted {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. TIER is
+     * {@code 'PREMIUM'} when {@link #getMembershipLevel() membershipLevel} is 3 or more, otherwise
+     * {@code 'STANDARD'}. AREA is {@code 'METRO'} when the {@link #getLocality() locality} is a known
+     * region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}. Not persisted — derived from
+     * {@link #getMembershipLevel()} and {@link #getLocality()}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = isKnownRegion(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Fixed city-to-region table used as the fall-back when deriving an owner's region.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -485,6 +500,13 @@ public class Owner extends Person {
      * Brisbane->QLD), or {@code null} when the city has no known region. */
     public static String regionForCity(String city) {
         return city == null ? null : CITY_REGION.get(city);
+    }
+
+    /** Whether {@code region} is one of the known regions (NSW, VIC or QLD); {@code 'UNKNOWN'}
+     * and any other value are not. Backed by {@link #REGION_RANGE}, the primary source for the
+     * region set. */
+    public static boolean isKnownRegion(String region) {
+        return REGION_RANGE.containsKey(region);
     }
 
     /** Region whose inclusive range contains the given postcode (NSW 2000-2099, VIC 3000-3099,
