@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.audit.OwnerAuditEventPublisher;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -72,16 +73,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final IdempotencyKeyRegistry idempotencyKeyRegistry;
 
+    private final OwnerAuditEventPublisher auditEventPublisher;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 IdempotencyKeyRegistry idempotencyKeyRegistry) {
+                                 IdempotencyKeyRegistry idempotencyKeyRegistry,
+                                 OwnerAuditEventPublisher auditEventPublisher) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.idempotencyKeyRegistry = idempotencyKeyRegistry;
+        this.auditEventPublisher = auditEventPublisher;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -158,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner), ownerMapper.formatMembershipNumber(owner));
+        this.auditEventPublisher.ownerCreated(owner, ownerMapper.formatMembershipLevel(owner));
         OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
