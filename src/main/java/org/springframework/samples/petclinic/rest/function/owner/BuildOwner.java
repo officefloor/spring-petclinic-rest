@@ -20,9 +20,9 @@ public class BuildOwner {
         Owner owner = ownerMapper.toOwner(request);
         // The effective registration date defaults an unsupplied value to the server's
         // current date, then rolls any weekend forward to the next Monday so derived values
-        // (e.g. the membership number's year) use the adjusted business day.
+        // (e.g. the memberId's fiscal year) use the adjusted business day.
         owner.setRegistrationDate(BusinessDay.effectiveRegistrationDate(owner.getRegistrationDate()));
-        owner.setCustomerCode(deduplicate(customerCode(owner), ownerRepository));
+        owner.setMemberId(deduplicate(memberId(owner), ownerRepository));
         // Record how many existing owners already share this first+last name (case-insensitive),
         // counted before this owner is persisted so the value is fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
@@ -37,30 +37,60 @@ public class BuildOwner {
     }
 
     /**
-     * Build the '<REGION>-<HASH8>' customer code: REGION is the region derived from the owner's
-     * postcode and city ({@link Owner#regionFor(String, String)}, e.g. 'NSW' or 'UNKNOWN'), and
-     * HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone
-     * followed by the last name (e.g. 'NSW-1A2B3C4D'). There is no sequence number, so the code
-     * is stable for an owner regardless of creation order.
+     * Build the '<REGION><FY><HASH8><CHK>' memberId: REGION is the region derived from the owner's
+     * postcode and city ({@link Owner#regionFor(String, String)}, e.g. 'NSW' or 'UNKNOWN'); FY is the
+     * 2-digit fiscal-year segment of the business-day-adjusted registration date
+     * ({@link Owner#fiscalYearSegment(java.time.LocalDate)}, e.g. '26'); HASH8 is the first 8
+     * upper-case hex characters of the SHA-256 of the normalized telephone followed by the last name
+     * (the same HASH8 used by the region-and-hash identity); and CHK is a single Luhn check digit
+     * computed over the digits of '<REGION><FY><HASH8>' (e.g. 'NSW261A2B3C4D7'). There is no sequence
+     * number, so the id is stable for an owner regardless of creation order.
      */
-    private static String customerCode(Owner owner) {
+    private static String memberId(Owner owner) {
         String region = Owner.regionFor(owner.getPostcode(), owner.getCity());
+        String fy = Owner.fiscalYearSegment(owner.getRegistrationDate());
         String normalizedTelephone = OwnerTelephone.normalize(owner.getTelephone());
         String seed = (normalizedTelephone == null ? "" : normalizedTelephone) + owner.getLastName();
-        return region + "-" + hash8(seed);
+        String base = region + fy + hash8(seed);
+        return base + luhn(base);
     }
 
     /**
-     * Return a customerCode that no existing owner already uses. When {@code code} collides with an
-     * existing owner's customerCode, append '-&lt;n&gt;' with the smallest n of 2 or more that makes
-     * it unique (e.g. 'NSW-1A2B3C4D' → 'NSW-1A2B3C4D-2'). The un-suffixed code is returned unchanged
+     * The Luhn check digit (0-9) computed over the digits contained in {@code value}. Non-digit
+     * characters (e.g. the letters of the REGION prefix) are ignored.
+     */
+    private static int luhn(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Return a memberId that no existing owner already uses. When {@code id} collides with an
+     * existing owner's memberId, append '-&lt;n&gt;' with the smallest n of 2 or more that makes
+     * it unique (e.g. 'NSW261A2B3C4D7' → 'NSW261A2B3C4D7-2'). The un-suffixed id is returned unchanged
      * when it does not collide.
      */
     private static String deduplicate(String code, OwnerRepository ownerRepository) {
         Set<String> existing = new HashSet<>();
         for (Owner owner : ownerRepository.findAll()) {
-            if (owner.getCustomerCode() != null) {
-                existing.add(owner.getCustomerCode());
+            if (owner.getMemberId() != null) {
+                existing.add(owner.getMemberId());
             }
         }
         if (!existing.contains(code)) {

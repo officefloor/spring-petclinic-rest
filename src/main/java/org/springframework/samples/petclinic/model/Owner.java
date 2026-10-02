@@ -67,8 +67,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -175,12 +175,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -328,55 +328,49 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'} where YY is the last two digits of the
-     * calendar year in which the fiscal year starts (the fiscal year starts on 1 July), derived
-     * from the business-day-adjusted {@link #getRegistrationDate() registrationDate}
-     * (e.g. a registration date in October 2026 yields {@code 'FY26'}). Not persisted — derived
-     * from {@link #getRegistrationDate()}.
+     * The 2-digit fiscal-year segment ({@code 'YY'}) for {@code date}: the last two digits of the
+     * calendar year in which the fiscal year starts (the fiscal year starts on 1 July), zero-padded
+     * (e.g. a date in October 2026 yields {@code '26'}). The single authority for the FY segment of
+     * the owner's {@link #getMemberId() memberId}, reused by the create pipeline so the memberId and
+     * the derived {@link #getFiscalYear() fiscalYear} agree on it.
+     */
+    public static String fiscalYearSegment(LocalDate date) {
+        return String.format("%02d", fiscalYearStart(date) % 100);
+    }
+
+    /** The length of the fixed {@code <FY><HASH8><CHK>} tail of a {@link #getMemberId() memberId}
+     * core: 2 (FY) + 8 (HASH8) + 1 (CHK). The REGION prefix is whatever precedes this tail. */
+    private static final int MEMBER_ID_TAIL = 11;
+
+    /**
+     * The owner's memberId with any {@code '-<n>'} collision suffix removed, or {@code null} when no
+     * memberId is set or the value is too short to carry the fixed {@code <FY><HASH8><CHK>} tail.
+     * The core is {@code <REGION><FY><HASH8><CHK>}; collision handling appends {@code '-<n>'} and
+     * REGION/FY/HASH8/CHK contain no {@code '-'}, so the segments can be read off the core by length.
+     */
+    private String memberIdCore() {
+        if (this.memberId == null) {
+            return null;
+        }
+        int dash = this.memberId.indexOf('-');
+        String core = dash < 0 ? this.memberId : this.memberId.substring(0, dash);
+        return core.length() < MEMBER_ID_TAIL ? null : core;
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the 2-digit fiscal-year
+     * segment of the owner's {@link #getMemberId() memberId} (e.g. a memberId {@code 'NSW261A2B3C4D7'}
+     * yields {@code 'FY26'}). The memberId's FY segment is derived from the business-day-adjusted
+     * {@link #getRegistrationDate() registrationDate}. {@code null} when no memberId is set. Not
+     * persisted — derived from {@link #getMemberId()}.
      */
     @Transient
     public String getFiscalYear() {
-        return "FY" + String.format("%02d", fiscalYearStart(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
-     * the last two digits of the {@link #getFiscalYear() fiscal year} derived from the
-     * business-day-adjusted {@link #getRegistrationDate() registrationDate}
-     * (e.g. {@code 'NSW-1A2B3C4D-M26'}).
-     * Not persisted — derived from {@link #getCustomerCode()} and {@link #getRegistrationDate()}.
-     */
-    @Transient
-    public String getMembershipNumber() {
-        return this.customerCode + "-M" + String.format("%02d", fiscalYearStart(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's check digit: the Luhn check digit (0-9) computed over the digits contained
-     * in the {@link #getCustomerCode() customerCode}. Non-digit characters are ignored.
-     * Not persisted — derived from {@link #getCustomerCode()}.
-     */
-    @Transient
-    public int getCheckDigit() {
-        int sum = 0;
-        boolean dbl = true;
-        String code = this.customerCode == null ? "" : this.customerCode;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
+        String core = memberIdCore();
+        if (core == null) {
+            return null;
         }
-        return (10 - (sum % 10)) % 10;
+        return "FY" + core.substring(core.length() - MEMBER_ID_TAIL, core.length() - MEMBER_ID_TAIL + 2);
     }
 
     /**
@@ -483,7 +477,7 @@ public class Owner extends Person {
      * ({@link #regionForPostcode}), falling back to the fixed city table ({@link #regionForCity})
      * when the postcode is absent or in no known range, or {@code 'UNKNOWN'} when neither matches.
      * Preferring the postcode disambiguates cities that share a name. This is the REGION prefix of
-     * the owner's {@link #getCustomerCode() customerCode}, so the create pipeline and
+     * the owner's {@link #getMemberId() memberId}, so the create pipeline and
      * {@link #getLocality() locality} agree on it. The single authority on the region rule, reused
      * by the owner pipelines (e.g. postcode validation) rather than copied.
      */
@@ -527,18 +521,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION prefix of the {@link #getCustomerCode() customerCode}
-     * (the portion before the first {@code '-'}), which the create pipeline derives from the
-     * postcode-and-city region. {@code 'UNKNOWN'} when no customerCode is set. Not persisted —
-     * derived from {@link #getCustomerCode()}.
+     * The owner's locality: the REGION prefix of the owner's {@link #getMemberId() memberId}
+     * (everything before the fixed {@code <FY><HASH8><CHK>} tail), which the create pipeline derives
+     * from the postcode-and-city region. {@code 'UNKNOWN'} when no memberId is set. Not persisted —
+     * derived from {@link #getMemberId()}.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode == null) {
+        String core = memberIdCore();
+        if (core == null) {
             return "UNKNOWN";
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash <= 0 ? "UNKNOWN" : this.customerCode.substring(0, dash);
+        String region = core.substring(0, core.length() - MEMBER_ID_TAIL);
+        return region.isEmpty() ? "UNKNOWN" : region;
     }
 
     /**
