@@ -206,8 +206,8 @@ public class Owner extends Person {
     /**
      * The canonical region for {@code city} derived from the fixed city-to-region table
      * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the
-     * city is not in the table. The single source of truth for both the city fallback of
-     * {@link #getLocality() locality} and the create-time postcode range check.
+     * city is not in the table. The single source of truth for the create-time postcode range check in
+     * {@link org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerPostcode}.
      */
     public static String regionOf(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
@@ -216,8 +216,9 @@ public class Owner extends Person {
     /**
      * The inclusive {low, high} four-digit postcode band for {@code region} (NSW 2000-2099,
      * VIC 3000-3099, QLD 4000-4099), or {@code null} when the region has no band. This is the single
-     * source of truth for the bands, shared by {@link #regionOfPostcode(String) locality derivation} and
-     * the create-time postcode range check.
+     * source of truth for the bands, shared by {@link #regionOfPostcode(String) the postcode-to-region
+     * lookup} (which feeds the customerCode's region, and hence the locality) and the create-time
+     * postcode range check.
      */
     public static int[] postcodeRangeOf(String region) {
         return REGION_POSTCODES.get(region);
@@ -243,16 +244,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived by preferring the {@link #getPostcode() postcode}
-     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the postcode is absent or in no
-     * known range falling back to the {@link #getCity() city}-to-region table
-     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}). {@code "UNKNOWN"} when neither
-     * resolves. Preferring the postcode disambiguates cities that share a name while still returning the
-     * same region for known cities.
+     * The owner's locality: the REGION segment of the {@link #getCustomerCode() customerCode}, which is
+     * the region code derived from the postcode at creation (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099,
+     * else {@code "UNKNOWN"}). The customer code is the single region-and-hash owner identity, so the
+     * locality reads straight off it rather than re-deriving the region. {@code "UNKNOWN"} when no
+     * customer code is assigned.
      */
     public String getLocality() {
-        String byPostcode = regionOfPostcode(this.postcode);
-        return byPostcode != null ? byPostcode : regionOf(this.city);
+        if (this.customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = this.customerCode.indexOf('-');
+        return dash > 0 ? this.customerCode.substring(0, dash) : "UNKNOWN";
     }
 
     /**
