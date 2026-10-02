@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -170,6 +171,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    /**
+     * Remembers the owner created for each {@code Idempotency-Key} seen on a create request, keyed by
+     * the header value. A repeated create carrying a key already present here is served the originally
+     * created owner instead of creating a duplicate, so retries are safe. The map only ever grows with
+     * distinct keys and is held for the application's lifetime, consistent with the in-memory, single
+     * instance scope of this sample.
+     */
+    private final Map<String, Integer> idempotentCreateOwnerIds = new ConcurrentHashMap<>();
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -217,7 +227,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        ResponseEntity<OwnerDto> replay = replayIdempotentCreate(idempotencyKey);
+        if (replay != null) {
+            return replay;
+        }
         validateRequiredFields(ownerFieldsDto);
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = toBusinessDay(
@@ -246,11 +260,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
+        rememberIdempotentCreate(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path(OwnerMapper.OWNER_PATH_TEMPLATE).buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Serves a repeated create that carries an {@code Idempotency-Key} already seen on an earlier
+     * successful create. When the key has a remembered owner that still exists, the originally created
+     * owner is returned with {@code 200 OK} (carrying its {@code Location}) so the retry neither creates
+     * a duplicate nor re-runs the create rules. A {@code null} or blank key, an unseen key, or a key
+     * whose owner no longer exists yields {@code null}, signalling the caller to perform a normal create.
+     *
+     * @param idempotencyKey the {@code Idempotency-Key} header value, or {@code null} if absent
+     * @return the originally created owner as a {@code 200 OK} response, or {@code null} to create normally
+     */
+    private ResponseEntity<OwnerDto> replayIdempotentCreate(String idempotencyKey) {
+        if (isBlank(idempotencyKey)) {
+            return null;
+        }
+        Integer ownerId = idempotentCreateOwnerIds.get(idempotencyKey);
+        if (ownerId == null) {
+            return null;
+        }
+        Owner owner = this.clinicService.findOwnerById(ownerId);
+        if (owner == null) {
+            return null;
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path(OwnerMapper.OWNER_PATH_TEMPLATE).buildAndExpand(owner.getId()).toUri());
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyBulkSignupWarning(ownerDto);
+        return new ResponseEntity<>(ownerDto, headers, HttpStatus.OK);
+    }
+
+    /**
+     * Remembers the owner just created under its request's {@code Idempotency-Key}, so a later create
+     * repeating that key is served the same owner ({@link #replayIdempotentCreate}). A {@code null} or
+     * blank key is ignored, leaving that create non-idempotent.
+     *
+     * @param idempotencyKey the {@code Idempotency-Key} header value, or {@code null} if absent
+     * @param ownerId        the id of the owner that was just created
+     */
+    private void rememberIdempotentCreate(String idempotencyKey, Integer ownerId) {
+        if (!isBlank(idempotencyKey)) {
+            idempotentCreateOwnerIds.put(idempotencyKey, ownerId);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
