@@ -100,6 +100,9 @@ public class Owner extends Person {
     @Transient
     private Integer possibleDuplicateOf;
 
+    @Transient
+    private Boolean riskFlag;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -394,6 +397,20 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this response should carry an overall risk flag: {@code true} when any of the soft risk
+     * signals hold — this owner is a {@link #getPossibleDuplicate() possible duplicate}, its email is on a
+     * disposable-adjacent domain, or its city is over its soft capacity — otherwise {@code false}. A
+     * roll-up of the individual signals. Computed per request, not persisted.
+     */
+    public Boolean getRiskFlag() {
+        return this.riskFlag;
+    }
+
+    public void setRiskFlag(Boolean riskFlag) {
+        this.riskFlag = riskFlag;
     }
 
     /**

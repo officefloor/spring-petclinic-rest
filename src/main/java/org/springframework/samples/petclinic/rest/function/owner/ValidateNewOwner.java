@@ -2,7 +2,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -38,14 +37,6 @@ public class ValidateNewOwner {
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
                     + "(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$");
-
-    /**
-     * Disposable-email providers whose domains are rejected: a syntactically valid address on one of
-     * these is a 400, so throwaway inboxes cannot be used to register an owner. Lower-cased to compare
-     * against the canonicalized (lower-cased) email domain.
-     */
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-            "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
@@ -97,9 +88,9 @@ public class ValidateNewOwner {
             }
             String canonical = email.toLowerCase();
             // Reject throwaway inboxes: a syntactically valid address on a disposable-email domain is a
-            // 400, so the owner is never persisted. Domain is everything after the last '@'.
-            String domain = canonical.substring(canonical.lastIndexOf('@') + 1);
-            if (DISPOSABLE_DOMAINS.contains(domain)) {
+            // 400, so the owner is never persisted. The blocklist and the "domain = everything after the
+            // last '@'" rule live in OwnerEmail, shared with the FlagRisk adjacency check.
+            if (OwnerEmail.isDisposable(canonical)) {
                 throw new DisposableEmailException(email);
             }
             request.setEmail(canonical);
