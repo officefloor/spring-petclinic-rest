@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -142,7 +143,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
-        rejectDailyLimitReached();
+        LocalDate registrationDate = toBusinessDay(
+            ownerFieldsDto.getRegistrationDate() != null ? ownerFieldsDto.getRegistrationDate() : LocalDate.now());
+        rejectDailyLimitReached(registrationDate);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String address = normalizeAddress(ownerFieldsDto.getAddress());
@@ -157,9 +160,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -443,23 +444,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creation of an owner once today has already reached its daily quota of
-     * {@value #DAILY_OWNER_LIMIT} owners. Owners are counted by their {@code registrationDate}
-     * being today's date; the owner being created has not been saved yet, so it is never included
-     * in the count.
+     * Rejects creation of an owner once the given business day has already reached its daily quota
+     * of {@value #DAILY_OWNER_LIMIT} owners. Owners are counted by their {@code registrationDate}
+     * being that day — the adjusted business day the owner being created will carry — so the quota
+     * applies per business day. The owner being created has not been saved yet, so it is never
+     * included in the count.
      *
+     * @param registrationDate the adjusted business-day registration date of the owner being created
      * @throws DailyOwnerLimitReachedException if {@value #DAILY_OWNER_LIMIT} or more owners already
-     *                                         carry today's registration date, yielding a
+     *                                         carry that registration date, yielding a
      *                                         429 Too Many Requests response
      */
-    private void rejectDailyLimitReached() {
-        LocalDate today = LocalDate.now();
-        long createdToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+    private void rejectDailyLimitReached(LocalDate registrationDate) {
+        long createdThatDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
-        if (createdToday >= DAILY_OWNER_LIMIT) {
-            throw new DailyOwnerLimitReachedException(today);
+        if (createdThatDay >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitReachedException(registrationDate);
         }
+    }
+
+    /**
+     * Rolls a registration date forward to a business day. A date that falls on a Saturday or Sunday
+     * is rolled forward to the next Monday; a date already on a weekday is returned unchanged. This
+     * applies to the effective registration date whether it was supplied in the request or defaulted
+     * to the server date, and the adjusted value is what gets stored as {@code registrationDate} and
+     * feeds every value derived from it (such as the membership number's year segment and the daily
+     * create-limit's per-day bucket).
+     *
+     * @param date the effective registration date, supplied or defaulted
+     * @return the same date when it is a weekday, otherwise the next Monday
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        LocalDate adjusted = date;
+        while (adjusted.getDayOfWeek() == DayOfWeek.SATURDAY
+            || adjusted.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            adjusted = adjusted.plusDays(1);
+        }
+        return adjusted;
     }
 
     /**
