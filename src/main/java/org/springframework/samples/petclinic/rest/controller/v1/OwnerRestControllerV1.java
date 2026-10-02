@@ -129,6 +129,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int CITY_CAPACITY = 50;
 
     /**
+     * The number of owners a city must already hold before a response starts carrying a
+     * {@code capacityWarning}. Once a city holds at least this many owners (but still fewer than the
+     * hard {@link #CITY_CAPACITY} limit), it is flagged as approaching capacity.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * The maximum number of owners that may be registered in a single day. Once this many owners
      * already carry today's {@code registrationDate}, the day's quota is exhausted and no further
      * owners can be created that day.
@@ -238,6 +245,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
+        applyCapacityWarning(ownerDto);
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -278,6 +286,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rememberIdempotentCreate(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
+        applyCapacityWarning(ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path(OwnerMapper.OWNER_PATH_TEMPLATE).buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -310,6 +319,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .path(OwnerMapper.OWNER_PATH_TEMPLATE).buildAndExpand(owner.getId()).toUri());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
+        applyCapacityWarning(ownerDto);
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.OK);
     }
 
@@ -847,6 +857,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void applyBulkSignupWarning(OwnerDto ownerDto) {
         LocalDate today = toBusinessDay(LocalDate.now());
         ownerDto.setBulkSignupWarning(countOwnersRegisteredOn(today) > BULK_SIGNUP_WARNING_THRESHOLD);
+    }
+
+    /**
+     * Sets the {@code capacityWarning} flag on an owner response. The flag is {@code true} when the
+     * owner's city already holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD} and
+     * {@value #CITY_CAPACITY} minus one owners inclusive — approaching the hard {@link #CITY_CAPACITY}
+     * limit — and {@code false} otherwise. Owners are counted per city the same way the capacity
+     * rejection counts them ({@link #countOwnersInCity}).
+     *
+     * @param ownerDto the owner response to flag
+     */
+    private void applyCapacityWarning(OwnerDto ownerDto) {
+        int ownersInCity = countOwnersInCity(ownerDto.getCity());
+        ownerDto.setCapacityWarning(
+            ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < CITY_CAPACITY);
     }
 
     /**
