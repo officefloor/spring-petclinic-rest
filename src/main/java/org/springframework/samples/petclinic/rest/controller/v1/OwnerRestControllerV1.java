@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -114,6 +115,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
@@ -356,5 +360,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateOwnerTelephoneException(telephone);
         }
+    }
+
+    /**
+     * Rejects creation of an owner whose last name and address both match an existing owner's,
+     * which marks them as belonging to the same household. Both the last name and the address are
+     * compared case-insensitively with surrounding and internal whitespace collapsed, so values
+     * that differ only in letter case or spacing are still treated as a match.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address  the address of the owner being created
+     * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and
+     *                                          address, yielding a 409 Conflict response
+     */
+    private void rejectDuplicateHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForComparison(lastName);
+        String normalizedAddress = normalizeForComparison(address);
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress));
+        if (duplicate) {
+            throw new DuplicateOwnerHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Normalizes a text value for case- and whitespace-insensitive comparison: surrounding
+     * whitespace is trimmed, every internal run of whitespace is collapsed to a single space, and
+     * the result is lower-cased.
+     *
+     * @param value the value to normalize, possibly {@code null}
+     * @return the normalized value, or an empty string if {@code value} is {@code null}
+     */
+    private String normalizeForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
