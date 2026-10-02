@@ -213,8 +213,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDailyLimitReached(registrationDate);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String address = normalizeAddress(ownerFieldsDto.getAddress());
-        owner.setAddress(address);
+        applyAddress(owner, ownerFieldsDto);
         rejectCityAtCapacity(owner.getCity());
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         owner.setTelephone(telephone);
@@ -353,7 +352,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+        if (!hasAddress(ownerFieldsDto)) {
             missingFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -880,5 +879,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
             normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return normalized.toString();
+    }
+
+    /**
+     * Reports whether the submitted owner supplies an address in either accepted form: a non-blank
+     * structured {@code addressLine1}, or a non-blank flat {@code address}. The structured form is
+     * preferred when present, but either satisfies the address requirement, keeping the create
+     * contract backward-compatible with earlier flat-address-only owners.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @return {@code true} if an address is supplied in either form
+     */
+    private boolean hasAddress(OwnerFieldsDto ownerFieldsDto) {
+        return !isBlank(ownerFieldsDto.getAddressLine1())
+            || !isBlank(normalizeAddress(ownerFieldsDto.getAddress()));
+    }
+
+    /**
+     * Applies the owner's address, preferring the structured form over the flat one. When a non-blank
+     * {@code addressLine1} is supplied, it and the optional {@code addressLine2} are normalized
+     * ({@link #normalizeAddress}) and stored, and the owner's composed {@code address} is set to the
+     * normalized {@code addressLine1} with a single space and the normalized {@code addressLine2}
+     * appended when {@code addressLine2} is present. Otherwise the flat {@code address} is normalized
+     * and stored and the structured lines are left unset. This keeps earlier flat-address owners
+     * working while letting everything that reads the address use the composed, normalized value.
+     *
+     * @param owner          the owner being created
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void applyAddress(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (!isBlank(ownerFieldsDto.getAddressLine1())) {
+            String line1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+            String line2 = isBlank(ownerFieldsDto.getAddressLine2())
+                ? null
+                : normalizeAddress(ownerFieldsDto.getAddressLine2());
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2);
+            owner.setAddress(line2 != null ? line1 + " " + line2 : line1);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        }
     }
 }
