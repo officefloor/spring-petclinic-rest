@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.samples.petclinic.util.TelephoneFormatter;
 
 import jakarta.persistence.*;
@@ -211,9 +212,9 @@ public class Owner extends Person {
 
     /**
      * Whether this owner was flagged a possible (soft) duplicate at creation time: it was not a
-     * hard duplicate, but shared an existing owner's last name and postcode while carrying a
-     * different telephone. {@code false} (or {@code null} for owners created before the check) when
-     * no such match was found.
+     * hard duplicate, but its {@code soundex(lastName)} and postcode matched an existing owner's while
+     * its identity key differed. {@code false} (or {@code null} for owners created before the check)
+     * when no such match was found.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -462,19 +463,87 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: a single derived value that consolidates all duplicate detection,
-     * formatted {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. The
-     * telephone is the stored E.164 value, the email its stored lower-cased form (empty when the
-     * owner has none), and the household id the stored shared identifier (empty when the owner is
-     * not part of a shared household). Two owners are duplicates only when their whole identity keys
-     * are equal; because the telephone is part of the key, two members of the same household with
-     * different telephones have different identity keys.
+     * the lower-case hex SHA-256 digest of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}.
+     * The telephone is the stored E.164 value, the email its stored lower-cased form (empty when the
+     * owner has none), and the final segment the American Soundex code of the owner's last name. Two
+     * owners are duplicates only when their whole identity keys are equal; because the telephone is
+     * part of the key, two owners with the same last name and postcode but different telephones have
+     * different identity keys and are not hard duplicates.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        String soundexPart = soundex(this.getLastName());
+        return HashUtils.sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+    }
+
+    /**
+     * The American Soundex code of the owner's last name, used to group similar-sounding surnames for
+     * soft (possible-duplicate) matching. Derived from the owner's own last name.
+     */
+    @Transient
+    public String getLastNameSoundex() {
+        return soundex(this.getLastName());
+    }
+
+    /**
+     * Computes the American Soundex code of a name: its first letter (upper-cased) followed by three
+     * digits derived from the remaining consonants, with adjacent duplicate codes (and codes separated
+     * only by {@code H} or {@code W}) collapsed, then zero-padded and truncated to four characters. A
+     * {@code null} or letter-free value yields an empty string.
+     *
+     * @param value the name to encode
+     * @return the four-character Soundex code, or an empty string
+     */
+    private static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        String letters = value.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previousDigit = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != previousDigit) {
+                code.append(digit);
+            }
+            if (c != 'H' && c != 'W') {
+                previousDigit = digit;
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * Maps a single upper-case letter to its Soundex digit, or {@code '0'} for the vowels and the
+     * letters {@code H}, {@code W} and {@code Y} that carry no Soundex digit.
+     */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**

@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -57,6 +54,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -701,17 +699,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the first {@code length} upper-cased hex characters of its SHA-256 digest
      */
     private String hashHex(String input, int length) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.substring(0, length).toUpperCase(Locale.ROOT);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm not available", e);
-        }
+        return HashUtils.sha256Hex(input).substring(0, length).toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -813,16 +801,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creation of an owner whose derived {@code identityKey} exactly matches an existing
-     * owner's. The identity key — {@code '<normalizedTelephone>|<email or empty>|<householdId or
-     * empty>'} — is the single value that consolidates all duplicate detection: the previously
-     * separate telephone, email and household checks are all expressed through it. Because the
-     * telephone is part of the key, two members of the same household (same {@code householdId})
-     * with different telephones have different identity keys and are both allowed; only a whole-key
-     * match is a duplicate. The owner being created already carries its normalized telephone,
-     * email and (if any) household id, and existing owners store the same normalized forms, so the
-     * keys are compared directly.
+     * owner's. The identity key — the SHA-256 hex digest of {@code '<normalizedTelephone>|<lowerEmail>
+     * |<soundex(lastName)>'} — is the single value that consolidates all duplicate detection: the
+     * previously separate telephone, email and household checks are all expressed through it. Because
+     * the telephone is part of the key, two owners with the same last name and postcode but different
+     * telephones have different identity keys and are both allowed (the second is a soft match); only a
+     * whole-key match is a duplicate. The owner being created already carries its normalized telephone,
+     * email and last name, and existing owners store the same normalized forms, so the keys are
+     * compared directly. Owners flagged deleted are ignored.
      *
-     * @param owner the owner being created, with its telephone, email and household id already set
+     * @param owner the owner being created, with its telephone, email and last name already set
      * @throws DuplicateOwnerIdentityException if another owner already has the same identity key,
      *                                         yielding a 409 Conflict response
      */
@@ -840,19 +828,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Flags the owner being created as a possible (soft) duplicate. A possible duplicate is an owner
      * that is not a hard duplicate (its identity key is unique, so it has already passed
-     * {@link #rejectDuplicateIdentity}) yet belongs to the same household as an existing owner — that
-     * is, it carries the same computed {@code householdId} (derived from the last name and postcode) —
-     * while carrying a different telephone. When such a match exists the owner is created with
+     * {@link #rejectDuplicateIdentity}) yet whose {@code soundex(lastName)} and postcode both match an
+     * existing owner's. Because the telephone is part of the identity key, two owners that share a last
+     * name and postcode but carry different telephones have different identity keys, so the second is
+     * created as a soft match rather than rejected. When such a match exists the owner is created with
      * {@code possibleDuplicate} set to {@code true} and {@code possibleDuplicateOf} set to the matching
      * owner's id (the earliest matching owner by id); otherwise {@code possibleDuplicate} is
      * {@code false} and {@code possibleDuplicateOf} is left unset.
      *
      * <p>An owner that declares household membership via {@code sharesHousehold} is never flagged: a
-     * declared household member is not a suspected duplicate. Without that declaration a same-household
-     * owner with a different telephone is still created, carrying the {@code possibleDuplicate} flag so
-     * it can be reviewed.
+     * declared household member is not a suspected duplicate. An owner without a postcode cannot match
+     * on postcode and so is never flagged.
      *
-     * @param owner           the owner being created, with its household id and telephone already set
+     * @param owner           the owner being created, with its telephone, email, postcode and last
+     *                        name already set
      * @param sharesHousehold whether the owner declared itself a member of an existing household
      */
     private void applyPossibleDuplicate(Owner owner, boolean sharesHousehold) {
@@ -860,15 +849,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             return;
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank()) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
             return;
         }
-        String telephone = owner.getTelephone();
+        String soundex = owner.getLastNameSoundex();
+        String identityKey = owner.getIdentityKey();
         Owner match = this.clinicService.findAllOwners().stream()
             .filter(this::isNotDeleted)
-            .filter(existing -> householdId.equals(existing.getHouseholdId())
-                && !Objects.equals(telephone, existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey())
+                && soundex.equals(existing.getLastNameSoundex())
+                && postcode.equals(existing.getPostcode()))
             .min(Comparator.comparingInt(Owner::getId))
             .orElse(null);
         if (match != null) {
