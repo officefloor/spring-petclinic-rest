@@ -63,6 +63,14 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * The number of owners in this owner's household (those sharing its {@code householdId}),
+     * including this owner. Not persisted; populated when a response is produced so the membership
+     * tier can reflect the current household size.
+     */
+    @Transient
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -139,6 +147,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     /**
      * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
      */
@@ -171,12 +187,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code 'SILVER'} when the owner is unique
-     * (namesakeCount is 0) and has an email address, otherwise {@code 'BRONZE'}.
-     * Derived from the owner's own fields.
+     * The owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing the
+     * same {@code householdId}) has three or more members; otherwise {@code 'SILVER'} when the owner
+     * is unique (namesakeCount is 0) and has an email address, and {@code 'BRONZE'} in every other
+     * case. The household-size input is populated when the response is produced; the remaining inputs
+     * are the owner's own fields.
      */
     @Transient
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return unique && hasEmail ? "SILVER" : "BRONZE";
