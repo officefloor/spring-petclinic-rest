@@ -419,12 +419,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region carried by the {@link #getMemberId() member id}, which
-     * is its leading {@code <REGION>} segment — everything preceding the two-digit fiscal year, the
-     * eight-character {@code HASH8} and the single check digit that complete the base member id (e.g.
-     * {@code 'NSW'} for member id {@code 'NSW261A2B3C4D7'}). The region is the one derived from the
-     * postcode at creation time and baked into the identity. {@code 'UNKNOWN'} when the owner has no
-     * member id yet.
+     * The owner's locality: the plain canonical region derived from the postcode at creation time and
+     * carried, as the leading {@code <REGION>} segment, by the {@link #getMemberId() member id} — the
+     * part preceding the two-digit fiscal year, the eight-character {@code HASH8} and the single check
+     * digit that complete the base member id. Under version 2 that segment mixes in the fixed
+     * {@link #IDENTITY_VERSION_TAG 'V2'} version tag (e.g. {@code 'V2NSW'}); the locality is a
+     * user-facing field, not an identifier, so the {@code 'V2'} tag is stripped and the plain region
+     * code is returned (e.g. {@code 'NSW'} for member id {@code 'V2NSW261A2B3C4D1'}). {@code 'UNKNOWN'}
+     * when the owner has no member id yet.
      */
     @Transient
     public String getLocality() {
@@ -435,7 +437,11 @@ public class Owner extends Person {
         if (base.length() <= MEMBER_ID_FIXED_TAIL) {
             return "UNKNOWN";
         }
-        return base.substring(0, base.length() - MEMBER_ID_FIXED_TAIL);
+        String region = base.substring(0, base.length() - MEMBER_ID_FIXED_TAIL);
+        if (region.startsWith(IDENTITY_VERSION_TAG)) {
+            region = region.substring(IDENTITY_VERSION_TAG.length());
+        }
+        return region;
     }
 
     /**
@@ -489,8 +495,18 @@ public class Owner extends Person {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
         String soundexPart = soundex(this.getLastName());
-        return HashUtils.sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+        return HashUtils.sha256Hex(
+            IDENTITY_VERSION_TAG + "|" + telephonePart + "|" + emailPart + "|" + soundexPart);
     }
+
+    /**
+     * The fixed version tag mixed into every version-2 owner identifier (the member id's region
+     * segment, the identity key and the household id) so that no value produced under version 1 is
+     * produced again. It is deliberately absent from the user-facing {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} and {@link #getOwnerSegment() owner segment}, which stay the
+     * plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
 
     /**
      * The American Soundex code of the owner's last name, used to group similar-sounding surnames for

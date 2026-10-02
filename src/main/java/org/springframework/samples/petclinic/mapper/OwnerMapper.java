@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -28,7 +29,26 @@ public interface OwnerMapper {
      */
     String OWNER_PATH_TEMPLATE = "/api/owners/{id}";
 
+    @Mapping(target = "identity", ignore = true)
+    @Mapping(target = "apiVersion", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's three version-2 identifiers under the response's nested {@code identity}
+     * object and stamps the top-level {@code apiVersion} with 2. Runs after every {@link Owner} to
+     * {@link OwnerDto} mapping. The {@code memberId}, {@code identityKey} and {@code householdId} are no
+     * longer top-level fields, so they are carried here instead; each is already derived under the
+     * version-2 algorithm that mixes in the fixed {@code 'V2'} version tag.
+     */
+    @AfterMapping
+    default void setIdentityAndApiVersion(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setApiVersion(2);
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        ownerDto.setIdentity(identity);
+    }
 
     /**
      * Derives the DTO's {@code selfLink} from the owner's id — the API path to the owner, kept in the

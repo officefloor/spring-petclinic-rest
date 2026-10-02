@@ -120,6 +120,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final AtomicInteger OWNER_CREATED_SEQ = new AtomicInteger(0);
 
     /**
+     * The schema version stamped onto every structured {@code OWNER_CREATED} event. Version 2 goes with
+     * the version-2 owner identity: the {@code memberId} the event carries is the version-2 member id,
+     * and the event itself gains this {@code schemaVersion} field.
+     */
+    private static final int OWNER_CREATED_SCHEMA_VERSION = 2;
+
+    /**
      * Common street-type abbreviations expanded during address normalization. Keys are the
      * upper-cased abbreviation as it appears as a whole whitespace-delimited token; values are the
      * expanded form it is replaced with.
@@ -394,19 +401,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Immutable structured audit event emitted on a successful owner create. Serialized to JSON on the
      * {@code AUDIT} logger, its component order fixes the field order {@code {seq, ownerId, memberId,
-     * membershipLevel, event}}. The {@code event} discriminator is always {@code 'OWNER_CREATED'}. The
-     * {@code memberId} component holds the owner's current primary identifier
-     * ({@link #primaryIdentifier}) — the unified member id.
+     * membershipLevel, schemaVersion, event}}. The {@code event} discriminator is always
+     * {@code 'OWNER_CREATED'} and {@code schemaVersion} is always {@value #OWNER_CREATED_SCHEMA_VERSION}.
+     * The {@code memberId} component holds the owner's current primary identifier
+     * ({@link #primaryIdentifier}) — the unified, version-2 member id.
      *
      * @param seq             monotonically increasing sequence across all creates
      * @param ownerId         the new owner's id
      * @param memberId        the owner's current primary identifier
      * @param membershipLevel the owner's stored membership level
+     * @param schemaVersion   the structured event's schema version, always 2
      */
     private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel,
-                                     String event) {
+                                     int schemaVersion, String event) {
         private OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel) {
-            this(seq, ownerId, memberId, membershipLevel, "OWNER_CREATED");
+            this(seq, ownerId, memberId, membershipLevel, OWNER_CREATED_SCHEMA_VERSION, "OWNER_CREATED");
         }
     }
 
@@ -744,7 +753,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the formatted, de-duplicated member id
      */
     private String generateMemberId(String postcode, String telephone, String lastName, LocalDate registrationDate) {
-        String region = regionForPostcode(postcode);
+        String region = Owner.IDENTITY_VERSION_TAG + regionForPostcode(postcode);
         String fy = String.format("%02d", FiscalYear.of(registrationDate) % 100);
         String hash8 = hashHex(telephone + lastName, 8);
         String prefix = region + fy + hash8;
@@ -1116,7 +1125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null) {
             return null;
         }
-        return hashHex(normalizeForComparison(lastName) + "|" + postcode, 12);
+        return hashHex(Owner.IDENTITY_VERSION_TAG + "|" + normalizeForComparison(lastName) + "|" + postcode, 12);
     }
 
     /**
