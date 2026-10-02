@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -115,7 +118,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            assignHousehold(owner, ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        } else {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
@@ -374,13 +379,88 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *                                          address, yielding a 409 Conflict response
      */
     private void rejectDuplicateHousehold(String lastName, String address) {
+        if (!findHouseholdMembers(lastName, address).isEmpty()) {
+            throw new DuplicateOwnerHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Finds every existing owner belonging to the household identified by the given last name and
+     * address — that is, the owners the duplicate-household rule rejects and the {@code sharesHousehold}
+     * opt-in joins. Both the last name and the address are compared case-insensitively with surrounding
+     * and internal whitespace collapsed, so values that differ only in letter case or spacing still
+     * match. This single definition of household membership is shared by {@link #rejectDuplicateHousehold}
+     * and {@link #assignHousehold}.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address  the address of the owner being created
+     * @return the existing owners in that household, or an empty list if there are none
+     */
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeForComparison(lastName);
         String normalizedAddress = normalizeForComparison(address);
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress));
-        if (duplicate) {
-            throw new DuplicateOwnerHouseholdException(lastName, address);
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
+            .toList();
+    }
+
+    /**
+     * Enrolls a newly created owner into the household of any existing owner that shares its last
+     * name and address, so an owner that opts in via {@code sharesHousehold} is accepted instead of
+     * rejected as a duplicate. Last name and address are compared case-insensitively with collapsed
+     * whitespace. When at least one such owner already exists, every member of the household — the
+     * existing owners and the new one — is assigned the same stable {@code householdId}; if a member
+     * already carries one it is reused, otherwise a new identifier derived from the shared last name
+     * and address is created and back-filled onto the existing members. When no owner yet lives at
+     * that address under the same last name no identifier is assigned and the owner is created alone.
+     *
+     * @param newOwner the owner being created, whose {@code householdId} will be set on a match
+     * @param lastName the last name of the owner being created
+     * @param address  the address of the owner being created
+     * @return the assigned {@code householdId}, or {@code null} if there was no household to join
+     */
+    private String assignHousehold(Owner newOwner, String lastName, String address) {
+        List<Owner> members = findHouseholdMembers(lastName, address);
+        if (members.isEmpty()) {
+            return null;
+        }
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(existing -> existing != null && !existing.isBlank())
+            .findFirst()
+            .orElseGet(() -> generateHouseholdId(normalizeForComparison(lastName), normalizeForComparison(address)));
+        for (Owner member : members) {
+            if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+                member.setHouseholdId(householdId);
+                this.clinicService.saveOwner(member);
+            }
+        }
+        newOwner.setHouseholdId(householdId);
+        return householdId;
+    }
+
+    /**
+     * Derives a stable household identifier, formatted {@code 'HH-<HEX12>'}, where {@code HEX12} is
+     * the first twelve upper-cased hex characters of the SHA-256 digest of the normalized last name
+     * and address joined by a {@code '|'}. The same last name and address therefore always yield the
+     * same identifier, so members of one household share a single value.
+     *
+     * @param normalizedLastName the household's last name, already normalized for comparison
+     * @param normalizedAddress  the household's address, already normalized for comparison
+     * @return the derived household identifier
+     */
+    private String generateHouseholdId(String normalizedLastName, String normalizedAddress) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((normalizedLastName + "|" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return "HH-" + hex.substring(0, 12).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
         }
     }
 
