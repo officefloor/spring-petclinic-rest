@@ -253,6 +253,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         applyCapacityWarning(ownerDto);
+        applyRiskFlag(ownerDto);
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -296,6 +297,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         applyCapacityWarning(ownerDto);
+        applyRiskFlag(ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path(OwnerMapper.OWNER_PATH_TEMPLATE).buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -329,6 +331,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         applyCapacityWarning(ownerDto);
+        applyRiskFlag(ownerDto);
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.OK);
     }
 
@@ -927,6 +930,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int ownersInCity = countOwnersInCity(ownerDto.getCity());
         ownerDto.setCapacityWarning(
             ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < CITY_CAPACITY);
+    }
+
+    /**
+     * Sets the {@code riskFlag} on an owner response. The flag is {@code true} when any one of these
+     * holds at the time the response is produced, and {@code false} otherwise:
+     * <ul>
+     *     <li>the owner is a possible duplicate ({@code possibleDuplicate} is {@code true});</li>
+     *     <li>the owner's email domain is disposable-adjacent
+     *     ({@link #isDisposableAdjacentEmail});</li>
+     *     <li>the owner's city is over its soft capacity — it already holds at least
+     *     {@value #CITY_CAPACITY_WARNING_THRESHOLD} owners (the soft capacity, short of the hard
+     *     {@link #CITY_CAPACITY} limit), counted per city the same way the capacity rules count them
+     *     ({@link #countOwnersInCity}).</li>
+     * </ul>
+     *
+     * @param ownerDto the owner response to flag
+     */
+    private void applyRiskFlag(OwnerDto ownerDto) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(ownerDto.getPossibleDuplicate());
+        boolean disposableAdjacent = isDisposableAdjacentEmail(ownerDto.getEmail());
+        boolean overSoftCapacity = countOwnersInCity(ownerDto.getCity()) >= CITY_CAPACITY_WARNING_THRESHOLD;
+        ownerDto.setRiskFlag(possibleDuplicate || disposableAdjacent || overSoftCapacity);
+    }
+
+    /**
+     * Reports whether an email address carries a disposable-adjacent domain: its domain (the part
+     * after the last {@code @}, compared case-insensitively) is a subdomain of a listed disposable
+     * mail provider ({@link #DISPOSABLE_EMAIL_DOMAINS}) — the lower-cased domain equals a listed
+     * disposable domain or ends with {@code '.'} followed by one. Exact disposable domains are already
+     * rejected at creation, so in practice this catches their subdomains, which slip past that
+     * exact-match blocklist. A {@code null}, blank or address without a domain is not adjacent.
+     *
+     * @param email the owner's stored email address, or {@code null} if none
+     * @return {@code true} if the email domain is disposable-adjacent
+     */
+    private boolean isDisposableAdjacentEmail(String email) {
+        if (isBlank(email)) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        return DISPOSABLE_EMAIL_DOMAINS.stream()
+            .anyMatch(disposable -> domain.equals(disposable) || domain.endsWith("." + disposable));
     }
 
     /**
