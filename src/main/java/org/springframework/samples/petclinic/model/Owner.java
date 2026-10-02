@@ -70,13 +70,23 @@ public class Owner extends Person {
     private Set<Pet> pets;
 
     /**
-     * Fixed city-to-region lookup backing {@link #getLocality()}. Any city not listed derives
-     * locality {@code 'UNKNOWN'}.
+     * Fixed city-to-region lookup backing {@link #getLocality()}. Used as the fallback when the
+     * postcode is absent or in no known range. Any city not listed derives locality {@code 'UNKNOWN'}.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
         "Melbourne", "VIC",
         "Brisbane", "QLD");
+
+    /**
+     * Fixed region-to-postcode-range lookup backing {@link #getLocality()}. Each value is the
+     * inclusive {@code {low, high}} 4-digit range for that region (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099). The postcode is preferred over the city when deriving the locality.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     public String getAddress() {
         return this.address;
@@ -201,13 +211,39 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived from the city via the fixed city-to-region
-     * table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code 'UNKNOWN'}
-     * when the city is not in the table.
+     * The owner's locality: the canonical region derived first from the postcode and only then from
+     * the city. When the postcode is a 4-digit value within a known region range
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}) that region is returned,
+     * disambiguating cities that share a name. Otherwise, when the postcode is absent or in no known
+     * range, the region is derived from the city via the fixed city-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code 'UNKNOWN'} when
+     * the city is not in the table.
      */
     @Transient
     public String getLocality() {
+        String regionByPostcode = regionForPostcode(this.postcode);
+        if (regionByPostcode != null) {
+            return regionByPostcode;
+        }
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
+     * Resolve a region from a postcode by its known 4-digit range, or {@code null} when the postcode
+     * is {@code null}, not exactly 4 digits, or falls in no known range.
+     */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
