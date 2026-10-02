@@ -91,7 +91,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. On a successful owner create an audit line is emitted here carrying the
-     * new owner's id, customer code and registration date.
+     * new owner's id, customer code, registration date, membership level and membership number.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -232,8 +232,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(generateCustomerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            owner.getMembershipLevel(), owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyBulkSignupWarning(ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
