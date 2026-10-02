@@ -1,0 +1,170 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index f7778efd8..117af4be0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,11 +30,14 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.util.CityCapacityException;
+ import org.springframework.samples.petclinic.util.DisposableEmailException;
++import org.springframework.samples.petclinic.util.DuplicateOwnerException;
+ import org.springframework.samples.petclinic.util.InvalidAddressException;
+ import org.springframework.samples.petclinic.util.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.util.InvalidRegistrationDateException;
+ import org.springframework.samples.petclinic.util.InvalidTelephoneException;
++import org.springframework.samples.petclinic.util.RegistrationRateLimitException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.validation.FieldError;
+@@ -219,6 +222,57 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link RegistrationRateLimitException} thrown when the per-day owner registration
++     * limit has been reached, returning a 429 Too Many Requests with an RFC7807 problem body.
++     *
++     * @param e The {@link RegistrationRateLimitException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
++     */
++    @ExceptionHandler(RegistrationRateLimitException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRegistrationRateLimitException(RegistrationRateLimitException e, HttpServletRequest request) {
++        logger.debug("Registration rate limit at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
++    /**
++     * Handles {@link DuplicateOwnerException} thrown when a new owner's identity key matches an
++     * existing, non-deleted owner, returning a 409 Conflict with an RFC7807 problem body.
++     *
++     * @param e The {@link DuplicateOwnerException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateOwnerException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
++        logger.debug("Duplicate owner at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
++    /**
++     * Handles {@link CityCapacityException} thrown when an owner's city has reached its
++     * registration capacity, returning a 409 Conflict with an RFC7807 problem body.
++     *
++     * @param e The {@link CityCapacityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(CityCapacityException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityCapacityException(CityCapacityException e, HttpServletRequest request) {
++        logger.debug("City capacity reached at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fb523b4fb..bc4cc9ed0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,9 +41,12 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.IdempotencyKeyRegistry;
+ import org.springframework.samples.petclinic.util.AddressValidator;
++import org.springframework.samples.petclinic.util.CityCapacityException;
+ import org.springframework.samples.petclinic.util.DisposableEmailValidator;
++import org.springframework.samples.petclinic.util.DuplicateOwnerException;
+ import org.springframework.samples.petclinic.util.PostcodeValidator;
+ import org.springframework.samples.petclinic.util.RegistrationDateValidator;
++import org.springframework.samples.petclinic.util.RegistrationRateLimitException;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -153,7 +156,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         DisposableEmailValidator.validate(owner.getEmail());
+         RegistrationDateValidator.validate(owner.getRegistrationDate());
+         if (this.clinicService.isDailyRegistrationAtCapacity()) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new RegistrationRateLimitException();
+         }
+         // The household id is deterministic from (lastName, postcode), so owners sharing a last name
+         // and postcode are automatically the same household. It no longer gates duplicate detection
+@@ -165,10 +168,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // existing, non-deleted owner's. Two owners with the same last name and postcode but different
+         // telephones have distinct keys and are created as a soft match rather than rejected.
+         if (this.clinicService.isIdentityKeyInUse(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new DuplicateOwnerException();
+         }
+         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new CityCapacityException();
+         }
+         this.clinicService.saveOwner(owner, sharesHousehold);
+         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CityCapacityException.java b/src/main/java/org/springframework/samples/petclinic/util/CityCapacityException.java
+new file mode 100644
+index 000000000..154ac48a8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CityCapacityException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Thrown when an owner cannot be registered because its city has reached its registration
++ * capacity. Handled by the REST layer as a 409 Conflict.
++ */
++public class CityCapacityException extends RuntimeException {
++
++    public CityCapacityException() {
++        super("The owner's city has reached its registration capacity");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/util/DuplicateOwnerException.java
+new file mode 100644
+index 000000000..fa02deec7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/DuplicateOwnerException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Thrown when a new owner's identity key matches an existing, non-deleted owner. Handled by the
++ * REST layer as a 409 Conflict.
++ */
++public class DuplicateOwnerException extends RuntimeException {
++
++    public DuplicateOwnerException() {
++        super("An owner with the same identity already exists");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegistrationRateLimitException.java b/src/main/java/org/springframework/samples/petclinic/util/RegistrationRateLimitException.java
+new file mode 100644
+index 000000000..13683f376
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegistrationRateLimitException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Thrown when the per-day owner registration limit has been reached. Handled by the REST layer
++ * as a 429 Too Many Requests.
++ */
++public class RegistrationRateLimitException extends RuntimeException {
++
++    public RegistrationRateLimitException() {
++        super("The daily owner registration limit has been reached; please retry later");
++    }
++}
