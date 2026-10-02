@@ -266,7 +266,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
@@ -368,6 +369,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Reports whether an existing owner has not been soft-deleted. The create endpoint's duplicate
+     * and identity checks consider only live owners, so an owner flagged {@code deleted} no longer
+     * blocks a new owner that would otherwise match it.
+     *
+     * @param owner an existing owner
+     * @return {@code true} unless the owner is flagged deleted
+     */
+    private boolean isNotDeleted(Owner owner) {
+        return !Boolean.TRUE.equals(owner.getDeleted());
     }
 
     /**
@@ -745,6 +758,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(Owner owner) {
         String identityKey = owner.getIdentityKey();
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .map(Owner::getIdentityKey)
             .anyMatch(identityKey::equals);
         if (inUse) {
@@ -781,6 +795,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephone = owner.getTelephone();
         Owner match = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .filter(existing -> householdId.equals(existing.getHouseholdId())
                 && !Objects.equals(telephone, existing.getTelephone()))
             .min(Comparator.comparingInt(Owner::getId))
@@ -831,6 +846,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (inUse) {
             throw new DuplicateHouseholdException(householdId);
