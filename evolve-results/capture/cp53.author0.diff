@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 5122dd0ca..cd3f4af6d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -7,19 +9,35 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Emits one audit line per successful owner create, carrying the owner id, the
+- * customerCode, the registrationDate, the membershipLevel and the membershipNumber.
+- * Runs after the owner is saved (so the id is populated) and before the responder,
+- * keeping the audit side effect out of the responder step.
++ * Emits audit side effects for each successful owner create, keeping them out of the responder.
++ * Runs after the owner is saved (so the id is populated) and before the responder.
++ *
++ * <p>Two things are emitted on the dedicated {@code AUDIT} channel:
++ * <ol>
++ * <li>a human-readable audit line carrying the owner id, the customerCode, the registrationDate,
++ * the membershipLevel and the membershipNumber; and</li>
++ * <li>an immutable structured {@link OwnerCreatedEvent} rendered as single-line JSON, carrying a
++ * monotonically increasing {@code seq}, the owner id, the owner's current primary identifier and
++ * its membershipLevel.</li>
++ * </ol>
+  */
+ public class AuditOwnerCreated {
+ 
+     /** Dedicated audit channel; one line per successful create. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Source of the structured event's monotonically increasing {@code seq}, across all creates. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
+     public void service(@Val Owner owner) {
+         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 owner.getMembershipLevel(), owner.getMembershipNumber());
++
++        // The owner's current primary identifier is the customerCode; when a later checkpoint unifies
++        // it into the memberId this is the single spot that switches to carry the memberId instead.
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++                owner.getCustomerCode(), owner.getMembershipLevel());
++        AUDIT.info(event.toJson());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..3d1bb96b2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,69 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Immutable structured audit event emitted once per successful owner create.
++ *
++ * <p>Carries a monotonically increasing {@code seq}, the saved owner's {@code ownerId}, the owner's
++ * current primary identifier and its {@code membershipLevel}, with a fixed {@code event} discriminator
++ * of {@code OWNER_CREATED}.
++ *
++ * <p>The {@code customerCode} field holds the owner's <em>current primary identifier</em>. Today that
++ * is the {@link org.springframework.samples.petclinic.model.Owner#getCustomerCode() customerCode}; when
++ * a later checkpoint unifies the customerCode into a memberId, the same field carries the memberId
++ * instead — the event always names whatever the current primary identifier is.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++        String event) {
++
++    /** The fixed discriminator for a successful owner create. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++        this(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
++    }
++
++    /**
++     * This event rendered as a single-line JSON object
++     * {@code {"seq":..,"ownerId":..,"customerCode":"..","membershipLevel":..,"event":"OWNER_CREATED"}},
++     * with the string fields escaped for JSON.
++     */
++    public String toJson() {
++        StringBuilder sb = new StringBuilder();
++        sb.append('{');
++        sb.append("\"seq\":").append(this.seq);
++        sb.append(",\"ownerId\":").append(this.ownerId);
++        sb.append(",\"customerCode\":").append(quote(this.customerCode));
++        sb.append(",\"membershipLevel\":").append(this.membershipLevel);
++        sb.append(",\"event\":").append(quote(this.event));
++        sb.append('}');
++        return sb.toString();
++    }
++
++    private static String quote(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    }
++                    else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        sb.append('"');
++        return sb.toString();
++    }
++}
