@@ -75,6 +75,12 @@ public class Owner extends Person {
     @Transient
     private Boolean bulkSignupWarning;
 
+    @Transient
+    private Boolean possibleDuplicate;
+
+    @Transient
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -196,6 +202,33 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner is a <em>possible</em> (soft) duplicate of another owner: {@code true} when some
+     * other owner shares this owner's last name (case-insensitively) and postcode but has a different
+     * telephone — a near match that is not a hard duplicate (which would share the whole identity key).
+     * Computed per request, not persisted. See {@link #getPossibleDuplicateOf()} for the matched owner.
+     */
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this owner possibly duplicates (same last name and postcode, different
+     * telephone), or {@code null} when {@link #getPossibleDuplicate() possibleDuplicate} is false. When
+     * several owners match, this is the earliest (lowest id). Computed per request, not persisted.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**
