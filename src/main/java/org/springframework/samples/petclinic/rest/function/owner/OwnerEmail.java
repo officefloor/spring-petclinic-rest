@@ -35,19 +35,53 @@ final class OwnerEmail {
     }
 
     /**
+     * The lower-cased, trimmed domain of {@code email} — the part after the last {@code @} — or
+     * {@code null} when there is no {@code @} or the domain is empty. The single definition of
+     * "the domain of this address" shared by the blocklist checks below.
+     */
+    private static String domainOf(String email) {
+        if (email == null) {
+            return null;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return null;
+        }
+        String domain = email.substring(at + 1).toLowerCase().trim();
+        return domain.isEmpty() ? null : domain;
+    }
+
+    /**
      * Whether {@code email}'s domain is on the disposable-domain blocklist. Expects an address
      * already shown to be syntactically valid (so it contains a single {@code @}); the domain is
      * the part after the {@code @}, matched case-insensitively.
      */
     static boolean isDisposableDomain(String email) {
-        if (email == null) {
+        String domain = domainOf(email);
+        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
+    }
+
+    /**
+     * Whether {@code email}'s domain is <em>disposable-adjacent</em>: it is not necessarily on the
+     * {@link #isDisposableDomain blocklist} (an exact match is rejected at create and never stored)
+     * but shares a known disposable domain's registrable base label — the part before its first dot
+     * (e.g. {@code mailinator}) — either as a subdomain of it or as the same label under a different
+     * TLD. So {@code mail.mailinator.com}, {@code mailinator.net} and {@code tempmail.io} are all
+     * adjacent. {@code null}/blank or a value with no {@code @} is not adjacent.
+     */
+    static boolean isDisposableAdjacent(String email) {
+        String domain = domainOf(email);
+        if (domain == null) {
             return false;
         }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
+        for (String disposable : DISPOSABLE_DOMAINS) {
+            String base = disposable.substring(0, disposable.indexOf('.'));
+            if (domain.equals(disposable) || domain.endsWith("." + disposable)
+                    || domain.equals(base) || domain.startsWith(base + ".")) {
+                return true;
+            }
         }
-        return DISPOSABLE_DOMAINS.contains(email.substring(at + 1).toLowerCase());
+        return false;
     }
 
     /** Lower-case and trim the email, or {@code null} when absent/blank. */

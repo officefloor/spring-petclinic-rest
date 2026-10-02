@@ -100,6 +100,9 @@ public class Owner extends Person {
     @Transient
     private Integer possibleDuplicateOf;
 
+    @Transient
+    private boolean riskFlag;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -603,6 +606,23 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner is flagged for review: true when any of these hold — the owner is a
+     * {@link #isPossibleDuplicate() possible duplicate}, the email domain is disposable-adjacent,
+     * or the owner's city is at or over its soft capacity (the {@link #isCapacityWarning()
+     * capacityWarning} band) — otherwise false. Not persisted — populated for the response by the
+     * create and fetch pipelines and defaults to {@code false} so every owner serialization
+     * carries the flag.
+     */
+    @Transient
+    public boolean isRiskFlag() {
+        return this.riskFlag;
+    }
+
+    public void setRiskFlag(boolean riskFlag) {
+        this.riskFlag = riskFlag;
     }
 
     /**
