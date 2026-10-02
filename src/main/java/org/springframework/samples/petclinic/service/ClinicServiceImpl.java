@@ -321,25 +321,31 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a member id formatted {@code '<REGION><FY><HASH8><CHK>'}, where {@code REGION} is the
-     * canonical region derived from the owner's postcode (falling back to the city-to-region
-     * table, then {@code 'UNKNOWN'}, as resolved by {@link LocalityResolver}), {@code FY} is the
-     * two-digit fiscal year (the fiscal year starting on 1 July) of the business-day-adjusted
-     * registration date, {@code HASH8} is the first 8 upper-case hexadecimal characters of the
-     * SHA-256 digest over the owner's normalized telephone concatenated with the last name (the
-     * same region-and-hash identity), and {@code CHK} is a single Luhn check digit computed over
-     * the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW261A2B3C4D7'}).
+     * Build a version-2 member id formatted {@code '<REGION><FY><HASH8><CHK>'}, where {@code REGION}
+     * is the version-2 region code: the plain canonical region derived from the owner's postcode
+     * (falling back to the city-to-region table, then {@code 'UNKNOWN'}, as resolved by
+     * {@link LocalityResolver}) with the fixed {@code 'V2'} version tag appended (e.g.
+     * {@code 'NSW' -> 'NSWV2'}), {@code FY} is the two-digit fiscal year (the fiscal year starting
+     * on 1 July) of the business-day-adjusted registration date, {@code HASH8} is the first 8
+     * upper-case hexadecimal characters of the SHA-256 digest over the owner's normalized telephone
+     * concatenated with the last name, and {@code CHK} is a single Luhn check digit computed over
+     * the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSWV2261A2B3C4D0'}).
+     * <p>
+     * The {@code 'V2'} version tag lives only inside this identifier, so the plain region it was
+     * derived from still surfaces unchanged as the user-facing {@code locality}. Because the region
+     * segment always carries the {@code 'V2'} tag, no version-1 member id is ever produced again.
      * <p>
      * If the computed id collides with an existing owner's {@code memberId}, it is de-duplicated
      * by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it unique
-     * (e.g. {@code 'NSW261A2B3C4D7-2'}).
+     * (e.g. {@code 'NSWV2261A2B3C4D0-2'}).
      */
     private String generateMemberId(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String regionV2 = region + Owner.IDENTITY_VERSION_TAG;
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String fiscalYear = String.format("%02d", FiscalYear.startYear(owner.getRegistrationDate()) % 100);
-        String body = region + fiscalYear + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
+        String body = regionV2 + fiscalYear + Sha256Hex.upperHexPrefix(telephone + lastName, 8);
         String base = body + LuhnCheckDigit.compute(body);
 
         Set<String> existingIds = ownerRepository.findAll().stream()
@@ -498,7 +504,11 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public String householdIdFor(String lastName, String postcode) throws DataAccessException {
-        String key = normalizeHouseholdValue(lastName) + "|" + (postcode == null ? "" : postcode);
+        // Version 2: the fixed 'V2' version tag is mixed into the hashed key, shifting every
+        // household id away from its version-1 value while preserving which owners hash together
+        // (same last name and postcode still share a household id).
+        String key = Owner.IDENTITY_VERSION_TAG + "|" + normalizeHouseholdValue(lastName)
+            + "|" + (postcode == null ? "" : postcode);
         return Sha256Hex.upperHexPrefix(key, 12);
     }
 

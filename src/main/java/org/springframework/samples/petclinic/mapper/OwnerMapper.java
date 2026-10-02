@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.FiscalYear;
@@ -33,7 +34,8 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
-    @Mapping(target = "memberId", source = "owner", qualifiedByName = "formatMemberId")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", source = "owner", qualifiedByName = "formatIdentity")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "formatFiscalYear")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
@@ -133,19 +135,26 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats an owner's member id, as required by the API's read-only {@code memberId} field:
-     * the stored {@code '<REGION><FY><HASH8><CHK>'} identifier (the region code, the 2-digit
-     * fiscal year, the 8 upper-hex characters of the SHA-256 digest over the normalized telephone
-     * concatenated with the last name, and a single Luhn check digit over the digits of
-     * {@code <REGION><FY><HASH8>}), de-duplicated with a trailing {@code '-<n>'} on collision.
-     * Returns {@code null} when the member id is absent.
+     * Groups an owner's version-2 derived identifiers under the API's read-only {@code identity}
+     * object: the unified {@code memberId}, the {@code identityKey} and the {@code householdId}.
+     * Each is produced by the version-2 algorithm (a fixed {@code 'V2'} version tag mixed in), so
+     * every identifier differs from the value version 1 would have produced. The {@code 'V2'} tag
+     * lives only inside these identifiers, never in the user-facing {@code locality},
+     * {@code timezone} or {@code ownerSegment}. Returns {@code null} when the owner is absent.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
      */
-    @Named("formatMemberId")
-    default String formatMemberId(Owner owner) {
-        return owner == null ? null : owner.getMemberId();
+    @Named("formatIdentity")
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
     }
 
     /**
@@ -251,11 +260,11 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's locality, as required by the API's read-only {@code locality} field:
-     * the {@code REGION} segment of the owner's {@code '<REGION><FY><HASH8><CHK>'} member id, so
-     * the locality is read from the same region-and-hash identity that the member id encodes.
-     * When no member id is present (e.g. an owner that predates it), the region is resolved
-     * directly from the postcode (falling back to the city-to-region table, else {@code 'UNKNOWN'}),
-     * which yields the same region the member id would have carried.
+     * the plain region code (for example {@code 'NSW'}) resolved directly from the owner's postcode
+     * (falling back to the city-to-region table, else {@code 'UNKNOWN'}). The locality is NOT read
+     * from the {@code memberId}: under version 2 the region encoded inside the identifiers carries
+     * the fixed {@code 'V2'} version tag, which must never surface in the user-facing locality, so
+     * the plain region is resolved independently here.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName}.
@@ -264,10 +273,6 @@ public interface OwnerMapper {
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
-        }
-        String region = memberIdRegion(owner.getMemberId());
-        if (region != null) {
-            return region;
         }
         return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
     }
@@ -286,12 +291,6 @@ public interface OwnerMapper {
         int dash = memberId.indexOf('-');
         String body = dash >= 0 ? memberId.substring(0, dash) : memberId;
         return body.length() > 11 ? body : null;
-    }
-
-    /** The {@code REGION} segment of a member id (everything before the trailing 11 characters). */
-    private static String memberIdRegion(String memberId) {
-        String body = memberIdBody(memberId);
-        return body == null ? null : body.substring(0, body.length() - 11);
     }
 
     /** The two-digit {@code FY} segment of a member id (the two characters following the region). */

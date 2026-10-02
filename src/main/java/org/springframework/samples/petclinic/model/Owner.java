@@ -256,24 +256,34 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived identity key: the full lower-case hexadecimal SHA-256 digest over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (the normalized E.164
-     * telephone or an empty string, the lower-cased email or an empty string, and the Soundex code
-     * of the last name, joined by {@code '|'}). This single key is the sole criterion for duplicate
-     * detection on creation: a new owner is rejected with 409 only when its whole identity key
-     * equals an existing owner's. Because the telephone is part of the key, two owners with the same
-     * last name and postcode but different telephones have distinct identity keys and are both
-     * allowed (created as a soft match); only an exact full-key match is a duplicate. The telephone
-     * and email components are already held in their normalized forms (canonical E.164 and
-     * lower-cased) on every write path, so the key is comparable across owners. Not persisted: it is
-     * computed from the current fields.
+     * The fixed version tag mixed into every version-2 derived identifier — this owner's
+     * {@link #getIdentityKey() identityKey}, and the member id's region code and the household id
+     * derived in the service layer — so that no value produced under version 1 is produced again.
+     * Shared here as the single source of truth so all three identifiers provably use the same tag.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The owner's version-2 derived identity key: the full lower-case hexadecimal SHA-256 digest
+     * over {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
+     * (the fixed {@code 'V2'} version tag, then the normalized E.164 telephone or an empty string,
+     * the lower-cased email or an empty string, and the Soundex code of the last name, joined by
+     * {@code '|'}). Mixing in the {@code 'V2'} tag shifts every key away from the version-1 value
+     * while preserving the relative equality between owners, so duplicate detection is unchanged:
+     * a new owner is rejected with 409 only when its whole identity key equals an existing owner's.
+     * Because the telephone is part of the key, two owners with the same last name and postcode but
+     * different telephones have distinct identity keys and are both allowed (created as a soft
+     * match); only an exact full-key match is a duplicate. The telephone and email components are
+     * already held in their normalized forms (canonical E.164 and lower-cased) on every write path,
+     * so the key is comparable across owners. Not persisted: it is computed from the current fields.
      */
     @Transient
     public String getIdentityKey() {
         String telephoneOrEmpty = this.telephone == null ? "" : this.telephone;
         String emailOrEmpty = this.email == null ? "" : this.email;
         String lastNameSoundex = Soundex.encode(this.getLastName());
-        return Sha256Hex.lowerHex(telephoneOrEmpty + "|" + emailOrEmpty + "|" + lastNameSoundex);
+        return Sha256Hex.lowerHex(
+            IDENTITY_VERSION_TAG + "|" + telephoneOrEmpty + "|" + emailOrEmpty + "|" + lastNameSoundex);
     }
 
     /**

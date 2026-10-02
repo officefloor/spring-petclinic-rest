@@ -46,10 +46,12 @@ public class OwnerAuditEventPublisher {
 
     /**
      * Emit an {@code OWNER_CREATED} event for a freshly created owner. {@code membershipLevel}
-     * is supplied by the caller rather than derived here; see {@link OwnerCreatedEvent#of}.
+     * and {@code ownerSegment} are supplied by the caller rather than derived here; see
+     * {@link OwnerCreatedEvent#of}.
      */
-    public void ownerCreated(Owner owner, Integer membershipLevel) {
-        OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.incrementAndGet(), owner, membershipLevel);
+    public void ownerCreated(Owner owner, Integer membershipLevel, String ownerSegment) {
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.incrementAndGet(), owner,
+                membershipLevel, ownerSegment);
         AUDIT.info(objectMapper.writeValueAsString(event));
     }
 }

@@ -178,7 +178,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner));
-        this.auditEventPublisher.ownerCreated(owner, ownerMapper.formatMembershipLevel(owner));
+        this.auditEventPublisher.ownerCreated(owner, ownerMapper.formatMembershipLevel(owner),
+            ownerMapper.formatOwnerSegment(owner));
         // Enqueue a welcome notification for the newly created owner.
         NOTIFY.info("welcome notification: owner id={} memberId={}", owner.getId(), owner.getMemberId());
         OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
