@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index c4d8835e3..56a8fa500 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -44,11 +44,11 @@ final class Household {
+      */
+     static List<Owner> membersOf(OwnerFieldsDto request, OwnerRepository ownerRepository) {
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = OwnerAddress.normalize(request.getAddress());
+         List<Owner> members = new ArrayList<>();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(OwnerAddress.normalize(existing.getAddress()))) {
+                 members.add(existing);
+             }
+         }
+@@ -61,7 +61,7 @@ final class Household {
+      * derives the same value regardless of creation order.
+      */
+     static Id idFor(OwnerFieldsDto request) {
+-        String seed = normalize(request.getLastName()) + "\n" + normalize(request.getAddress());
++        String seed = normalize(request.getLastName()) + "\n" + OwnerAddress.normalize(request.getAddress());
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                     .digest(seed.getBytes(StandardCharsets.UTF_8));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+new file mode 100644
+index 000000000..cb2f899b7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Canonical address normalization for the owner-create pipeline. Applied once when an owner is
++ * created so the stored and returned {@code address} is canonical, and reused for every address
++ * comparison (household duplicate detection in {@link Household} and the shared household id) so
++ * all steps compare the same form.
++ *
++ * <p>Normalization: trim, collapse any run of whitespace to a single space, upper-case, and
++ * expand common abbreviations as whole words — {@code ST -> STREET}, {@code RD -> ROAD},
++ * {@code AVE -> AVENUE}. Yields {@code ""} for a {@code null} or whitespace-only input.
++ */
++final class OwnerAddress {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET",
++            "RD", "ROAD",
++            "AVE", "AVENUE");
++
++    private OwnerAddress() {
++    }
++
++    static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+index 5399f3ec0..4a0d05817 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateNewOwner.java
+@@ -24,6 +24,10 @@ public class ValidateNewOwner {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
++        // Normalize the address up front so the required-field check sees the canonical form
++        // (an address blank after normalization is rejected) and every later step — storage,
++        // the response and household comparisons — carries the same normalized value.
++        request.setAddress(OwnerAddress.normalize(request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         if (isBlank(request.getFirstName())) {
+             missing.add("firstName");
