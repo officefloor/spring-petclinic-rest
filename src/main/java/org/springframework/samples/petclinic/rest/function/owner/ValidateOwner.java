@@ -22,6 +22,10 @@ public class ValidateOwner {
         if (email != null && !OwnerEmail.isValid(email)) {
             throw new InvalidEmailException("Email is not a valid address: " + request.getEmail());
         }
+        if (email != null && OwnerEmail.isDisposableDomain(email)) {
+            throw new InvalidEmailException(
+                    "Email domain is a disposable-domain blocklist entry: " + request.getEmail());
+        }
         request.setEmail(email);
         validated.set(request);
     }
