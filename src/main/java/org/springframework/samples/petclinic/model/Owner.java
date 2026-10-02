@@ -559,6 +559,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, formatted {@code "<TIER>_<AREA>"}: TIER is {@code "PREMIUM"} when
+     * {@link #getMembershipLevel() membershipLevel} is 3 or more, otherwise {@code "STANDARD"}; AREA is
+     * {@code "METRO"} when the {@link #getLocality() locality} is a known region (NSW, VIC or QLD),
+     * otherwise {@code "REGIONAL"}. One of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
+     * {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}. Derived per response.
+     */
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_POSTCODES.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * The single Luhn check digit (0-9) computed over the digits contained in the
      * {@link #getCustomerCode() customerCode}: non-digit characters are ignored, each second digit from
      * the right is doubled (subtracting 9 when the double exceeds 9), the results are summed, and the
