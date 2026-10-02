@@ -3,15 +3,18 @@ package org.springframework.samples.petclinic.rest.escalation;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 Conflict when the owner's city already contains 50 or more owners.
+ * Responds 409 Conflict with an RFC7807 {@code application/problem+json} body when the
+ * owner's city already contains 50 or more owners.
  */
 public class CityAtCapacityExceptionHandler {
 
     public void handle(@Parameter CityAtCapacityException ex,
-            ObjectResponse<ResponseEntity<Void>> response) {
-        response.send(new ResponseEntity<>(HttpStatus.CONFLICT));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
+        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
