@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8a5e871ab..bd369479e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -116,6 +116,15 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    /**
++     * The stored {@link #getTelephone() telephone} formatted for humans by {@link TelephoneFormatter}:
++     * the country code, a space, then the national digits grouped in threes (e.g. {@code +61412345678}
++     * -> {@code +61 412 345 678}). The raw {@link #getTelephone() telephone} stays in E.164 form.
++     */
++    public String getTelephoneDisplay() {
++        return TelephoneFormatter.toDisplay(this.telephone);
++    }
++
+     public String getEmail() {
+         return this.email;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+new file mode 100644
+index 000000000..2ad7ac21c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+@@ -0,0 +1,83 @@
++package org.springframework.samples.petclinic.model;
++
++import java.util.LinkedHashMap;
++import java.util.Map;
++
++/**
++ * Single source of truth for owner-telephone country-code knowledge and the two directions that depend
++ * on it: the national-number length check used when normalizing an inbound number to E.164, and the
++ * outbound formatting of a stored E.164 number for human display.
++ *
++ * <p>The {@link #NATIONAL_LENGTHS} table (country code to required national-number length) is the one
++ * place the recognized codes live. The inbound normalizer
++ * ({@code org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone}) checks lengths
++ * through {@link #hasValidNationalLength(String)}; {@link Owner#getTelephoneDisplay()} splits and groups
++ * through {@link #toDisplay(String)}. Adding or changing a country here updates both directions at once.
++ */
++public final class TelephoneFormatter {
++
++    /**
++     * Country code (without the leading {@code '+'}) to its required national-number length. Iterated
++     * longest-code-first (hence {@link LinkedHashMap}) so a longer code is matched before a shorter one
++     * that is a prefix of the number. Country codes absent here are not length-checked and are not
++     * recognized for display formatting. {@code +61} (Australia) has 9 national digits, {@code +1}
++     * (North American Numbering Plan) has 10.
++     */
++    private static final Map<String, Integer> NATIONAL_LENGTHS;
++    static {
++        Map<String, Integer> lengths = new LinkedHashMap<>();
++        lengths.put("61", 9); // Australia
++        lengths.put("1", 10); // North American Numbering Plan
++        NATIONAL_LENGTHS = lengths;
++    }
++
++    private TelephoneFormatter() {
++    }
++
++    /**
++     * Whether the national-number length of {@code digits} (a {@code '+'}-less E.164 digit string)
++     * matches its country code. Unrecognized country codes pass (they are length-checked only by the
++     * general 8-to-15 digit rule enforced by the caller).
++     */
++    public static boolean hasValidNationalLength(String digits) {
++        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
++            String code = entry.getKey();
++            if (digits.startsWith(code)) {
++                return digits.length() - code.length() == entry.getValue();
++            }
++        }
++        return true;
++    }
++
++    /**
++     * The E.164 value {@code e164} formatted for humans: the country code (with its leading {@code '+'}),
++     * a space, then the national digits grouped in threes (e.g. {@code +61412345678} ->
++     * {@code +61 412 345 678}). Returned unchanged when {@code null} or not a recognized E.164 number
++     * (a {@code '+'} and a known country code whose national-number length matches).
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
++            String code = entry.getKey();
++            if (digits.startsWith(code) && digits.length() - code.length() == entry.getValue()) {
++                return "+" + code + " " + groupInThrees(digits.substring(code.length()));
++            }
++        }
++        return e164;
++    }
++
++    /** Groups {@code digits} into space-separated runs of three, left to right. */
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i += 3) {
++            if (grouped.length() > 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits, i, Math.min(i + 3, digits.length()));
++        }
++        return grouped.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+index aa0e6804c..846fefede 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+@@ -1,9 +1,9 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.LinkedHashMap;
+-import java.util.Map;
+ import java.util.regex.Pattern;
+ 
++import org.springframework.samples.petclinic.model.TelephoneFormatter;
++
+ /**
+  * Single source of truth for what a "normalized" owner telephone is: the E.164 form.
+  * {@link ValidateNewOwner} enforces the rule and stores the E.164 value through here, so the stored and
+@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
+  * The result must be a {@code '+'} followed by 8 to 15 digits. On top of that general rule, the
+  * national-number length (the digits after the country code) must match the country code when it is one
+  * we recognize: {@code +61} requires 9 national digits and {@code +1} requires 10 (see
+- * {@link #NATIONAL_LENGTHS}). Anything else — non-digit leftovers, a total digit count outside 8 to 15,
++ * {@link TelephoneFormatter#hasValidNationalLength(String)}). Anything else — non-digit leftovers, a
++ * total digit count outside 8 to 15,
+  * or a national-number length that is wrong for a recognized country code — is not valid E.164 and
+  * yields {@code null}. A country code that is not in the table is accepted on the general rule alone.
+  */
+@@ -30,19 +31,6 @@ final class OwnerTelephone {
+     /** Characters removed before interpreting the number: spaces, dashes and brackets. */
+     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
+ 
+-    /**
+-     * Country code (without the '+') to its required national-number length. Iterated longest-code-first
+-     * (hence {@link LinkedHashMap}) so a longer code is matched before a shorter one that is a prefix of
+-     * the number. Country codes absent here are not length-checked.
+-     */
+-    private static final Map<String, Integer> NATIONAL_LENGTHS;
+-    static {
+-        Map<String, Integer> lengths = new LinkedHashMap<>();
+-        lengths.put("61", 9); // Australia
+-        lengths.put("1", 10); // North American Numbering Plan
+-        NATIONAL_LENGTHS = lengths;
+-    }
+-
+     private OwnerTelephone() {
+     }
+ 
+@@ -68,20 +56,6 @@ final class OwnerTelephone {
+         if (!E164.matcher(e164).matches()) {
+             return null;
+         }
+-        return hasValidNationalLength(digits) ? e164 : null;
+-    }
+-
+-    /**
+-     * Whether the national-number length of {@code digits} (a '+'-less E.164 digit string) matches its
+-     * country code. Unrecognized country codes pass (checked only by the general 8-to-15 rule above).
+-     */
+-    private static boolean hasValidNationalLength(String digits) {
+-        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+-            String code = entry.getKey();
+-            if (digits.startsWith(code)) {
+-                return digits.length() - code.length() == entry.getValue();
+-            }
+-        }
+-        return true;
++        return TelephoneFormatter.hasValidNationalLength(digits) ? e164 : null;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 39a0d979f..cd6a95c16 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2227,6 +2227,14 @@ components:
+               type: string
+               example: '+61412345678||H-3f2a1c9b8e7d'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone (display)
++              description: The stored E.164 telephone formatted for humans - the country code (with its
++                leading '+'), a space, then the national digits grouped in threes (e.g. '+61412345678'
++                -> '+61 412 345 678'). The raw telephone stays in E.164 form. Derived per response.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
