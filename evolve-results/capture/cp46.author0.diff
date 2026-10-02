@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2f163f73c..5eeb2f2d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "deleted")
++    private boolean deleted;
++
+     @Transient
+     private Integer householdSize;
+ 
+@@ -259,6 +262,20 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted. A {@code DELETE /api/owners/{id}} sets this true and
++     * retains the record rather than removing it; a newly created owner is false. Soft-deleted owners
++     * are still returned by {@code GET /api/owners/{id}} but are ignored by the create endpoint's
++     * duplicate/identity checks (see {@code CheckHouseholdUnique}).
++     */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * Sets the number of owners that belong to this owner's household (same last name and postcode; see
+      * {@link org.springframework.samples.petclinic.rest.function.owner.Household}), including this owner.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+index a49ae3164..8381ec9fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+@@ -31,6 +31,9 @@ public class CheckHouseholdUnique {
+         }
+         String householdId = Household.id(request.getLastName(), request.getPostcode());
+         for (Owner existing : ownerRepository.findAll()) {
++            if (existing.isDeleted()) {
++                continue; // a soft-deleted owner no longer blocks a matching household
++            }
+             if (householdId.equals(Household.id(existing.getLastName(), existing.getPostcode()))) {
+                 throw new HouseholdDuplicateException(householdId);
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..13f5d32ee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -4,9 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
++/**
++ * Soft-deletes the owner: flags it {@code deleted} and saves, retaining the row rather than removing it.
++ * The record is still readable via {@code GET /api/owners/{id}} (now reporting {@code deleted} true) but
++ * is ignored by the create endpoint's duplicate/identity checks (see {@link CheckHouseholdUnique}).
++ */
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index b768a681f..fe3f467f2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d7221b80a..722fb48bd 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,7 +52,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  deleted    BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 690161547..72445bac1 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 333d34048..fc30c6922 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      deleted BOOLEAN NOT NULL DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0960085dd..272a26c14 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2177,6 +2177,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: Whether this owner has been soft-deleted. A DELETE of the owner sets this
++                true and retains the record rather than removing it; a newly created owner is false.
++                A soft-deleted owner is still returned by GET but is ignored by the create endpoint's
++                duplicate/identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             checkDigit:
+               title: Check digit
+               description: A single Luhn check digit (0-9) computed over the digits contained in the
