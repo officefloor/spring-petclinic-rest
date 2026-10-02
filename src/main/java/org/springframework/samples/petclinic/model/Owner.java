@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -253,10 +254,13 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, fixed at creation. Starts at {@code 1}; adds {@code 1}
-     * when an {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
-     * namesakeCount} is {@code 0}; capped at {@code 3} (level {@code 4} is reserved for tenure).
-     * Not persisted — derived from {@link #getEmail()} and {@link #getNamesakeCount()}.
+     * The owner's numeric membership level. Starts at {@code 1}; adds {@code 1} when an
+     * {@link #getEmail() email} is present; adds {@code 1} when {@link #getNamesakeCount()
+     * namesakeCount} is {@code 0}. These factors cap at {@code 3}: level {@code 4} requires a
+     * tenure of more than {@code 365} days since the {@link #getRegistrationDate() registration
+     * date}. A newly created owner has zero tenure, so it can never exceed level {@code 3}.
+     * Not persisted — derived from {@link #getEmail()}, {@link #getNamesakeCount()} and
+     * {@link #getRegistrationDate()}.
      */
     @Transient
     public int getMembershipLevel() {
@@ -269,7 +273,14 @@ public class Owner extends Person {
         if (uniqueName) {
             level++;
         }
-        return Math.min(level, 3);
+        // The email and namesake factors cap at level 3; level 4 is reserved for owners whose
+        // tenure exceeds 365 days. A newly created owner has zero tenure, so it stays at level 3.
+        level = Math.min(level, 3);
+        if (this.registrationDate != null
+                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
