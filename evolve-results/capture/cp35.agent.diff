@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7123d1717..2ec3c75dd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,12 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    @Transient
++    private Boolean possibleDuplicate;
++
++    @Transient
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -198,6 +204,33 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this owner is a <em>possible</em> (soft) duplicate of another owner: {@code true} when some
++     * other owner shares this owner's last name (case-insensitively) and postcode but has a different
++     * telephone — a near match that is not a hard duplicate (which would share the whole identity key).
++     * Computed per request, not persisted. See {@link #getPossibleDuplicateOf()} for the matched owner.
++     */
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    /**
++     * The id of the existing owner this owner possibly duplicates (same last name and postcode, different
++     * telephone), or {@code null} when {@link #getPossibleDuplicate() possibleDuplicate} is false. When
++     * several owners match, this is the earliest (lowest id). Computed per request, not persisted.
++     */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The owner's membership level, a number from 1 to 3 fixed at creation. Starts at 1; add 1 when an
+      * email is present; add 1 when {@code namesakeCount} is 0; capped at 3. Level 4 is reserved for
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+new file mode 100644
+index 000000000..317f405c2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -0,0 +1,79 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags this owner as a <em>possible</em> (soft) duplicate. An owner is a possible duplicate when some
++ * other owner shares its last name (compared case-insensitively) and postcode but has a different
++ * telephone — a near match that is not a hard duplicate (a hard duplicate shares the whole identity key,
++ * including the telephone, and is rejected earlier by {@link CheckIdentityUnique}).
++ *
++ * <p>Sets {@code possibleDuplicate} to {@code true} and {@code possibleDuplicateOf} to the matching
++ * owner's id (the earliest match when several match); otherwise {@code possibleDuplicate} is {@code false}
++ * and {@code possibleDuplicateOf} is {@code null}. Both are computed per request, not persisted, so the
++ * flag is recomputed identically on each read. The owner itself is excluded from the comparison by id.
++ */
++public class FlagPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        owner.setPossibleDuplicate(false);
++        owner.setPossibleDuplicateOf(null);
++
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++        if (postcode == null || postcode.isBlank()) {
++            return;
++        }
++
++        Owner match = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (isSelf(owner, existing)) {
++                continue;
++            }
++            if (!equalsIgnoreCase(lastName, existing.getLastName())) {
++                continue;
++            }
++            if (!postcode.equals(existing.getPostcode())) {
++                continue;
++            }
++            if (equals(telephone, existing.getTelephone())) {
++                continue; // same telephone would be a hard duplicate, not a possible one
++            }
++            if (match == null || isEarlier(existing, match)) {
++                match = existing;
++            }
++        }
++
++        if (match != null) {
++            owner.setPossibleDuplicate(true);
++            owner.setPossibleDuplicateOf(match.getId());
++        }
++    }
++
++    private static boolean isSelf(Owner owner, Owner existing) {
++        return owner.getId() != null && owner.getId().equals(existing.getId());
++    }
++
++    private static boolean isEarlier(Owner candidate, Owner current) {
++        Integer a = candidate.getId();
++        Integer b = current.getId();
++        if (a == null) {
++            return false;
++        }
++        if (b == null) {
++            return true;
++        }
++        return a < b;
++    }
++
++    private static boolean equalsIgnoreCase(String a, String b) {
++        return a == null ? b == null : a.equalsIgnoreCase(b);
++    }
++
++    private static boolean equals(String a, String b) {
++        return a == null ? b == null : a.equals(b);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 71399dfb3..de4c52aab 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -65,6 +65,11 @@ audit:
+ flagBulkSignup:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ transaction ]
++  next: flagPossibleDuplicate
++
++flagPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index ef0a4fee7..a5082d97a 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -9,6 +9,11 @@ load:
+ flagBulkSignup:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ readonly-transaction ]
++  next: flagPossibleDuplicate
++
++flagPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 58b034273..caef1edf3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2176,6 +2176,23 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when another owner shares this owner's last name (case-insensitively) and
++                postcode but has a different telephone - a soft near match that is still created (unlike a
++                hard duplicate, which shares the whole identity key and is rejected). Derived per response.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner possibly duplicates (same last name and
++                postcode, different telephone), or absent when possibleDuplicate is false. The earliest
++                (lowest id) match when several match. Derived per response.
++              type: integer
++              format: int32
++              example: 42
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, 'EMAIL' when an email is present,
