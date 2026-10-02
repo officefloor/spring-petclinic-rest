@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -13,6 +14,10 @@ import org.springframework.web.bind.annotation.RequestBody;
  * city and telephone must be present and non-blank. Any that are missing or blank are collected and
  * reported together as a {@link MissingOwnerFieldsException} (a 400), so the body is never persisted.
  *
+ * <p>The telephone is then normalized by stripping every non-digit character and must be exactly ten
+ * digits; otherwise an {@link InvalidTelephoneException} (a 400) is raised. The stripped value is
+ * written back onto the request so downstream steps store and return the 10-digit telephone.
+ *
  * <p>Deliberately does <em>not</em> use {@code @Valid}: bean validation would raise a
  * {@code MethodArgumentNotValidException} with a different response shape, whereas this rule must
  * answer with an {@code errors} array naming each offending field.
@@ -20,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateNewOwner {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException {
         // This list mirrors OwnerFieldsDto's required fields by hand: it must track the schema's
         // `required` set. We check presence/non-blankness only, a narrower rule than the DTO's full
         // constraints (@Size/@Pattern), so bean validation is intentionally not used here.
@@ -33,6 +38,15 @@ public class ValidateNewOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
+
+        // Normalize the telephone: keep only digits, then require exactly ten. Store the stripped
+        // value back so BuildOwner/SaveOwner persist it and the response echoes the 10-digit form.
+        String normalized = request.getTelephone().replaceAll("\\D", "");
+        if (normalized.length() != 10) {
+            throw new InvalidTelephoneException(normalized);
+        }
+        request.setTelephone(normalized);
+
         validated.set(request);
     }
 
