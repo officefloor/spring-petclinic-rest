@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c5bb7b5b2..74794541b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -153,7 +153,7 @@ public class Owner extends Person {
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
+      * the last two digits of the {@link #getRegistrationDate() registrationDate} year
+-     * (e.g. {@code 'SMI-0007-M26'}).
++     * (e.g. {@code 'LON-SMI-0007-M26'}).
+      * Not persisted — derived from {@link #getCustomerCode()} and {@link #getRegistrationDate()}.
+      */
+     @Transient
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 0674b2f00..bb1d86a2b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -18,7 +18,7 @@ public class BuildOwner {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+-        owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
++        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
+         // Record how many existing owners already share this first+last name (case-insensitive),
+         // counted before this owner is persisted so the value is fixed at creation time.
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
+@@ -30,14 +30,29 @@ public class BuildOwner {
+     }
+ 
+     /**
+-     * Build the '<LAST3>-<NNNN>' customer code: LAST3 is the upper-cased first three
+-     * letters of the last name and NNNN is a global 4-digit zero-padded sequence equal
+-     * to one more than the current number of owners (e.g. 'SMI-0007').
++     * Build the '<CITY3>-<LAST3>-<NNNN>' customer code: CITY3 is the upper-cased first three
++     * letters of the city, LAST3 the upper-cased first three letters of the last name, and NNNN
++     * a per-city 4-digit zero-padded sequence equal to one more than the number of owners
++     * already in that city (e.g. 'LON-SMI-0007').
+      */
+-    private static String nextCustomerCode(String lastName, OwnerRepository ownerRepository) {
++    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
++        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        return String.format("%s-%04d", last3, sequence);
++        int sequence = countOwnersInCity(city, ownerRepository) + 1;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /**
++     * Count the existing owners in the given city, compared case-insensitively.
++     */
++    private static int countOwnersInCity(String city, OwnerRepository ownerRepository) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 70aa3b7de..fa714bec2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2087,15 +2087,15 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3 is the upper-cased first three letters of lastName and NNNN is a global 4-digit zero-padded sequence.
++              description: The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of lastName and NNNN a per-city 4-digit zero-padded sequence.
+               type: string
+-              example: 'SMI-0007'
++              example: 'LON-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'LON-SMI-0007-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
