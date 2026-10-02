@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b91a29f9b..2f163f73c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -61,6 +61,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -168,6 +171,26 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
++    /**
++     * The owner's salutation: the {@link #getTitle() title} followed by a single space and the
++     * {@link #getLastName() last name} (e.g. {@code "DR Franklin"}), or just the last name when no
++     * title was supplied. Derived per response, not persisted.
++     */
++    public String getSalutation() {
++        if (this.title == null || this.title.isBlank()) {
++            return this.getLastName();
++        }
++        return this.title + " " + this.getLastName();
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2ec722235..b768a681f 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  title VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0d3204946..d7221b80a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE owners (
+   postcode   VARCHAR(4),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  title      VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a67fbd823..690161547 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  title VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e480315ca..333d34048 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       postcode   TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      title      TEXT,
+                                       registration_date DATE,
+                                       birth_date DATE,
+                                       customer_code TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 16965d107..0960085dd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,13 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: The optional honorific title of the pet owner, one of MR, MRS, MS or DR.
++            When supplied it drives the derived 'salutation'. Stored and returned when present.
++          type: string
++          maxLength: 10
++          example: DR
+         address:
+           title: Address
+           description: The postal (flat) address of the pet owner. Accepted for backward
+@@ -2120,6 +2127,14 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: The owner's salutation, the title followed by a single space and the
++                last name (e.g. 'DR Franklin'), or just the last name when no title was supplied.
++                Derived per response.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             initials:
+               title: Initials
+               description: The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot.
