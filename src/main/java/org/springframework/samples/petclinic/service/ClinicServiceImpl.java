@@ -34,6 +34,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -261,6 +262,11 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getNamesakeCount() == null) {
                 owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             }
+            if (owner.getPossibleDuplicate() == null) {
+                Integer possibleDuplicateOf = findPossibleDuplicateOf(owner);
+                owner.setPossibleDuplicateOf(possibleDuplicateOf);
+                owner.setPossibleDuplicate(possibleDuplicateOf != null);
+            }
         }
         ownerRepository.save(owner);
         decorateWithHouseholdMemberCount(owner);
@@ -364,6 +370,28 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> existing != owner)
             .map(Owner::getIdentityKey)
             .anyMatch(identityKey::equals);
+    }
+
+    /**
+     * Resolve the id of an existing owner that the given (not yet persisted) owner is a <em>possible</em>
+     * duplicate of, or {@code null} when there is none. A possible duplicate shares an existing owner's
+     * last name (compared case-insensitively) and postcode while carrying a different telephone, so it is
+     * not a hard duplicate (its identity key is unique) but is worth flagging. When several existing owners
+     * match, the one with the lowest id is returned so the result is deterministic. Computed once, at
+     * creation, to drive the read-only {@code possibleDuplicate}/{@code possibleDuplicateOf} fields.
+     */
+    private Integer findPossibleDuplicateOf(Owner owner) {
+        if (owner.getLastName() == null || owner.getPostcode() == null) {
+            return null;
+        }
+        return ownerRepository.findAll().stream()
+            .filter(existing -> existing != owner && existing.getId() != null)
+            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     @Override
