@@ -92,6 +92,9 @@ public class Owner extends Person {
     private boolean bulkSignupWarning;
 
     @Transient
+    private boolean capacityWarning;
+
+    @Transient
     private boolean possibleDuplicate;
 
     @Transient
@@ -539,6 +542,21 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner's city already held between 40 and 49 owners when this response was
+     * built, approaching the hard capacity limit of 50 (compared case-insensitively). Not
+     * persisted — populated for the response by the create and fetch pipelines and defaults to
+     * {@code false} so every owner serialization carries the flag.
+     */
+    @Transient
+    public boolean isCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     /**
