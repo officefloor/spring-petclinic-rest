@@ -1,0 +1,231 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d8d5c61af..27bcaedd4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -80,6 +80,9 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "deleted", nullable = false)
++    private boolean deleted;
++
+     @Transient
+     private Integer householdSize;
+ 
+@@ -215,6 +218,20 @@ public class Owner extends Person {
+         this.postcode = postcode;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted. A soft-delete ({@code DELETE /api/owners/{id}})
++     * flags the owner deleted and retains the row rather than removing it, so the owner is still
++     * returned by a fetch; the create pipeline's duplicate and identity checks ignore owners
++     * flagged deleted. A newly created owner is not deleted.
++     */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
+      * Not persisted — derived from {@link #getLastName()} and {@link #getFirstName()}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ActiveOwners.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ActiveOwners.java
+new file mode 100644
+index 000000000..6ae9a0f0a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ActiveOwners.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The owners that the duplicate-detection and household-membership scans consider: every persisted
++ * owner except those flagged soft-deleted. A soft-delete ({@code DELETE /api/owners/{id}}) retains
++ * the owner's row but flags it deleted, so it must no longer take part in those scans. Defining the
++ * exclusion here once keeps every such scan — the duplicate gate ({@link ValidateUniqueIdentity}
++ * via {@link Household#hasMember}), the household size ({@link Household#size}) and the soft-match
++ * rule ({@link PossibleDuplicate}) — agreeing on it, rather than each loop re-deciding inline.
++ */
++final class ActiveOwners {
++
++    private ActiveOwners() {
++    }
++
++    /** The persisted owners not flagged soft-deleted, in the repository's iteration order. */
++    static List<Owner> list(OwnerRepository ownerRepository) {
++        List<Owner> active = new ArrayList<>();
++        for (Owner owner : ownerRepository.findAll()) {
++            if (!owner.isDeleted()) {
++                active.add(owner);
++            }
++        }
++        return active;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..be78ed155 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -4,9 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
++/**
++ * Soft-deletes the loaded owner: flags it deleted and persists the change, retaining the row
++ * rather than removing it. A later fetch still returns the owner (with {@code deleted} true),
++ * while the create pipeline's duplicate and identity checks ignore owners flagged deleted.
++ */
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index 82f87b22e..5a175370f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -69,12 +69,14 @@ final class Household {
+      * which passes {@code exclude = null} because the new owner is not yet persisted) and the
+      * soft-match rule ({@link PossibleDuplicate}, which excludes the owner itself). Always
+      * {@code false} for a {@code null}/blank id (an owner with no postcode has no household).
++     * Scans only {@link ActiveOwners active owners}, so a soft-deleted owner no longer blocks a
++     * household create.
+      */
+     static boolean hasMember(String householdId, Owner exclude, OwnerRepository ownerRepository) {
+         if (householdId == null || householdId.isBlank()) {
+             return false;
+         }
+-        for (Owner existing : ownerRepository.findAll()) {
++        for (Owner existing : ActiveOwners.list(ownerRepository)) {
+             if (exclude != null && exclude.getId() != null && exclude.getId().equals(existing.getId())) {
+                 continue;
+             }
+@@ -86,16 +88,18 @@ final class Household {
+     }
+ 
+     /**
+-     * The number of persisted owners carrying {@code householdId}. The single household-size
+-     * lookup, reused wherever the membership points rule needs a household's member count.
+-     * {@code 0} for a {@code null}/blank id (an owner with no postcode has no household).
++     * The number of owners carrying {@code householdId}. The single household-size lookup, reused
++     * wherever the membership points rule needs a household's member count. {@code 0} for a
++     * {@code null}/blank id (an owner with no postcode has no household). Scans only
++     * {@link ActiveOwners active owners}, consistent with {@link #hasMember}, so a soft-deleted
++     * owner does not count towards a household's size.
+      */
+     static int size(String householdId, OwnerRepository ownerRepository) {
+         if (householdId == null || householdId.isBlank()) {
+             return 0;
+         }
+         int count = 0;
+-        for (Owner existing : ownerRepository.findAll()) {
++        for (Owner existing : ActiveOwners.list(ownerRepository)) {
+             if (householdId.equals(existing.getHouseholdId())) {
+                 count++;
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+index 186486b1f..d9efc9d4d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -28,7 +28,8 @@ final class PossibleDuplicate {
+     /**
+      * The id of the existing owner that {@code owner} possibly duplicates, or {@code null} when
+      * it is not a possible duplicate. The owner itself (matched by id) is never considered its
+-     * own duplicate.
++     * own duplicate, and only {@link ActiveOwners active owners} are scanned so a soft-deleted
++     * owner is never reported as a match.
+      */
+     static Integer matchOf(Owner owner, OwnerRepository ownerRepository) {
+         if (Household.hasMember(owner.getHouseholdId(), owner, ownerRepository)) {
+@@ -42,7 +43,7 @@ final class PossibleDuplicate {
+         String lastName = normalizeName(owner.getLastName());
+         String telephone = OwnerTelephone.normalize(owner.getTelephone());
+         Integer match = null;
+-        for (Owner existing : ownerRepository.findAll()) {
++        for (Owner existing : ActiveOwners.list(ownerRepository)) {
+             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                 continue;
+             }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 38acbe50f..c0b65081d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 2b2cd0eb6..d3d12fdbc 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 15c6a1fa7..40c189d0b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INT,
+   postcode VARCHAR(4),
++  deleted BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 5a9d32533..52072a69e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      postcode TEXT
++                                      postcode TEXT,
++                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e33b4d8d8..d43ed3d79 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2255,6 +2255,12 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: True when this owner has been soft-deleted (DELETE /api/owners/{id} flags the owner deleted and retains the record), otherwise false. A newly created owner is not deleted.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
