@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index bfff2d62b..15e9c2b68 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -338,6 +338,15 @@ public class Owner extends Person {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /**
++     * Fixed region -> IANA timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++     * QLD->Australia/Brisbane), the single authority for {@link #getTimezone()}.
++     */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     /**
+      * The canonical region for a postcode/city pair, derived first from {@code postcode} by range
+      * ({@link #regionForPostcode}), falling back to the fixed city table ({@link #regionForCity})
+@@ -394,6 +403,17 @@ public class Owner extends Person {
+         return dash <= 0 ? "UNKNOWN" : this.customerCode.substring(0, dash);
+     }
+ 
++    /**
++     * The owner's timezone: the IANA name for the owner's {@link #getLocality() locality}/region
++     * from the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++     * QLD->Australia/Brisbane), or {@code null} when the region has no mapped timezone. Not
++     * persisted — derived from {@link #getLocality()}.
++     */
++    @Transient
++    public String getTimezone() {
++        return REGION_TIMEZONE.get(getLocality());
++    }
++
+     /**
+      * Whether more than 80 owners had already been created today when this response was
+      * built. Not persisted — populated for the response by the create and fetch pipelines
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 60504273b..452b5b51c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2181,6 +2181,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's timezone as an IANA name, derived from the locality/region via the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the region has no mapped timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners have already been created today (counted by registrationDate for the current business day), otherwise false.
