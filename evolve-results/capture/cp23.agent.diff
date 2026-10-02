@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8e28b2747..3c8ff9890 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,14 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    /**
++     * The number of owners in this owner's household (those sharing its {@code householdId}),
++     * including this owner. Not persisted; populated when a response is produced so the membership
++     * tier can reflect the current household size.
++     */
++    @Transient
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -139,6 +147,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
+      */
+@@ -171,12 +187,17 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code 'SILVER'} when the owner is unique
+-     * (namesakeCount is 0) and has an email address, otherwise {@code 'BRONZE'}.
+-     * Derived from the owner's own fields.
++     * The owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing the
++     * same {@code householdId}) has three or more members; otherwise {@code 'SILVER'} when the owner
++     * is unique (namesakeCount is 0) and has an email address, and {@code 'BRONZE'} in every other
++     * case. The household-size input is populated when the response is produced; the remaining inputs
++     * are the owner's own fields.
+      */
+     @Transient
+     public String getMembershipTier() {
++        if (this.householdSize != null && this.householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+         return unique && hasEmail ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7afe29131..8180d8b83 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -142,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owners.isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        owners.forEach(this::applyHouseholdSize);
+         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+     }
+ 
+@@ -152,6 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        applyHouseholdSize(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         applyBulkSignupWarning(ownerDto);
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+@@ -184,6 +186,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        applyHouseholdSize(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         applyBulkSignupWarning(ownerDto);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -621,6 +624,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return householdId;
+     }
+ 
++    /**
++     * Populates an owner's transient {@code householdSize} with the number of owners currently
++     * sharing its {@code householdId} (itself included), so the membership tier computed when the
++     * response is produced reflects the household's current size. An owner with no {@code householdId}
++     * belongs to no shared household and is left with a size of zero.
++     *
++     * @param owner the owner whose household size is being populated
++     */
++    private void applyHouseholdSize(Owner owner) {
++        owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()));
++    }
++
++    /**
++     * Counts the owners that share the given {@code householdId}. Returns zero when the identifier is
++     * absent, so an owner that belongs to no shared household is never treated as having members.
++     *
++     * @param householdId the shared household identifier, possibly {@code null}
++     * @return the number of owners carrying that household id
++     */
++    private int countHouseholdMembers(String householdId) {
++        if (householdId == null || householdId.isBlank()) {
++            return 0;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
++
+     /**
+      * Derives a stable household identifier, formatted {@code 'HH-<HEX12>'}, where {@code HEX12} is
+      * the first twelve upper-cased hex characters of the SHA-256 digest of the normalized last name
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bda9602b0..c25bc6e7f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2140,9 +2140,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner is unique
+-                (namesakeCount is 0) and has an email address, otherwise 'BRONZE'.
+-                Derived from the owner's own fields.
++                The owner's membership tier: 'GOLD' when the owner's household
++                (owners sharing the same householdId) has 3 or more members;
++                otherwise 'SILVER' when the owner is unique (namesakeCount is 0) and
++                has an email address, and 'BRONZE' in every other case.
+               type: string
+               example: 'SILVER'
+               readOnly: true
