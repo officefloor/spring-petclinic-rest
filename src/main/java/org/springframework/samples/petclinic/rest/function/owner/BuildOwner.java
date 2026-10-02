@@ -18,7 +18,7 @@ public class BuildOwner {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
         // Record how many existing owners already share this first+last name (case-insensitive),
         // counted before this owner is persisted so the value is fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
@@ -30,14 +30,29 @@ public class BuildOwner {
     }
 
     /**
-     * Build the '<LAST3>-<NNNN>' customer code: LAST3 is the upper-cased first three
-     * letters of the last name and NNNN is a global 4-digit zero-padded sequence equal
-     * to one more than the current number of owners (e.g. 'SMI-0007').
+     * Build the '<CITY3>-<LAST3>-<NNNN>' customer code: CITY3 is the upper-cased first three
+     * letters of the city, LAST3 the upper-cased first three letters of the last name, and NNNN
+     * a per-city 4-digit zero-padded sequence equal to one more than the number of owners
+     * already in that city (e.g. 'LON-SMI-0007').
      */
-    private static String nextCustomerCode(String lastName, OwnerRepository ownerRepository) {
+    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = countOwnersInCity(city, ownerRepository) + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Count the existing owners in the given city, compared case-insensitively.
+     */
+    private static int countOwnersInCity(String city, OwnerRepository ownerRepository) {
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

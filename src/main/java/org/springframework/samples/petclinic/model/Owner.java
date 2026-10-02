@@ -153,7 +153,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is
      * the last two digits of the {@link #getRegistrationDate() registrationDate} year
-     * (e.g. {@code 'SMI-0007-M26'}).
+     * (e.g. {@code 'LON-SMI-0007-M26'}).
      * Not persisted — derived from {@link #getCustomerCode()} and {@link #getRegistrationDate()}.
      */
     @Transient
