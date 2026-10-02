@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitReachedException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitReachedException.java
+new file mode 100644
+index 000000000..59927b9cf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitReachedException.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an owner is created on a day that has already reached the maximum number of
++ * owners that may be registered in a single day (100, counted by {@code registrationDate}).
++ * The daily quota is exhausted, so the create is rejected with a {@code 429 Too Many Requests}
++ * response.
++ */
++public class DailyOwnerLimitReachedException extends RuntimeException {
++
++    private final transient LocalDate date;
++
++    public DailyOwnerLimitReachedException(LocalDate date) {
++        super("The maximum number of owners has already been created on " + date);
++        this.date = date;
++    }
++
++    public LocalDate getDate() {
++        return this.date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 23ae3b2eb..4b887be9a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -56,6 +56,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name already exists at the given address";
+     private static final String ERROR_CITY_AT_CAPACITY = "The given city already contains the maximum number of owners";
++    private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners has already been created today";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -260,4 +261,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyOwnerLimitReachedException} thrown when an owner is created on a day that
++     * has already reached the maximum number of owners registered that day (counted by
++     * {@code registrationDate}). Responds with a 429 Too Many Requests.
++     *
++     * @param e The {@link DailyOwnerLimitReachedException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
++     */
++    @ExceptionHandler(DailyOwnerLimitReachedException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitReachedException(DailyOwnerLimitReachedException e, HttpServletRequest request) {
++        logger.debug("Daily owner limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getDate());
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT_REACHED);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 56d290dfa..67bd6907a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitReachedException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+@@ -87,6 +88,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int CITY_CAPACITY = 50;
+ 
++    /**
++     * The maximum number of owners that may be registered in a single day. Once this many owners
++     * already carry today's {@code registrationDate}, the day's quota is exhausted and no further
++     * owners can be created that day.
++     */
++    private static final int DAILY_OWNER_LIMIT = 100;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -134,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         validateRequiredFields(ownerFieldsDto);
++        rejectDailyLimitReached();
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         String address = normalizeAddress(ownerFieldsDto.getAddress());
+@@ -433,6 +442,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Rejects creation of an owner once today has already reached its daily quota of
++     * {@value #DAILY_OWNER_LIMIT} owners. Owners are counted by their {@code registrationDate}
++     * being today's date; the owner being created has not been saved yet, so it is never included
++     * in the count.
++     *
++     * @throws DailyOwnerLimitReachedException if {@value #DAILY_OWNER_LIMIT} or more owners already
++     *                                         carry today's registration date, yielding a
++     *                                         429 Too Many Requests response
++     */
++    private void rejectDailyLimitReached() {
++        LocalDate today = LocalDate.now();
++        long createdToday = this.clinicService.findAllOwners().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        if (createdToday >= DAILY_OWNER_LIMIT) {
++            throw new DailyOwnerLimitReachedException(today);
++        }
++    }
++
+     /**
+      * Rejects creation of an owner whose E.164 telephone is already used by any other owner. Stored
+      * telephones are converted to E.164 here as well so the comparison is independent of the format
