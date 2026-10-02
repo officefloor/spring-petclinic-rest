@@ -89,6 +89,9 @@ public class Owner extends Person {
     @Column(name = "deleted")
     private Boolean deleted = false;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -379,11 +382,35 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, from 1 to 4, derived from {@link #getMembershipPoints()}:
-     * level 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     * The owner's numeric membership level, from 1 to 4. By default it is derived from
+     * {@link #getMembershipPoints()}: level 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and
+     * 4 for 6 or more points. When a level has been assigned and stored at creation time (the capped
+     * level computed against the owner's household), that stored value is returned instead, so the
+     * level read back for the owner reflects the household ceiling applied when the owner was created.
      */
     @Transient
     public Integer getMembershipLevel() {
+        if (this.membershipLevel != null) {
+            return this.membershipLevel;
+        }
+        return getDerivedMembershipLevel();
+    }
+
+    /**
+     * Stores the owner's membership level, overriding the value otherwise derived from the owner's
+     * membership points. Used at creation time to persist the household-capped level.
+     */
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
+    }
+
+    /**
+     * The owner's membership level derived purely from {@link #getMembershipPoints()}, before any
+     * household cap: level 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more
+     * points.
+     */
+    @Transient
+    public Integer getDerivedMembershipLevel() {
         int points = getMembershipPoints();
         if (points >= 6) {
             return 4;

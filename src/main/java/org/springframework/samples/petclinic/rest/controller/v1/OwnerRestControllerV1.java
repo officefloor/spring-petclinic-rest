@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -45,7 +46,6 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitReachedException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
@@ -249,13 +249,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(computeHouseholdId(owner.getLastName(), owner.getPostcode()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(owner);
-        if (!sharesHousehold) {
-            rejectHouseholdDuplicate(owner);
-        }
         applyPossibleDuplicate(owner, sharesHousehold);
         owner.setRegistrationDate(registrationDate);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(generateCustomerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
+        owner.setMembershipLevel(cappedMembershipLevel(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -850,9 +848,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code false} and {@code possibleDuplicateOf} is left unset.
      *
      * <p>An owner that declares household membership via {@code sharesHousehold} is never flagged: a
-     * declared household member is not a suspected duplicate. (Without that declaration a same-household
-     * owner is rejected outright by {@link #rejectHouseholdDuplicate}, so no suspected-duplicate match
-     * survives for a created owner either.)
+     * declared household member is not a suspected duplicate. Without that declaration a same-household
+     * owner with a different telephone is still created, carrying the {@code possibleDuplicate} flag so
+     * it can be reviewed.
      *
      * @param owner           the owner being created, with its household id and telephone already set
      * @param sharesHousehold whether the owner declared itself a member of an existing household
@@ -880,6 +878,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Caps the membership level of the owner being created so it cannot exceed one above the current
+     * maximum membership level among its existing household members. A household member is a live (not
+     * soft-deleted) owner carrying the same computed {@code householdId}. The owner's own derived level
+     * ({@link Owner#getDerivedMembershipLevel()}) is returned capped at that maximum plus one; when the
+     * owner belongs to no household, or no existing household member is found, no cap applies and the
+     * derived level is returned unchanged. The owner being created has not been saved yet, so it is
+     * never considered its own household member.
+     *
+     * @param owner the owner being created, with its household id and level-affecting fields set
+     * @return the membership level to store, capped to the household ceiling where one exists
+     */
+    private Integer cappedMembershipLevel(Owner owner) {
+        int derivedLevel = owner.getDerivedMembershipLevel();
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return derivedLevel;
+        }
+        OptionalInt maxHouseholdLevel = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        if (maxHouseholdLevel.isEmpty()) {
+            return derivedLevel;
+        }
+        return Math.min(derivedLevel, maxHouseholdLevel.getAsInt() + 1);
+    }
+
+    /**
      * Computes the owner's deterministic {@code householdId}: the first twelve upper-cased hex
      * characters of the SHA-256 digest of the normalized last name and the postcode joined by a
      * {@code '|'}. Because the value derives only from the last name and postcode, every owner that
@@ -898,32 +925,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return hashHex(normalizeForComparison(lastName) + "|" + postcode, 12);
-    }
-
-    /**
-     * Rejects creation of an owner that would join an existing household it has not declared membership
-     * of. The household is keyed on the computed {@code householdId} (derived from the last name and
-     * postcode), so any existing owner carrying the same {@code householdId} is a member of the same
-     * household. A second owner in that household is a household duplicate and is rejected with a
-     * {@code 409 Conflict} unless the request opts in via {@code sharesHousehold}, in which case this
-     * check is bypassed and the owner is created as a declared household member. An owner with no
-     * {@code householdId} (no postcode) belongs to no household and is never rejected here.
-     *
-     * @param owner the owner being created, with its household id already computed
-     * @throws DuplicateHouseholdException if an existing owner already belongs to the same
-     *                                     household, yielding a 409 Conflict response
-     */
-    private void rejectHouseholdDuplicate(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank()) {
-            return;
-        }
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .filter(this::isNotDeleted)
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (inUse) {
-            throw new DuplicateHouseholdException(householdId);
-        }
     }
 
     /**
