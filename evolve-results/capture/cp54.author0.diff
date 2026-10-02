@@ -1,0 +1,102 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ae69e360d..aa56abdfd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -43,6 +43,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "formatAgeBand")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ed36d36f3..c39abcd4d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -114,11 +114,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(toOwnerDtoWithWarning(owner), HttpStatus.OK);
+     }
+ 
+-    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} flag the same way
+-     *  for every owner response. */
++    /** Map an owner to its DTO, setting the read-only {@code bulkSignupWarning} and
++     *  {@code capacityWarning} flags the same way for every owner response. */
+     private OwnerDto toOwnerDtoWithWarning(Owner owner) {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupDay());
++        ownerDto.setCapacityWarning(this.clinicService.isCityApproachingCapacity(owner.getCity()));
+         return ownerDto;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 0564d4aeb..2e9c7c31c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -112,6 +112,17 @@ public interface ClinicService {
+ 	 */
+ 	boolean isCityAtCapacity(String city) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} when the given city is approaching its owner capacity, i.e. it already
++	 * contains between 40 and 49 owners inclusive (compared case-insensitively, the same way the
++	 * per-city capacity rule counts them). Drives the read-only {@code capacityWarning} response
++	 * flag; the hard rejection at 50 owners ({@link #isCityAtCapacity}) is unchanged.
++	 *
++	 * @param city the city to check
++	 * @return whether the city already contains between 40 and 49 owners
++	 */
++	boolean isCityApproachingCapacity(String city) throws DataAccessException;
++
+ 	/**
+ 	 * Returns {@code true} if 100 or more owners have already been registered today, i.e. the number
+ 	 * of owners whose {@code registrationDate} equals the server's current date has reached the daily
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 6b699c4ad..1c7fe555f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -53,6 +53,9 @@ public class ClinicServiceImpl implements ClinicService {
+     /** Maximum number of owners allowed per city. */
+     private static final long CITY_CAPACITY = 50L;
+ 
++    /** At or above this many owners, a city read carries a capacity warning (approaching {@link #CITY_CAPACITY}). */
++    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
++
+     /** Maximum number of owners that may be created on a single day (by registration date). */
+     private static final long DAILY_CAPACITY = 100L;
+ 
+@@ -365,6 +368,13 @@ public class ClinicServiceImpl implements ClinicService {
+         return countOwnersInCity(city) >= CITY_CAPACITY;
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isCityApproachingCapacity(String city) throws DataAccessException {
++        long count = countOwnersInCity(city);
++        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public boolean isDailyRegistrationAtCapacity() throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dcc9dd07e..dc783ce16 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2336,6 +2336,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 owners
++                (case-insensitively), signalling that it is approaching the per-city capacity
++                limit of 50; otherwise false. Evaluated against the current city total each time
++                the owner is read. The hard rejection at 50 owners is unchanged.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
