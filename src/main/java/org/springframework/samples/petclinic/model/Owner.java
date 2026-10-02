@@ -215,6 +215,17 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * The owner's preferred contact channel: {@code 'EMAIL'} when an {@link #getEmail() email}
+     * is present, otherwise {@code 'PHONE'}.
+     * Not persisted — derived from {@link #getEmail()}.
+     */
+    @Transient
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
