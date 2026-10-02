@@ -1,0 +1,300 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 65d3e72ae..14d6cd61f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -281,11 +281,38 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
++    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
++    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
++    @Mapping(target = "address", source = "ownerDto", qualifiedByName = "composeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Composes the effective, normalized postal address for an owner from the supplied fields,
++     * preferring the structured form over the flat one. When a non-blank {@code addressLine1} is
++     * present, the result is the normalized {@code addressLine1} with the normalized
++     * {@code addressLine2} appended after a single space when an {@code addressLine2} is present;
++     * otherwise it is the normalized flat {@code address}. Each part is normalized with the same
++     * rules as {@link #normalizeAddress} (trim, collapse whitespace, upper-case, expand
++     * {@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is applied
++     * only where referenced via {@code qualifiedByName}.
++     */
++    @Named("composeAddress")
++    default String composeAddress(OwnerFieldsDto ownerDto) {
++        if (ownerDto == null) {
++            return null;
++        }
++        String line1 = AddressNormalizer.normalize(ownerDto.getAddressLine1());
++        if (line1 != null && !line1.isEmpty()) {
++            String line2 = AddressNormalizer.normalize(ownerDto.getAddressLine2());
++            return (line2 != null && !line2.isEmpty()) ? line1 + " " + line2 : line1;
++        }
++        return AddressNormalizer.normalize(ownerDto.getAddress());
++    }
++
+     /**
+      * Normalizes a postal address into a canonical form: surrounding whitespace is trimmed and
+      * internal runs of whitespace collapsed to a single space, the value is upper-cased and common
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fa1e8d4b9..3320e8ec0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -40,6 +40,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -96,6 +102,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 960fb1609..f7778efd8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.util.DisposableEmailException;
++import org.springframework.samples.petclinic.util.InvalidAddressException;
+ import org.springframework.samples.petclinic.util.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.util.InvalidRegistrationDateException;
+ import org.springframework.samples.petclinic.util.InvalidTelephoneException;
+@@ -163,6 +164,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidAddressException} thrown when an owner request supplies no usable
++     * postal address in either accepted form (neither a non-blank structured {@code addressLine1}
++     * nor a non-blank flat {@code address}), returning a 400 Bad Request so a missing address is
++     * rejected rather than surfacing as an unexpected 500.
++     *
++     * @param e The {@link InvalidAddressException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidAddressException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidAddressException(InvalidAddressException e, HttpServletRequest request) {
++        logger.debug("Invalid address at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DisposableEmailException} thrown when a supplied email address belongs to a
+      * disposable-email domain on the blocklist, returning a 400 Bad Request so a disposable email
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e9e041dc6..ae1007910 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.DisposableEmailValidator;
++import org.springframework.samples.petclinic.util.InvalidAddressException;
+ import org.springframework.samples.petclinic.util.PostcodeValidator;
+ import org.springframework.samples.petclinic.util.RegistrationDateValidator;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -110,6 +111,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        // An owner must supply an address in EITHER form: a non-blank structured addressLine1 or
++        // the flat address. The mapper composes both into owner.address, so a null/blank composed
++        // address means neither was supplied.
++        if (owner.getAddress() == null || owner.getAddress().isBlank()) {
++            throw new InvalidAddressException();
++        }
+         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
+         DisposableEmailValidator.validate(owner.getEmail());
+         RegistrationDateValidator.validate(owner.getRegistrationDate());
+@@ -153,7 +160,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         PostcodeValidator.validate(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
+         DisposableEmailValidator.validate(ownerMapper.normalizeEmail(ownerFieldsDto.getEmail()));
+-        currentOwner.setAddress(ownerFieldsDto.getAddress());
++        String composedAddress = ownerMapper.composeAddress(ownerFieldsDto);
++        if (composedAddress == null || composedAddress.isBlank()) {
++            throw new InvalidAddressException();
++        }
++        currentOwner.setAddressLine1(ownerMapper.normalizeAddress(ownerFieldsDto.getAddressLine1()));
++        currentOwner.setAddressLine2(ownerMapper.normalizeAddress(ownerFieldsDto.getAddressLine2()));
++        currentOwner.setAddress(composedAddress);
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setPostcode(ownerFieldsDto.getPostcode());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/InvalidAddressException.java b/src/main/java/org/springframework/samples/petclinic/util/InvalidAddressException.java
+new file mode 100644
+index 000000000..0e8bf8c58
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/InvalidAddressException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Thrown when an owner request supplies no usable postal address in either accepted form, i.e.
++ * it has neither a non-blank structured {@code addressLine1} nor a non-blank flat {@code address}.
++ * Handled by the REST layer as a 400 Bad Request.
++ */
++public class InvalidAddressException extends RuntimeException {
++
++    public InvalidAddressException() {
++        super("An address must be supplied, either as 'addressLine1' or the flat 'address'");
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 709295f98..f61d2884d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80) NOT NULL,
+   postcode VARCHAR(4),
+   telephone VARCHAR(20) NOT NULL,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 76b41ac71..c64330eee 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE owners (
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city       VARCHAR(80),
+   postcode   VARCHAR(4),
+   telephone  VARCHAR(20),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e9823f72..31b882eed 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80),
+   postcode VARCHAR(4),
+   telephone VARCHAR(20),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 676279202..630c8f1bf 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address    TEXT,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT,
+                                       city       TEXT,
+                                       postcode   VARCHAR(4),
+                                       telephone  TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7ddeb5599..47b41fa58 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,16 +2009,47 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        addressLine1:
++          title: Address line 1
++          description: >-
++            The first line of the pet owner's structured postal address (typically the street
++            number and name). Optional for backward compatibility: an owner may instead supply
++            the flat 'address'. When a non-blank 'addressLine1' is supplied the structured
++            fields are preferred over the flat 'address'. It is normalized before being stored
++            and returned: surrounding whitespace is trimmed and internal runs of whitespace
++            collapsed to a single space, the value is upper-cased and common abbreviations are
++            expanded as whole tokens (ST -> STREET, RD -> ROAD, AVE -> AVENUE). So '10 king st'
++            is stored and returned as '10 KING STREET'.
++          type: string
++          minLength: 1
++          maxLength: 255
++          pattern: '.*\S.*'
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: >-
++            The optional second line of the pet owner's structured postal address (for example
++            a unit or apartment). Normalized with the same rules as 'addressLine1'. When present
++            it is appended to the composed 'address' after the normalized 'addressLine1',
++            separated by a single space.
++          type: string
++          maxLength: 255
++          example: 'UNIT 4'
+         address:
+           title: Address
+           description: >-
+-            The postal address of the pet owner. It is normalized before being stored and
+-            returned: surrounding whitespace is trimmed and internal runs of whitespace
+-            collapsed to a single space, the value is upper-cased and common abbreviations are
+-            expanded as whole tokens (ST -> STREET, RD -> ROAD, AVE -> AVENUE). So
+-            '  12  main  st ' is stored and returned as '12 MAIN STREET'. An address that is
+-            blank after normalization is rejected with 400. Household duplicate detection and
+-            the shared household id both compare addresses in this normalized form.
++            The postal address of the pet owner. Optional on input and kept for backward
++            compatibility: an owner may instead supply the structured 'addressLine1' (plus the
++            optional 'addressLine2'), which are preferred when a non-blank 'addressLine1' is
++            present. An owner must supply an address in EITHER form. When supplied as flat input
++            it is normalized before being stored and returned: surrounding whitespace is trimmed
++            and internal runs of whitespace collapsed to a single space, the value is upper-cased
++            and common abbreviations are expanded as whole tokens (ST -> STREET, RD -> ROAD,
++            AVE -> AVENUE). So '  12  main  st ' is stored and returned as '12 MAIN STREET'. On
++            output this is the composed address: the normalized 'addressLine1' with the
++            normalized 'addressLine2' appended after a single space when present, otherwise the
++            normalized flat address. A flat address that is blank after normalization is rejected
++            with 400.
+           type: string
+           minLength: 1
+           maxLength: 255
+@@ -2097,7 +2128,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
