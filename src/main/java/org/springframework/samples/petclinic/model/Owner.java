@@ -66,6 +66,15 @@ public class Owner extends Person {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
+    /**
+     * Fixed city-to-region lookup backing {@link #getLocality()}. Any city not listed derives
+     * locality {@code 'UNKNOWN'}.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
     public String getAddress() {
         return this.address;
     }
@@ -171,6 +180,16 @@ public class Owner extends Person {
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return unique && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * The owner's locality: the canonical region derived from the city via the fixed city-to-region
+     * table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code 'UNKNOWN'}
+     * when the city is not in the table.
+     */
+    @Transient
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
     protected Set<Pet> getPetsInternal() {
