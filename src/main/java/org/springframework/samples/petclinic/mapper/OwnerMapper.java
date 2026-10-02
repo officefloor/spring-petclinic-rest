@@ -19,6 +19,10 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Owner.API_VERSION)")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId", source = "householdId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

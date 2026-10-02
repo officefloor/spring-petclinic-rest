@@ -36,6 +36,21 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+
+    /**
+     * The version-2 owner identity contract. {@link #API_VERSION} is surfaced as the response's top-level
+     * {@code apiVersion}; {@link #IDENTITY_VERSION_TAG} is the fixed tag mixed <em>inside</em> the derived
+     * identifiers (the {@link #getMemberId() memberId}'s region segment, the household id and the
+     * {@link #identityKey(String, String, String) identity key}) so every v2 identifier differs from its
+     * v1 form and no value produced under version 1 is produced again. The tag is deliberately confined to
+     * the identifiers: it never appears in the user-facing {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} or the {@link #getOwnerSegment() owner segment}'s derived region,
+     * all of which stay the plain region code.
+     */
+    public static final int API_VERSION = 2;
+
+    /** The fixed version tag mixed into the v2 identifiers (see {@link #API_VERSION}). */
+    public static final String IDENTITY_VERSION_TAG = "V2";
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -219,20 +234,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the two-digit FY segment of the
-     * {@link #getMemberId() memberId} (the last two digits of the {@link #fiscalYear(LocalDate) fiscal
-     * year} of the business-day-adjusted {@link #getRegistrationDate() registrationDate} captured at
-     * creation — e.g. a registration on 2026-10-02 falls in the fiscal year ending June 2027, so the
-     * memberId carries {@code "27"} and this reads {@code "FY27"}). The memberId is the single owner
-     * identity, so the fiscal year reads straight off it. {@code null} when no memberId is assigned.
-     * Derived per response.
+     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the last two digits of the
+     * {@link #fiscalYear(LocalDate) fiscal year} of the business-day-adjusted
+     * {@link #getRegistrationDate() registrationDate} captured at creation — e.g. a registration on
+     * 2026-10-02 falls in the fiscal year ending June 2027, so this reads {@code "FY27"}, the same FY the
+     * {@link #getMemberId() memberId} embeds. Unlike v1 this derives directly from the registration date
+     * rather than parsing the memberId, so the v2 identity tag embedded in the memberId's region segment
+     * does not leak into it. {@code null} when no memberId is assigned. Derived per response.
      */
     public String getFiscalYear() {
-        String region = memberIdRegion();
-        if (region == null) {
+        if (this.memberId == null || this.registrationDate == null) {
             return null;
         }
-        return "FY" + this.memberId.substring(region.length(), region.length() + 2);
+        return "FY" + String.format("%02d", fiscalYear(this.registrationDate) % 100);
     }
 
     public LocalDate getBirthDate() {
@@ -267,14 +281,17 @@ public class Owner extends Person {
      * The owner's member id, the single owner identity, formatted {@code <REGION><FY><HASH8><CHK>} and
      * assigned at creation (see
      * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMemberId}). REGION is the
-     * region code derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, else
-     * {@code "UNKNOWN"}); FY is the two-digit fiscal year of the business-day-adjusted
+     * version-2 identifier-internal region code from {@link #identityRegion(String)} — the plain region
+     * derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, else {@code "UNKNOWN"}) with
+     * the fixed {@link #IDENTITY_VERSION_TAG V2 tag} mixed in (e.g. {@code "NSWV2"}); FY is the two-digit
+     * fiscal year of the business-day-adjusted
      * {@link #getRegistrationDate() registrationDate}; HASH8 is the first 8 upper-case hex characters of
      * SHA-256 over the normalized (E.164) telephone concatenated with the last name; and CHK is a single
      * {@link #luhnCheckDigit(String) Luhn check digit} over the digits of {@code <REGION><FY><HASH8>}.
      * Collisions are de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more
-     * that makes it unique. The {@link #getLocality() locality}, {@link #getFiscalYear() fiscalYear} and
-     * the create audit record all read this value.
+     * that makes it unique. The create audit record reads this value. The {@link #getLocality() locality}
+     * and {@link #getFiscalYear() fiscalYear} derive independently (from the postcode and the registration
+     * date), so the embedded V2 region tag does not leak into them.
      */
     public String getMemberId() {
         return this.memberId;
@@ -556,31 +573,29 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the leading REGION segment of the {@link #getMemberId() memberId}, which is
-     * the region code derived from the postcode at creation (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099,
-     * else {@code "UNKNOWN"}). The memberId is the single owner identity, so the locality reads straight
-     * off it rather than re-deriving the region. {@code "UNKNOWN"} when no memberId is assigned.
+     * The region code embedded <em>inside</em> the version-2 identifiers: the plain region from
+     * {@link #regionOfPostcode(String)} (or {@code "UNKNOWN"} when the postcode is absent or in no known
+     * range) with the fixed {@link #IDENTITY_VERSION_TAG version tag} mixed in (e.g. {@code "NSWV2"}), so
+     * the v2 {@link #getMemberId() memberId} differs from its v1 form and no v1 value recurs. This is the
+     * identifier-internal region only; the user-facing {@link #getLocality() locality} stays the plain
+     * region code.
      */
-    public String getLocality() {
-        String region = memberIdRegion();
-        return region == null ? "UNKNOWN" : region;
+    public static String identityRegion(String postcode) {
+        String region = regionOfPostcode(postcode);
+        return (region == null ? "UNKNOWN" : region) + IDENTITY_VERSION_TAG;
     }
 
     /**
-     * The leading REGION segment of the {@link #getMemberId() memberId}: its run of leading letters, up
-     * to the first digit of the two-digit FY segment. {@code null} when no memberId is assigned. REGION
-     * is always alphabetic (NSW, VIC, QLD or UNKNOWN) and is immediately followed by the numeric FY, so
-     * the leading letters delimit it exactly.
+     * The owner's locality: the plain region code derived from the {@link #getPostcode() postcode} via
+     * {@link #regionOfPostcode(String)} (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or {@code "UNKNOWN"}
+     * when the postcode resolves to no known region. This is the user-facing region and is NOT an
+     * identifier: it stays the plain code (e.g. {@code "NSW"}) and never carries the
+     * {@link #IDENTITY_VERSION_TAG version tag} that the memberId's region segment does. It matches the
+     * region the v2 memberId was built from, since both derive from the same stored postcode.
      */
-    private String memberIdRegion() {
-        if (this.memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? null : this.memberId.substring(0, i);
+    public String getLocality() {
+        String region = regionOfPostcode(this.postcode);
+        return region == null ? "UNKNOWN" : region;
     }
 
     /**
@@ -645,7 +660,10 @@ public class Owner extends Person {
 
     /**
      * The single canonical definition of an owner's derived identity key: the lower-case SHA-256 hex
-     * digest (64 hex characters) of {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
+     * digest (64 hex characters) of
+     * {@code IDENTITY_VERSION_TAG + "|" + normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
+     * The leading version tag is what distinguishes this v2 key from its v1 form (which hashed the same
+     * components without the tag), so no v1 identity key is produced again.
      * The telephone is used as given (it is expected to already be canonical E.164); the email is
      * lower-cased here and a null/blank email or telephone contributes an empty component; the last name is
      * reduced to its {@link #soundex(String) Soundex} code so near-spellings share a key component. This is
@@ -657,7 +675,7 @@ public class Owner extends Person {
     public static String identityKey(String telephone, String email, String lastName) {
         String tel = (telephone == null) ? "" : telephone;
         String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
-        return Sha256.hex(tel + "|" + mail + "|" + soundex(lastName));
+        return Sha256.hex(IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + soundex(lastName));
     }
 
     /**

@@ -73,9 +73,12 @@ final class Household {
 
     /**
      * Deterministic household identifier for the given last name and postcode: {@code "H-"} followed by
-     * the first 12 hex characters of the SHA-256 of the {@link #key household key}.
+     * the first 12 hex characters of the SHA-256 of the fixed {@link Owner#IDENTITY_VERSION_TAG version tag}
+     * mixed with the {@link #key household key}. The leading tag distinguishes this v2 id from its v1 form
+     * (which hashed the key alone), so no v1 household id is produced again; because every owner's id is
+     * recomputed through here, the household grouping stays self-consistent.
      */
     static String id(String lastName, String postcode) {
-        return "H-" + Sha256.hex(key(lastName, postcode)).substring(0, 12);
+        return "H-" + Sha256.hex(Owner.IDENTITY_VERSION_TAG + "|" + key(lastName, postcode)).substring(0, 12);
     }
 }
