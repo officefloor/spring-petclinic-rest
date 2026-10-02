@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 81c7c9ce1..c40fd9539 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -3,10 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.util.HashSet;
+ import java.util.Locale;
++import java.util.Set;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the {@code customerCode} formatted {@code <REGION>-<HASH8>}, the single region-and-hash owner
+@@ -16,15 +19,17 @@ import org.springframework.samples.petclinic.model.Owner;
+  * hex characters of the SHA-256 of the owner's {@link OwnerTelephone normalized (E.164) telephone}
+  * concatenated with the last name.
+  *
+- * <p>There are no sequence numbers: two owners with the same normalized telephone and last name in the
+- * same region map to the same customer code. Every value built from the customer code — the
++ * <p>The region-and-hash value would otherwise collide for two owners with the same normalized
++ * telephone and last name in the same region. When the computed value matches an existing owner's
++ * {@code customerCode}, it is de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2
++ * or more that makes it unique. Every value built from the customer code — the
+  * {@link AssignMembershipNumber membership number} and its {@link Owner#getCheckDigit() check digit},
+  * the {@link AuditOwnerCreated create audit record} and the {@link Owner#getLocality() locality} — reads
+- * this region-and-hash value.
++ * this de-duplicated value.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = Owner.regionOfPostcode(owner.getPostcode());
+         if (region == null) {
+             region = "UNKNOWN";
+@@ -34,7 +39,20 @@ public class AssignCustomerCode {
+             normalizedTelephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+         }
+         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+-        owner.setCustomerCode(region + "-" + hash8(normalizedTelephone + lastName));
++        String base = region + "-" + hash8(normalizedTelephone + lastName);
++
++        Set<String> existingCodes = new HashSet<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getCustomerCode() != null) {
++                existingCodes.add(existing.getCustomerCode());
++            }
++        }
++
++        String customerCode = base;
++        for (int n = 2; existingCodes.contains(customerCode); n++) {
++            customerCode = base + "-" + n;
++        }
++        owner.setCustomerCode(customerCode);
+     }
+ 
+     /** First 8 upper-case hex characters of the SHA-256 of {@code value}'s UTF-8 bytes. */
