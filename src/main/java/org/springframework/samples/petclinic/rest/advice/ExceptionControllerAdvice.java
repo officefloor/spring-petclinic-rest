@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the given identity key already exists";
+    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner in the given household already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The given city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners has already been created today";
 
@@ -212,6 +213,29 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
         detail.setProperty("errors", List.of("identityKey"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateHouseholdException} thrown when an owner is created that would join an
+     * existing household (same computed {@code householdId}, derived from the last name and postcode)
+     * without declaring membership via {@code sharesHousehold}. Responds with a 409 Conflict whose
+     * {@code errors} array names the {@code householdId} field.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        logger.debug("Duplicate household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getHouseholdId());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        detail.setProperty("errors", List.of("householdId"));
         return ResponseEntity.status(status).body(detail);
     }
 
