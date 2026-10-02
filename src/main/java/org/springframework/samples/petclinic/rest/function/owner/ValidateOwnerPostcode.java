@@ -1,6 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Val;
@@ -24,12 +23,6 @@ public class ValidateOwnerPostcode {
     /** A postcode is exactly four digits. */
     private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
 
-    /** Region -> inclusive {low, high} four-digit postcode range. Regions absent here accept any. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-            "NSW", new int[] {2000, 2099},
-            "VIC", new int[] {3000, 3099},
-            "QLD", new int[] {4000, 4099});
-
     public void service(@Val OwnerFieldsDto request) throws InvalidPostcodeException {
         String postcode = request.getPostcode();
         if (postcode == null || postcode.isBlank()) {
@@ -38,7 +31,7 @@ public class ValidateOwnerPostcode {
         if (!POSTCODE.matcher(postcode).matches()) {
             throw new InvalidPostcodeException(postcode, "must be four digits");
         }
-        int[] range = REGION_POSTCODES.get(Owner.regionOf(request.getCity()));
+        int[] range = Owner.postcodeRangeOf(Owner.regionOf(request.getCity()));
         if (range != null) {
             int value = Integer.parseInt(postcode);
             if (value < range[0] || value > range[1]) {

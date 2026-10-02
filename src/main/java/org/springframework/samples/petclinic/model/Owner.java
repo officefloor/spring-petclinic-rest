@@ -194,22 +194,65 @@ public class Owner extends Person {
         "Brisbane", "QLD");
 
     /**
+     * Region -> inclusive {low, high} four-digit postcode range: the single canonical home of the
+     * postcode bands (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), read via
+     * {@link #postcodeRangeOf(String)} by both locality derivation and the create-time range check.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
      * The canonical region for {@code city} derived from the fixed city-to-region table
      * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the
-     * city is not in the table. The single source of truth for both {@link #getLocality() locality} and
-     * the create-time postcode range check.
+     * city is not in the table. The single source of truth for both the city fallback of
+     * {@link #getLocality() locality} and the create-time postcode range check.
      */
     public static String regionOf(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     /**
-     * The owner's locality: the canonical region derived from {@link #getCity() city} via the fixed
-     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or
-     * {@code "UNKNOWN"} when the city is not in the table.
+     * The inclusive {low, high} four-digit postcode band for {@code region} (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), or {@code null} when the region has no band. This is the single
+     * source of truth for the bands, shared by {@link #regionOfPostcode(String) locality derivation} and
+     * the create-time postcode range check.
+     */
+    public static int[] postcodeRangeOf(String region) {
+        return REGION_POSTCODES.get(region);
+    }
+
+    /**
+     * The canonical region whose postcode band contains {@code postcode} (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), or {@code null} when {@code postcode} is absent, not four digits, or in no known
+     * range.
+     */
+    public static String regionOfPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The owner's locality: the canonical region derived by preferring the {@link #getPostcode() postcode}
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the postcode is absent or in no
+     * known range falling back to the {@link #getCity() city}-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}). {@code "UNKNOWN"} when neither
+     * resolves. Preferring the postcode disambiguates cities that share a name while still returning the
+     * same region for known cities.
      */
     public String getLocality() {
-        return regionOf(this.city);
+        String byPostcode = regionOfPostcode(this.postcode);
+        return byPostcode != null ? byPostcode : regionOf(this.city);
     }
 
     /**
