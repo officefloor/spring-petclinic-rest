@@ -59,6 +59,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -138,6 +141,14 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public LocalDate getRegistrationDate() {
@@ -222,6 +233,19 @@ public class Owner extends Person {
     public String getInitials() {
         return Character.toUpperCase(this.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(this.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * The owner's salutation: the {@link #getTitle() title} and {@link #getLastName() lastName}
+     * separated by a single space (e.g. {@code 'DR Who'}), or just the last name when no title is
+     * supplied. Not persisted — derived from {@link #getTitle()} and {@link #getLastName()}.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
     }
 
     /**
