@@ -6,11 +6,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 Conflict when the supplied telephone is already used by another owner.
+ * Responds 409 Conflict when a new owner's whole identity key equals that of an existing owner.
  */
-public class DuplicateTelephoneExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateTelephoneException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<Void>> response) {
         response.send(new ResponseEntity<>(HttpStatus.CONFLICT));
     }

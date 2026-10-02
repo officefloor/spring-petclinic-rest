@@ -14,8 +14,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Shared household rules for the owner-create pipeline. A household is the set of owners with
  * the same last name at the same address, compared case-insensitively with collapsed
- * whitespace. The membership match and the stable identifier are defined once here so the gate
- * ({@link ValidateUniqueHousehold}), the back-fill ({@link ApplySharedHousehold}) and the new
+ * whitespace. The membership match and the stable identifier are defined once here so the
+ * resolver ({@link ResolveHousehold}), the back-fill ({@link ApplySharedHousehold}) and the new
  * owner ({@link BuildOwner}) all agree on them.
  */
 final class Household {

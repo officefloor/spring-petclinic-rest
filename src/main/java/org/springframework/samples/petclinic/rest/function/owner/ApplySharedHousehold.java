@@ -6,8 +6,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Runs after the {@link ValidateUniqueHousehold} gate and before {@link BuildOwner}, under
- * {@code govern: [ transaction ]}. When the gate resolved a shared {@link Household.Id} (the new
+ * Runs after the {@link ResolveHousehold} step and before {@link BuildOwner}, under
+ * {@code govern: [ transaction ]}. When the step resolved a shared {@link Household.Id} (the new
  * owner is joining an existing household), back-fills that identifier onto every existing member
  * that is missing it, so the whole household carries the same stable id. A no-op — publishing
  * nothing and touching no rows — when the new owner is not joining a shared household.
