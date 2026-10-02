@@ -19,6 +19,9 @@ public class BuildOwner {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
+        // Record how many existing owners already share this first+last name (case-insensitive),
+        // counted before this owner is persisted so the value is fixed at creation time.
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName(), ownerRepository));
         // Join a shared household when the gate resolved an identifier.
         if (householdId != null && householdId.isPresent()) {
             owner.setHouseholdId(householdId.value());
@@ -35,5 +38,21 @@ public class BuildOwner {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         int sequence = ownerRepository.findAll().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Count the existing owners whose first and last names both match the given names,
+     * compared case-insensitively.
+     */
+    private static int countNamesakes(String firstName, String lastName,
+            OwnerRepository ownerRepository) {
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (firstName.equalsIgnoreCase(existing.getFirstName())
+                    && lastName.equalsIgnoreCase(existing.getLastName())) {
+                count++;
+            }
+        }
+        return count;
     }
 }
