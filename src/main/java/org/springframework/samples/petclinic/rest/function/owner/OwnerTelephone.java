@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -14,8 +16,12 @@ import java.util.regex.Pattern;
  *   <li>otherwise country code {@code +61} is assumed and a single leading {@code '0'} is dropped from
  *       the national digits.</li>
  * </ul>
- * The result must be a {@code '+'} followed by 8 to 15 digits; anything else (non-digit leftovers, or a
- * digit count outside that range) is not valid E.164 and yields {@code null}.
+ * The result must be a {@code '+'} followed by 8 to 15 digits. On top of that general rule, the
+ * national-number length (the digits after the country code) must match the country code when it is one
+ * we recognize: {@code +61} requires 9 national digits and {@code +1} requires 10 (see
+ * {@link #NATIONAL_LENGTHS}). Anything else — non-digit leftovers, a total digit count outside 8 to 15,
+ * or a national-number length that is wrong for a recognized country code — is not valid E.164 and
+ * yields {@code null}. A country code that is not in the table is accepted on the general rule alone.
  */
 final class OwnerTelephone {
 
@@ -24,6 +30,19 @@ final class OwnerTelephone {
 
     /** Characters removed before interpreting the number: spaces, dashes and brackets. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
+
+    /**
+     * Country code (without the '+') to its required national-number length. Iterated longest-code-first
+     * (hence {@link LinkedHashMap}) so a longer code is matched before a shorter one that is a prefix of
+     * the number. Country codes absent here are not length-checked.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTHS;
+    static {
+        Map<String, Integer> lengths = new LinkedHashMap<>();
+        lengths.put("61", 9); // Australia
+        lengths.put("1", 10); // North American Numbering Plan
+        NATIONAL_LENGTHS = lengths;
+    }
 
     private OwnerTelephone() {
     }
@@ -47,6 +66,23 @@ final class OwnerTelephone {
             digits = "61" + national;
         }
         String e164 = "+" + digits;
-        return E164.matcher(e164).matches() ? e164 : null;
+        if (!E164.matcher(e164).matches()) {
+            return null;
+        }
+        return hasValidNationalLength(digits) ? e164 : null;
+    }
+
+    /**
+     * Whether the national-number length of {@code digits} (a '+'-less E.164 digit string) matches its
+     * country code. Unrecognized country codes pass (checked only by the general 8-to-15 rule above).
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+            String code = entry.getKey();
+            if (digits.startsWith(code)) {
+                return digits.length() - code.length() == entry.getValue();
+            }
+        }
+        return true;
     }
 }
