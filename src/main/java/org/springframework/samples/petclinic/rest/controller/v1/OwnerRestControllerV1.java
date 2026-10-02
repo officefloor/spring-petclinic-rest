@@ -193,6 +193,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
+        rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = toBusinessDay(
             ownerFieldsDto.getRegistrationDate() != null ? ownerFieldsDto.getRegistrationDate() : LocalDate.now());
         rejectDailyLimitReached(registrationDate);
@@ -350,6 +351,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Rejects a supplied {@code registrationDate} that is later than the current server date. A
+     * {@code null} value means the field was omitted and the registration date will default to the
+     * server date, so there is nothing to reject. A supplied date on or before today is accepted; the
+     * raw supplied value is compared against the server date before any business-day adjustment.
+     *
+     * @param registrationDate the registration date supplied by the client, or {@code null} if omitted
+     * @throws InvalidOwnerFieldsException if the supplied date is later than the server date, yielding a
+     *                                     400 Bad Request response
+     */
+    private void rejectFutureRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new InvalidOwnerFieldsException(List.of("registrationDate"));
+        }
     }
 
     /**
