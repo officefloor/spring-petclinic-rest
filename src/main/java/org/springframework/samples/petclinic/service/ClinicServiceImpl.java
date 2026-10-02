@@ -57,6 +57,14 @@ public class ClinicServiceImpl implements ClinicService {
     /** Above this many owners created today, reads carry a bulk-signup warning. */
     private static final long BULK_SIGNUP_THRESHOLD = 80L;
 
+    /** Fixed public holidays the business-day roll skips. */
+    private static final Set<LocalDate> HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"),
+        LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -373,19 +381,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced
-     * to the following Monday, while a weekday is returned unchanged. Applied to the effective
-     * registration date (whether supplied or defaulted to the server date) so that the stored
-     * {@code registrationDate}, every value derived from it (such as the membership number's year
-     * segment) and the per-day create-limit all use the adjusted business day.
+     * Rolls a registration date forward onto a business day: a Saturday, Sunday or listed public
+     * holiday is advanced one day at a time until a non-holiday weekday is reached, while a plain
+     * weekday is returned unchanged. Applied to the effective registration date (whether supplied
+     * or defaulted to the server date) so that the stored {@code registrationDate}, every value
+     * derived from it (such as the membership number's year segment) and the per-day create-limit
+     * all use the adjusted business day.
      */
     private static LocalDate toBusinessDay(LocalDate date) {
-        DayOfWeek day = date.getDayOfWeek();
-        if (day == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (day == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY
+            || date.getDayOfWeek() == DayOfWeek.SUNDAY
+            || HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
         }
         return date;
     }
