@@ -261,31 +261,53 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, from 1 to 4. It starts at 1, gains 1 when the owner has
-     * an email address, gains 1 when the owner is unique (namesakeCount is 0), and is capped at 3 by
-     * these pre-tenure factors. Level 4 is reserved for tenure: it is reached only when the owner's
-     * tenure exceeds 365 days, measured from {@code registrationDate} to today. Because a newly
-     * created owner has zero tenure, a new owner never exceeds level 3. The inputs are the owner's
-     * own fields.
+     * The owner's membership points, a score accumulated from the owner's own fields. It starts at
+     * 0 and gains: 2 when the owner has an email address; 1 when the owner is unique
+     * ({@code namesakeCount} is 0); 2 when the owner belongs to a household of 3 or more members
+     * (the owner together with their pets); and 3 when the owner's tenure exceeds 365 days, measured
+     * from {@code registrationDate} to today. Because a newly created owner has zero tenure, a new
+     * owner never earns the tenure points. The score feeds {@link #getMembershipLevel()}.
      */
     @Transient
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         if (unique) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        int householdSize = 1 + getPetsInternal().size();
+        if (householdSize >= 3) {
+            points += 2;
+        }
         boolean tenured = this.registrationDate != null
             && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
         if (tenured) {
-            level = 4;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, from 1 to 4, derived from {@link #getMembershipPoints()}:
+     * level 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     /**
