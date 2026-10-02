@@ -196,20 +196,52 @@ public class Owner extends Person {
     }
 
     /**
-     * Fixed city-to-region table used to derive {@link #getLocality() locality}.
+     * Fixed city-to-region table used as the fall-back when deriving
+     * {@link #getLocality() locality}.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * The owner's locality: the canonical region derived from {@link #getCity() city}
-     * using the fixed {@link #CITY_REGION} table (Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD), or {@code 'UNKNOWN'} when the city is not in the table.
-     * Not persisted — derived from {@link #getCity()}.
+     * Region -> inclusive 4-digit postcode range {low, high}, the primary source for
+     * deriving {@link #getLocality() locality} (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     */
+    private static final Map<String, int[]> REGION_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * The owner's locality: the canonical region derived first from {@link #getPostcode()
+     * postcode} by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the
+     * fixed {@link #CITY_REGION} city table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when
+     * the postcode is absent or in no known range, or {@code 'UNKNOWN'} when neither matches.
+     * Preferring the postcode disambiguates cities that share a name. Not persisted — derived
+     * from {@link #getPostcode()} and {@link #getCity()}.
      */
     @Transient
     public String getLocality() {
+        String region = regionFromPostcode();
+        if (region != null) {
+            return region;
+        }
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /** Region whose range contains this owner's postcode, or {@code null} when the postcode is
+     * absent, not 4 digits, or in no known range. */
+    private String regionFromPostcode() {
+        if (this.postcode == null || !this.postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(this.postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
