@@ -70,6 +70,46 @@ public final class TelephoneNormalizer {
     }
 
     /**
+     * Format a canonical E.164 number for human display: the country code (with its leading
+     * {@code '+'}), a space, then the national digits grouped left-to-right in threes and
+     * space-separated. For a recognised country code the national number is the digits after
+     * that code (country codes are matched longest-first so the most specific prefix wins);
+     * for an unrecognised code the whole digit sequence is grouped in threes. So
+     * {@code '+61412345678'} becomes {@code '+61 412 345 678'}.
+     *
+     * @param e164 a canonical E.164 string (a leading {@code '+'} followed by 8-15 digits), or
+     *             {@code null}
+     * @return the display string, or {@code null} if {@code e164} is {@code null}
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        for (String countryCode : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(countryCode) && digits.length() > countryCode.length()) {
+                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /**
+     * Group a run of digits left-to-right into space-separated chunks of three (a trailing chunk
+     * may have one or two digits). So {@code '412345678'} becomes {@code '412 345 678'}.
+     */
+    private static String groupInThrees(String digits) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(digits.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Verify that, for a recognised country code, the national number (the digits following the
      * country code) has exactly the length that country requires. Country codes are matched
      * longest-first so the most specific prefix wins. Unrecognised country codes are left to the

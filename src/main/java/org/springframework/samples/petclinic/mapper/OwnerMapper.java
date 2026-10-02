@@ -27,6 +27,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
+    @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
@@ -65,6 +66,24 @@ public interface OwnerMapper {
             return null;
         }
         return initial(owner.getFirstName()) + initial(owner.getLastName());
+    }
+
+    /**
+     * Formats an owner's stored E.164 telephone for human display, as required by the API's
+     * read-only {@code telephoneDisplay} field: the country code (with its leading {@code '+'}),
+     * a space, then the national digits grouped in threes (e.g. {@code '+61 412 345 678'}). The
+     * raw {@code telephone} field keeps its canonical E.164 form. Returns {@code null} when no
+     * telephone is present.
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatTelephoneDisplay")
+    default String formatTelephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return TelephoneNormalizer.toDisplay(owner.getTelephone());
     }
 
     /**
