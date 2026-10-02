@@ -144,7 +144,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -366,18 +366,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'}. {@code LAST3} is
-     * the upper-cased first three letters of the last name, and {@code NNNN} is a global 4-digit
-     * zero-padded sequence equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+     * Builds the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}. {@code CITY3}
+     * is the upper-cased first three letters of the city, {@code LAST3} the upper-cased first three
+     * letters of the last name, and {@code NNNN} a per-city 4-digit zero-padded sequence equal to one
+     * more than the number of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the formatted customer code
      */
-    private String generateCustomerCode(String lastName) {
-        String letters = lastName.replaceAll("[^\\p{L}]", "");
-        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+    private String generateCustomerCode(String city, String lastName) {
+        String city3 = first3Letters(city);
+        String last3 = first3Letters(lastName);
+        int sequence = countOwnersInCity(city) + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Returns the upper-cased first three letters of the given value, with any non-letter characters
+     * removed first, used to build the city and last-name segments of a {@code customerCode}.
+     *
+     * @param value the value to abbreviate
+     * @return the upper-cased first three letters, or fewer if the value has fewer letters
+     */
+    private String first3Letters(String value) {
+        String letters = value.replaceAll("[^\\p{L}]", "");
+        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Counts the existing owners already in the given city, used to derive the per-city sequence of a
+     * {@code customerCode}. Cities are compared case-insensitively with surrounding and internal
+     * whitespace collapsed, consistent with the other owner-field comparisons. The owner being created
+     * has not been saved yet, so it is never included in the count.
+     *
+     * @param city the city of the owner being created
+     * @return the number of existing owners in that city
+     */
+    private int countOwnersInCity(String city) {
+        String normalizedCity = normalizeForComparison(city);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
+            .count();
     }
 
     /**
