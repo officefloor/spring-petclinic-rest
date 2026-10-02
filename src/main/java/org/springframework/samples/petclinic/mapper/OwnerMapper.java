@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+    @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
@@ -124,12 +125,42 @@ public interface OwnerMapper {
     }
 
     /**
+     * Computes an owner's membership points, as required by the API's read-only
+     * {@code membershipPoints} field: starting at 0, plus 2 when an email address is present,
+     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), plus 2 for a household
+     * of 3 or more members, plus 3 when the owner's tenure exceeds 365 days (more than a year
+     * since the registration date).
+     *
+     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
+     * applied only where referenced via {@code qualifiedByName}.
+     */
+    @Named("formatMembershipPoints")
+    default Integer formatMembershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            points += 2;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += 1;
+        }
+        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
+            points += 2;
+        }
+        if (owner.getRegistrationDate() != null
+                && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
      * Derives an owner's membership level, as required by the API's read-only
-     * {@code membershipLevel} field: starting at 1, plus 1 when an email address is present,
-     * plus 1 when the owner has no namesakes ({@code namesakeCount} is 0), plus 1 when the owner's
-     * tenure exceeds 365 days (more than a year since the registration date), capped at 4. Because
-     * a newly created owner has zero tenure, a new owner never reaches level 4: a new owner with an
-     * email and no namesakes maxes the pre-tenure factors at level 3.
+     * {@code membershipLevel} field: a value from 1 to 4 mapped from the owner's
+     * {@link #formatMembershipPoints membership points} — level 1 for 0-1 points, level 2 for
+     * 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more points.
      *
      * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
      * applied only where referenced via {@code qualifiedByName} (and when called directly, e.g.
@@ -140,18 +171,17 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        int level = 1;
-        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+        int points = formatMembershipPoints(owner);
+        if (points <= 1) {
+            return 1;
         }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (owner.getRegistrationDate() != null
-                && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, 4);
+        return 4;
     }
 
     /**
