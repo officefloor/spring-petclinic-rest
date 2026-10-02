@@ -23,7 +23,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * Shared SHA-256 hashing helper. Generic hashing logic with no dependency on any particular domain
  * object, kept here so every value derived from a SHA-256 digest (the owner's {@code identityKey},
- * {@code householdId} and {@code customerCode} hash segment) shares one digest/hex implementation
+ * {@code householdId} and {@code memberId} {@code HASH8} segment) shares one digest/hex implementation
  * rather than each copying the loop and its exception handling.
  */
 public final class HashUtils {

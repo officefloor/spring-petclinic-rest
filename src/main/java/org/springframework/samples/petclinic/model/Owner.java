@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.samples.petclinic.util.TelephoneFormatter;
 
@@ -72,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -186,12 +187,52 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, formatted {@code '<REGION><FY><HASH8><CHK>'} with no separators: the
+     * region code baked from the postcode at creation, the two-digit fiscal year of the
+     * business-day-adjusted registration date, the eight upper-hex {@code HASH8} (the first eight hex
+     * characters of the SHA-256 digest of the normalized telephone followed by the last name, the same
+     * segment used by the region-and-hash identity), and a single Luhn check digit {@code CHK} computed
+     * over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW261A2B3C4D7'}). Assigned at
+     * creation time; if the computed value collides with an existing owner's member id it is
+     * de-duplicated by appending {@code '-<n>'}. This single value unifies the former customer code and
+     * membership number.
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
+    }
+
+    /** Width of the {@code <FY>} (fiscal-year) segment of a base member id. */
+    private static final int MEMBER_ID_FY_LENGTH = 2;
+
+    /** Width of the {@code <HASH8>} segment of a base member id. */
+    private static final int MEMBER_ID_HASH8_LENGTH = 8;
+
+    /** Width of the {@code <CHK>} (Luhn check digit) segment of a base member id. */
+    private static final int MEMBER_ID_CHK_LENGTH = 1;
+
+    /**
+     * Width of the fixed-length tail of a base member id that follows the variable-length
+     * {@code <REGION>}: the {@code <FY>}, {@code <HASH8>} and {@code <CHK>} segments together. The
+     * region is everything before this tail, and the fiscal year is its first
+     * {@link #MEMBER_ID_FY_LENGTH} characters.
+     */
+    private static final int MEMBER_ID_FIXED_TAIL =
+        MEMBER_ID_FY_LENGTH + MEMBER_ID_HASH8_LENGTH + MEMBER_ID_CHK_LENGTH;
+
+    /**
+     * The owner's member id with any de-duplication suffix stripped — the base
+     * {@code '<REGION><FY><HASH8><CHK>'} value from which the region and fiscal-year segments are read.
+     * The base carries no {@code '-'}; the collision suffix (when present) is {@code '-<n>'}, so the
+     * base is the portion before the first {@code '-'}.
+     */
+    private String memberIdBase() {
+        int dash = this.memberId.indexOf('-');
+        return dash < 0 ? this.memberId : this.memberId.substring(0, dash);
     }
 
     public String getHouseholdId() {
@@ -282,72 +323,24 @@ public class Owner extends Person {
     }
 
     /**
-     * The fiscal year a date falls in. The fiscal year starts on 1 July and is identified by the
-     * calendar year in which it ends: a date in July through December belongs to the fiscal year
-     * ending the following calendar year, a date in January through June to the fiscal year ending
-     * that same calendar year.
-     */
-    private static int fiscalYearOf(LocalDate date) {
-        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the last two digits of
-     * the fiscal year (which starts on 1 July) that the business-day-adjusted {@code registrationDate}
-     * falls in (e.g. {@code 'FY26'} for a registration date between 1 July 2025 and 30 June 2026).
-     * Derived from the owner's own {@code registrationDate}; {@code null} until it is set.
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the two-digit fiscal-year
+     * segment carried by the owner's {@link #getMemberId() member id} (e.g. {@code 'FY26'} for a member
+     * id whose {@code <FY>} segment is {@code '26'}). The member id bakes in the fiscal year (which
+     * starts on 1 July) of the business-day-adjusted registration date at creation time, so this reads
+     * that value back from the member id. {@code null} until the owner has a member id.
      */
     @Transient
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        if (this.memberId == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where {@code YY} is
-     * the last two digits of the fiscal year carried by the business-day-adjusted registration date
-     * (e.g. {@code 'NSW-1A2B3C4D-M26'}). Derived from the owner's own fields; {@code null} until both
-     * the customer code and registration date are set.
-     */
-    @Transient
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
+        String base = memberIdBase();
+        int length = base.length();
+        if (length < MEMBER_ID_FIXED_TAIL) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * A single Luhn check digit (0-9) computed over the digits contained in the owner's
-     * {@code customerCode}. Derived from the owner's own fields; {@code null} until the customer
-     * code is set. The standard Luhn algorithm is applied to the digits of the customer code, from
-     * right to left, doubling every second digit (subtracting 9 when the doubled value exceeds 9).
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return "FY" + base.substring(length - MEMBER_ID_FIXED_TAIL,
+            length - (MEMBER_ID_HASH8_LENGTH + MEMBER_ID_CHK_LENGTH));
     }
 
     /**
@@ -375,7 +368,7 @@ public class Owner extends Person {
             points += 2;
         }
         boolean tenured = this.registrationDate != null
-            && fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate) > 0;
+            && FiscalYear.of(LocalDate.now()) - FiscalYear.of(this.registrationDate) > 0;
         if (tenured) {
             points += 3;
         }
@@ -426,18 +419,23 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region carried by the {@code customerCode}, which is the
-     * {@code <REGION>} segment preceding its first {@code '-'} (e.g. {@code 'NSW'} for customer code
-     * {@code 'NSW-1A2B3C4D'}). The region is the one derived from the postcode at creation time and
-     * baked into the identity. {@code 'UNKNOWN'} when the owner has no customer code yet.
+     * The owner's locality: the canonical region carried by the {@link #getMemberId() member id}, which
+     * is its leading {@code <REGION>} segment — everything preceding the two-digit fiscal year, the
+     * eight-character {@code HASH8} and the single check digit that complete the base member id (e.g.
+     * {@code 'NSW'} for member id {@code 'NSW261A2B3C4D7'}). The region is the one derived from the
+     * postcode at creation time and baked into the identity. {@code 'UNKNOWN'} when the owner has no
+     * member id yet.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode == null) {
+        if (this.memberId == null) {
             return "UNKNOWN";
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash < 0 ? "UNKNOWN" : this.customerCode.substring(0, dash);
+        String base = memberIdBase();
+        if (base.length() <= MEMBER_ID_FIXED_TAIL) {
+            return "UNKNOWN";
+        }
+        return base.substring(0, base.length() - MEMBER_ID_FIXED_TAIL);
     }
 
     /**

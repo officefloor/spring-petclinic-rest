@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
   telephone VARCHAR(20),
   email VARCHAR(255),
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(32),
   household_id VARCHAR(64),
   namesake_count INT,
   postcode VARCHAR(4),
