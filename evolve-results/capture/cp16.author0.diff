@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 764bf3c24..dc497bdda 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -331,16 +331,32 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Build an owner's {@code customerCode} as {@code '<LAST3>-<NNNN>'}: LAST3 is the
+-     * upper-cased first three letters of the owner's last name, and NNNN is a global
+-     * 4-digit zero-padded sequence equal to one more than the current number of owners
+-     * (e.g. {@code 'SMI-0007'}).
++     * Build an owner's {@code customerCode} as {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the
++     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three
++     * letters of the owner's last name, and NNNN a per-city 4-digit zero-padded sequence equal
++     * to one more than the number of owners already in that city (e.g. {@code 'LON-SMI-0007'}).
+      */
+     private String generateCustomerCode(Owner owner) {
++        String city = owner.getCity();
++        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+         String lastName = owner.getLastName();
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        long sequence = ownerRepository.findAll().size() + 1L;
+-        return String.format("%s-%04d", last3, sequence);
++        long sequence = countOwnersInCity(owner) + 1L;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /**
++     * Count the owners that already exist (before this create) in the same city as {@code owner},
++     * compared case-insensitively. Returns zero when the owner has no city.
++     */
++    private long countOwnersInCity(Owner owner) {
++        String city = owner.getCity();
++        if (city == null) {
++            return 0L;
++        }
++        return ownerRepository.findAll().stream()
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6bd73803b..fe8bf6026 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,12 +2119,13 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3
+-                is the upper-cased first three letters of lastName and NNNN is a
+-                global 4-digit zero-padded sequence equal to one more than the
+-                number of owners that existed when this owner was created.
++                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>'
++                where CITY3 is the upper-cased first three letters of city, LAST3
++                the upper-cased first three letters of lastName and NNNN a per-city
++                4-digit zero-padded sequence equal to one more than the number of
++                owners already in that city when this owner was created.
+               type: string
+-              example: 'SMI-0007'
++              example: 'LON-SMI-0007'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2156,7 +2157,7 @@ components:
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+                 where YY is the last two digits of the registrationDate year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'LON-SMI-0007-M26'
+               readOnly: true
+             membershipTier:
+               title: Membership tier
