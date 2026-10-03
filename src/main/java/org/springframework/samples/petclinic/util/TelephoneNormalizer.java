@@ -82,6 +82,52 @@ public final class TelephoneNormalizer {
     }
 
     /**
+     * Format a stored E.164 number for humans: the {@code '+'} and country code, a space, then the
+     * national digits grouped in threes separated by spaces, e.g. {@code '+61412345678'} becomes
+     * {@code '+61 412 345 678'}. The country code is recognised for the countries we know
+     * ({@code '+61'} Australia, {@code '+1'} NANP); any other value is returned unchanged.
+     *
+     * @param e164 a stored E.164 telephone (e.g. {@code '+61412345678'}), may be {@code null}
+     * @return the human-formatted display string, or {@code null} when {@code e164} is {@code null}
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        if (!e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d+")) {
+            return e164;
+        }
+        String countryCode = countryCodeOf(digits);
+        if (countryCode == null) {
+            return e164;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Return the country code of the given E.164 digits (the part after the {@code '+'}) for the
+     * countries we recognise ({@code '61'} then {@code '1'}), or {@code null} when none matches.
+     */
+    private static String countryCodeOf(String e164Digits) {
+        if (e164Digits.startsWith(DEFAULT_COUNTRY_CODE)) {
+            return DEFAULT_COUNTRY_CODE;
+        }
+        if (e164Digits.startsWith(NANP_COUNTRY_CODE)) {
+            return NANP_COUNTRY_CODE;
+        }
+        return null;
+    }
+
+    /**
      * Check that the national-number length matches the country code for the countries we recognise.
      * {@code '+61'} (Australia) requires 9 national digits and {@code '+1'} (NANP) requires 10; any
      * other country code is left to the generic 8-to-15 digit bound.

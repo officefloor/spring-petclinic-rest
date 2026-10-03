@@ -27,7 +27,18 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive the owner's read-only {@code telephoneDisplay}: the stored E.164 {@code telephone}
+     * formatted for humans (country code, a space, then the national digits grouped in threes),
+     * e.g. {@code '+61412345678'} becomes {@code '+61 412 345 678'}. Returns {@code null} when the
+     * owner has no telephone, so the field is omitted from the response.
+     */
+    default String toTelephoneDisplay(Owner owner) {
+        return TelephoneNormalizer.toDisplay(owner.getTelephone());
+    }
 
     /**
      * Derive the owner's read-only {@code ageBand} enum from its {@code birthDate}, computed against
