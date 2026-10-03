@@ -1,0 +1,43 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 559d8347a..a30039e78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -17,6 +17,8 @@ package org.springframework.samples.petclinic.service;
+ 
+ import java.time.LocalDate;
+ 
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ import org.springframework.dao.DataAccessException;
+ import org.springframework.dao.EmptyResultDataAccessException;
+ import org.springframework.data.domain.Page;
+@@ -44,6 +46,9 @@ import java.util.function.Supplier;
+ @Service
+ public class ClinicServiceImpl implements ClinicService {
+ 
++    /** Dedicated audit channel; create side-effects are published here for auditing. */
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
+     private final PetRepository petRepository;
+     private final VetRepository vetRepository;
+     private final OwnerRepository ownerRepository;
+@@ -236,6 +241,7 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        boolean isNew = owner.isNew();
+         // Resolve the effective registration date (supplied, or defaulted to the server date) and
+         // roll it forward to the next business day so it never lands on a weekend. Everything
+         // derived from the registration date below must use this adjusted value.
+@@ -272,7 +278,10 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setMembershipNumber(generateMembershipNumber(owner));
+         }
+         ownerRepository.save(owner);
+-
++        if (isNew) {
++            AUDIT.info("owner created id={} customerCode={} registrationDate={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        }
+     }
+ 
+     /**
