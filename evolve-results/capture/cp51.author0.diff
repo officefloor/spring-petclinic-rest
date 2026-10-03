@@ -1,0 +1,145 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7de7e1c43..21021ed32 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -90,6 +90,9 @@ public class Owner extends Person {
+     @Column(name = "household_member_count")
+     private Integer householdMemberCount;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private boolean possibleDuplicate;
+ 
+@@ -288,21 +291,45 @@ public class Owner extends Person {
+     /**
+      * Derive the owner's numeric {@code membershipLevel}, from 1 to 4, by mapping the owner's
+      * {@code membershipPoints}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5
+-     * points, and level 4 for 6 or more points.
++     * points, and level 4 for 6 or more points. The result is then capped at the owner's
++     * {@code membershipLevelCap} when one has been assigned, so a new household member can never
++     * exceed one above the highest level already present in their household (see
++     * {@link #getMembershipLevelCap()}).
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+         int points = getMembershipPoints();
++        int level;
+         if (points <= 1) {
+-            return 1;
++            level = 1;
++        }
++        else if (points <= 3) {
++            level = 2;
++        }
++        else if (points <= 5) {
++            level = 3;
+         }
+-        if (points <= 3) {
+-            return 2;
++        else {
++            level = 4;
+         }
+-        if (points <= 5) {
+-            return 3;
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
+         }
+-        return 4;
++        return level;
++    }
++
++    /**
++     * The ceiling applied to this owner's derived {@code membershipLevel}: one above the highest
++     * {@code membershipLevel} among the owner's household members (same last name and postcode) at
++     * creation time. {@code null} when the owner had no existing household member, in which case no
++     * cap applies.
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index b183021cb..bfad98468 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -277,15 +277,18 @@ public class ClinicServiceImpl implements ClinicService {
+             List<Owner> householdMembers = findHouseholdMembers(owner);
+             // Size of the household after this create: the existing members plus this new owner.
+             owner.setHouseholdMemberCount(householdMembers.size() + 1);
+-            // A second owner in an existing household is the same household and is rejected as a
+-            // household duplicate, UNLESS the request declares (via sharesHousehold) that it genuinely
+-            // shares the household. sharesHousehold only bypasses this block; it no longer creates the
+-            // link, which is now derived from (last name, postcode).
++            // A new owner joining an existing household is accepted as a household member; it is not a
++            // suspected duplicate. Rather than being rejected, its derived membershipLevel is capped at
++            // one above the current maximum membershipLevel among its household members, so a new member
++            // can never leap more than one level past the household. With no existing member no cap
++            // applies.
+             if (!householdMembers.isEmpty()) {
+-                if (!owner.isSharesHousehold()) {
+-                    throw new HouseholdDuplicateException(owner.getHouseholdId());
+-                }
+                 declaredHouseholdMember = true;
++                int maxLevel = householdMembers.stream()
++                    .mapToInt(Owner::getMembershipLevel)
++                    .max()
++                    .getAsInt();
++                owner.setMembershipLevelCap(maxLevel + 1);
+             }
+         }
+         // Single consolidated duplicate check: reject only when the new owner's WHOLE identityKey
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c8e055725..5f90945c3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+   household_member_count INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index c147de668..f0ec52b2f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,6 +55,7 @@ CREATE TABLE owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+   household_member_count INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 95411017b..6df558746 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+   household_member_count INT,
++  membership_level_cap INT,
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INT,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 22f01309c..230dd54dc 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+                                       household_member_count INTEGER,
++                                      membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+                                       possible_duplicate_of INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL,
