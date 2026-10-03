@@ -1,0 +1,206 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ad3ecc20a..1ebb45c92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,8 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$",
++            message = "Phone number must be in E.164 form: '+' then 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+index 257929b3a..a9c12cb9c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+@@ -1,7 +1,7 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown by the create pipeline when the normalized telephone of the owner being created
++ * Thrown by the create pipeline when the E.164 telephone of the owner being created
+  * is already used by another (existing) owner. Handled globally by
+  * {@link DuplicateTelephoneExceptionHandler}, which responds 409.
+  */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index f56044bed..556e3e56e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -1,8 +1,8 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown by the create pipeline when the supplied telephone, once every non-digit
+- * character is stripped, is not exactly 10 digits. Handled globally by
++ * Thrown by the create pipeline when the supplied telephone cannot be formatted as a valid
++ * E.164 number (not 8 to 15 digits after the country code). Handled globally by
+  * {@link InvalidTelephoneExceptionHandler}, which responds 400.
+  */
+ public class InvalidTelephoneException extends Exception {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 7e4773d4a..8631ebc8a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -5,19 +5,22 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+ 
+ /**
+- * Normalizes the owner's telephone by removing every non-digit character, then requires
+- * exactly 10 digits. The normalized 10-digit value is stored back on the owner (so it is
+- * persisted and returned); anything else escalates as a 400 via
+- * {@link InvalidTelephoneException}.
++ * Normalizes the owner's telephone to E.164 form (see {@link OwnerTelephones}): strip
++ * spaces, dashes and brackets; keep a leading '+' and country code when present, otherwise
++ * assume country code '+61' and drop a single leading '0' from the national digits; require
++ * 8 to 15 digits after the '+'. The E.164 value is stored back on the owner (so it is
++ * persisted and returned); anything that cannot form a valid E.164 number escalates as a
++ * 400 via {@link InvalidTelephoneException}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val Owner owner) throws InvalidTelephoneException {
+-        String digits = OwnerTelephones.normalize(owner.getTelephone());
+-        if (digits.length() != 10) {
++        String e164 = OwnerTelephones.toE164(owner.getTelephone());
++        if (e164 == null) {
+             throw new InvalidTelephoneException(
+-                    "Telephone must be exactly 10 digits after removing non-digit characters");
++                    "Telephone cannot be formatted as a valid E.164 number "
++                            + "(8 to 15 digits after the country code)");
+         }
+-        owner.setTelephone(digits);
++        owner.setTelephone(e164);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+index efcc8c337..620750ebc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+@@ -1,18 +1,46 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ /**
+- * Single source of truth for the owner "normalized telephone" rule: strip every non-digit
+- * character. Both {@link NormalizeOwnerTelephone} (which stores the normalized value) and
++ * Single source of truth for the owner "E.164 telephone" rule. Both
++ * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and
+  * {@link RejectDuplicateTelephone} (which compares against it) go through here, so the two
+  * can never drift apart.
++ *
++ * <p>The rule: strip spaces, dashes and brackets; keep a leading {@code '+'} and country
++ * code when present, otherwise assume country code {@code '+61'} and drop a single leading
++ * {@code '0'} from the national digits; require 8 to 15 digits after the {@code '+'}. So
++ * {@code "0412 345 678"} becomes {@code "+61412345678"}.
+  */
+ final class OwnerTelephones {
+ 
+     private OwnerTelephones() {
+     }
+ 
+-    /** Returns {@code telephone} with every non-digit character removed ("" when null). */
+-    static String normalize(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    /**
++     * Converts {@code telephone} to its E.164 form, or returns {@code null} when it cannot
++     * form a valid E.164 number (null input, non-digit content, or fewer than 8 / more than
++     * 15 digits after the {@code '+'}).
++     */
++    static String toE164(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        // Strip spaces, dashes and brackets; any other non-digit is left in place so it
++        // fails the digits check below.
++        String cleaned = telephone.replaceAll("[\\s()\\-]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            // Explicit country code: keep it, drop the leading '+'.
++            digits = cleaned.substring(1);
++        } else {
++            // No country code: assume '+61' and drop a single leading '0' from the national
++            // digits.
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        if (!digits.matches("\\d{8,15}")) {
++            return null;
++        }
++        return "+" + digits;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java
+index 5e93bd79f..41cad4600 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java
+@@ -6,25 +6,25 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+ 
+ /**
+- * Rejects creating an owner whose normalized telephone is already used by any other owner.
+- * Runs after {@link NormalizeOwnerTelephone} (so the owner's telephone is already the
+- * normalized 10-digit value) and before {@link SaveOwner}. Each stored telephone is
+- * normalized through {@link OwnerTelephones} before comparison, so a stored value in any
+- * format still collides. A match on a different owner escalates as a 409 via
+- * {@link DuplicateTelephoneException}.
++ * Rejects creating an owner whose E.164 telephone is already used by any other owner.
++ * Runs after {@link NormalizeOwnerTelephone} (so the owner's telephone is already the E.164
++ * value) and before {@link SaveOwner}. Each stored telephone is converted to E.164 through
++ * {@link OwnerTelephones} before comparison, so a stored value in any format still collides.
++ * A match on a different owner escalates as a 409 via {@link DuplicateTelephoneException}.
+  */
+ public class RejectDuplicateTelephone {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DuplicateTelephoneException {
+-        // The incoming owner's telephone is already normalized by NormalizeOwnerTelephone;
+-        // only the stored values (which may predate the pipeline) need normalizing to compare.
++        // The incoming owner's telephone is already E.164 (from NormalizeOwnerTelephone);
++        // only the stored values (which may predate the pipeline) need converting to compare.
+         String telephone = owner.getTelephone();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
+                 continue;
+             }
+-            if (telephone.equals(OwnerTelephones.normalize(existing.getTelephone()))) {
++            // A stored value that cannot form valid E.164 yields null, which never matches.
++            if (telephone.equals(OwnerTelephones.toE164(existing.getTelephone()))) {
+                 throw new DuplicateTelephoneException(
+                         "Telephone is already used by another owner");
+             }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 80a25d259..fcd5d0409 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2028,13 +2028,16 @@ components:
+         telephone:
+           title: Telephone number
+           description: >-
+-            The telephone number of the pet owner. On create it is normalized by
+-            removing every non-digit character and must be exactly 10 digits
+-            afterwards; the normalized 10-digit value is stored and returned.
++            The telephone number of the pet owner. On create it is normalized to
++            E.164 form: spaces, dashes and brackets are stripped; a leading '+' and
++            country code are kept when present, otherwise country code '+61' is
++            assumed and a single leading '0' is dropped from the national digits;
++            there must be 8 to 15 digits after the '+'. The E.164 value is stored
++            and returned (e.g. '0412 345 678' becomes '+61412345678').
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: >-
