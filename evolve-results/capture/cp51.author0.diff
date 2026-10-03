@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+new file mode 100644
+index 000000000..640f90a5c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.OptionalInt;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Caps the new owner's {@code membershipLevel} so it cannot exceed one above the current
++ * maximum {@code membershipLevel} among the other members of its household. The household is
++ * keyed on the deterministic {@code householdId} (normalized last name and postcode — see
++ * {@link HouseholdKey}), so a member is any other owner that computes the same id.
++ *
++ * <p>Runs after {@link AssignMembershipLevel} has derived the raw level and before the owner is
++ * saved, so the cap is applied against the already-persisted household members only. When the
++ * owner has no existing household member (or none has a {@code membershipLevel}), no cap applies
++ * and the derived level is kept as-is. Otherwise the stored level is reduced to at most
++ * {@code max(existing membershipLevel) + 1}.
++ */
++public class CapMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        Integer level = owner.getMembershipLevel();
++        if (level == null) {
++            return;
++        }
++        HouseholdKey household = HouseholdKey.of(owner);
++        OptionalInt maxExisting = ownerRepository.findAll().stream()
++                .filter(existingOwner -> existingOwner.getId() == null
++                        || !existingOwner.getId().equals(owner.getId()))
++                .filter(existingOwner -> !Boolean.TRUE.equals(existingOwner.getDeleted()))
++                .filter(household::matches)
++                .map(Owner::getMembershipLevel)
++                .filter(java.util.Objects::nonNull)
++                .mapToInt(Integer::intValue)
++                .max();
++        if (maxExisting.isEmpty()) {
++            return;
++        }
++        int ceiling = maxExisting.getAsInt() + 1;
++        if (level > ceiling) {
++            owner.setMembershipLevel(ceiling);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 6b546e844..456a3168c 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -66,13 +66,6 @@ normalizeRegistrationDate:
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
+-  next: rejectDuplicateIdentity
+-
+-# Household duplicate check: reject (409) when another owner is already in this household
+-# (same householdId = same last name + postcode), unless sharesHousehold declares a shared member.
+-rejectDuplicateIdentity:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateIdentity
+-  govern: [ transaction ]
+   next: rejectCityAtCapacity
+ 
+ rejectCityAtCapacity:
+@@ -108,6 +101,13 @@ flagBulkSignup:
+ assignMembershipLevel:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
+   govern: [ transaction ]
++  next: capMembershipLevel
++
++# Cap the derived level to at most one above the current maximum membershipLevel among
++# the owner's existing household members. No existing household member => no cap.
++capMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ transaction ]
+   next: flagPossibleDuplicate
+ 
+ # Soft duplicate signal: shares an existing owner's lastName and postcode with a different
