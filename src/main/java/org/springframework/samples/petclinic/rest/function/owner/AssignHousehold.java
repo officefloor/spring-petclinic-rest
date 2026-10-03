@@ -9,9 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * of {@code (lastName, postcode)}, every owner in a household computes the same value with
  * no explicit linking — the former back-fill of existing members is no longer needed.
  *
- * <p>The {@code sharesHousehold} request flag no longer affects this step: it only bypasses
- * the create-time duplicate block (see {@link EnsureUniqueHousehold}). An owner with no
- * postcode belongs to no household and keeps a null {@code householdId}.
+ * <p>The {@code sharesHousehold} request flag does not affect this step: it only tells
+ * {@link FlagPossibleDuplicate} to treat the owner as a declared household member and so
+ * leave it unflagged. An owner with no postcode belongs to no household and keeps a null
+ * {@code householdId}.
  */
 public class AssignHousehold {
 

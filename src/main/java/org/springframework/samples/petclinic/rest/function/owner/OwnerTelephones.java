@@ -3,9 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 /**
  * Single source of truth for what a "normalized" owner telephone is: the number in
  * <a href="https://en.wikipedia.org/wiki/E.164">E.164</a> form. Used by
- * {@link NormalizeOwnerTelephone} when storing and by {@link EnsureUniqueHousehold} when
- * forming the telephone part of an owner's identity key, so the rule cannot drift between
- * the two steps.
+ * {@link NormalizeOwnerTelephone} to canonicalize an owner's telephone before it is stored,
+ * so every owner's stored number is in one canonical form.
  *
  * <p>The rule: spaces, dashes and brackets are stripped. If a leading {@code '+'} (and
  * therefore an explicit country code) is present it is kept; otherwise country code

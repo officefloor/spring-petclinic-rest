@@ -8,13 +8,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns the owner's soft-match flags. A new owner that is not a hard duplicate (the
- * hard-duplicate 409 is already decided by {@link EnsureUniqueHousehold}) is still flagged
- * as a possible duplicate when it shares an existing owner's last name (compared
- * case-insensitively) and postcode while carrying a different telephone: in that case
- * {@code possibleDuplicate} is {@code true} and {@code possibleDuplicateOf} is the matching
- * owner's id. Otherwise {@code possibleDuplicate} is {@code false} and
- * {@code possibleDuplicateOf} is null.
+ * Assigns the owner's soft-match flags. A new owner is flagged as a possible duplicate when
+ * it shares an existing owner's last name (compared case-insensitively) and postcode while
+ * carrying a different telephone: in that case {@code possibleDuplicate} is {@code true} and
+ * {@code possibleDuplicateOf} is the matching owner's id. Otherwise {@code possibleDuplicate}
+ * is {@code false} and {@code possibleDuplicateOf} is null.
  *
  * <p>A declared household member (the request set {@code sharesHousehold}) is never a
  * suspected duplicate: it deliberately shares a last name and postcode with the rest of its

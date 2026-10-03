@@ -80,6 +80,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -234,6 +237,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Boolean getBulkSignupWarning() {
@@ -404,11 +415,21 @@ public class Owner extends Person {
     /**
      * The owner's membership level: a number from 1 to 4 derived by banding
      * {@link #getMembershipPoints()} — 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6
-     * or more. Derived from the owner's own fields.
+     * or more. Derived from the owner's own fields, then capped by
+     * {@link #membershipLevelCap} when set: a new owner's level cannot exceed one above the
+     * current maximum level among their household members. With no existing household member
+     * the cap is absent and the banded value stands.
      */
     @Transient
     public Integer getMembershipLevel() {
-        int points = getMembershipPoints();
+        int level = bandMembershipLevel(getMembershipPoints());
+        if (this.membershipLevelCap != null && this.membershipLevelCap < level) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    private static int bandMembershipLevel(int points) {
         if (points <= 1) {
             return 1;
         }
