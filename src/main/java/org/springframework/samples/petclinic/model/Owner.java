@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.DisposableDomains;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
 
@@ -473,6 +474,20 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Derive the owner's read-only {@code riskFlag}: {@code true} when any of the owner's risk
+     * signals is present — the owner is a possible (soft) duplicate ({@link #isPossibleDuplicate()}),
+     * its email domain is disposable-adjacent
+     * ({@link DisposableDomains#isDisposableAdjacent(String)}), or its city was over its soft
+     * capacity at creation ({@link #isCapacityWarning()}) — otherwise {@code false}.
+     */
+    @Transient
+    public boolean isRiskFlag() {
+        return this.possibleDuplicate
+            || DisposableDomains.isDisposableAdjacent(this.email)
+            || this.capacityWarning;
     }
 
     /**

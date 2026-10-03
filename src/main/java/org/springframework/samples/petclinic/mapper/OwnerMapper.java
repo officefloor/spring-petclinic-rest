@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
+    @Mapping(target = "riskFlag", expression = "java(owner.isRiskFlag())")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
