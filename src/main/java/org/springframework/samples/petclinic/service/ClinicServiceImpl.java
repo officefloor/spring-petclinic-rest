@@ -236,6 +236,12 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        // Resolve the effective registration date (supplied, or defaulted to the server date) and
+        // roll it forward to the next business day so it never lands on a weekend. Everything
+        // derived from the registration date below must use this adjusted value.
+        LocalDate registrationDate = toBusinessDay(
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
+        owner.setRegistrationDate(registrationDate);
         if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
@@ -244,8 +250,8 @@ public class ClinicServiceImpl implements ClinicService {
             throw new CityOwnerLimitExceededException(owner.getCity());
         }
         if (owner.isNew()
-            && countOwnersRegisteredOn(LocalDate.now()) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
-            throw new DailyOwnerLimitExceededException(LocalDate.now());
+            && countOwnersRegisteredOn(registrationDate) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(registrationDate);
         }
         if (owner.isNew()) {
             List<Owner> householdMembers = findHouseholdMembers(owner);
@@ -255,9 +261,6 @@ public class ClinicServiceImpl implements ClinicService {
                 }
                 owner.setHouseholdId(resolveHouseholdId(householdMembers));
             }
-        }
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
         }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -378,6 +381,22 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll().stream()
             .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
+    }
+
+    /**
+     * Roll {@code date} forward to the next business day when it falls on a weekend: a Saturday or
+     * Sunday becomes the following Monday, while a weekday is returned unchanged. Registration dates
+     * are required to fall on a business day.
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        switch (date.getDayOfWeek()) {
+            case SATURDAY:
+                return date.plusDays(2);
+            case SUNDAY:
+                return date.plusDays(1);
+            default:
+                return date;
+        }
     }
 
     /**
