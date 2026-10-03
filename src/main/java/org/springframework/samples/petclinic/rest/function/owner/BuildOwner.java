@@ -13,11 +13,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class BuildOwner {
 
-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+            Out<Boolean> sharesHousehold) {
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
         built.set(owner);
+        // sharesHousehold is a create-time flag, not an Owner field; republish it for
+        // RejectDuplicateHousehold. Absent in the body means false.
+        sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
     }
 }
