@@ -6,9 +6,10 @@ import java.util.Objects;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The identity of a household: the same last name and the same address, compared
- * case-insensitively with runs of whitespace collapsed to a single space (and trimmed), so
- * e.g. "110  W.  Liberty St." matches "110 w. liberty st.".
+ * The identity of a household: the same last name and the same address. The last name is
+ * compared case-insensitively with whitespace trimmed and collapsed; the address is compared
+ * in its normalized form (see {@link OwnerAddresses#normalize}), so e.g. "7  elm  ave" matches
+ * "7 ELM AVENUE".
  *
  * <p>Single-sources the "what is a household" definition shared by
  * {@link RejectDuplicateHousehold} (who is rejected) and {@link AssignHousehold} (who shares a
@@ -27,7 +28,7 @@ final class HouseholdKey {
 
     /** The household the given owner belongs to. */
     static HouseholdKey of(Owner owner) {
-        return new HouseholdKey(normalize(owner.getLastName()), normalize(owner.getAddress()));
+        return new HouseholdKey(normalize(owner.getLastName()), OwnerAddresses.normalize(owner.getAddress()));
     }
 
     /** Whether {@code owner} belongs to this household. */
