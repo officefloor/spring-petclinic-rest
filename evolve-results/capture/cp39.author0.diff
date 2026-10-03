@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1f9d397e4..81687008e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -26,6 +26,7 @@ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.time.Period;
++import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -282,11 +283,14 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's numeric membership level, derived from the values frozen at create time. It starts
+-     * at 1, gains 1 when an email address is present, gains 1 when the owner has no namesakes
+-     * ({@code namesakeCount} is 0), and is capped at 3. Level 4 is reserved for tenure.
++     * The owner's numeric membership level. The pre-tenure factors start at 1, gain 1 when an email
++     * address is present and gain 1 when the owner has no namesakes ({@code namesakeCount} is 0), and
++     * are capped at 3. Level 4 is reserved for tenure: it is reached only when the owner's tenure
++     * exceeds 365 days (see {@link #getTenureDays()}). Because a newly created owner has zero tenure, a
++     * new owner never exceeds level 3 - for example a new owner with an email, a {@code namesakeCount}
++     * of 0 and a 3-member household is level 3, not 4.
+      *
+-     * @return the membership level, an integer from 1 to 3
++     * @return the membership level, an integer from 1 to 4
+      */
+     public Integer getMembershipLevel() {
+         int level = 1;
+@@ -298,7 +302,27 @@ public class Owner extends Person {
+         if (hasNoNamesakes) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        Long tenureDays = getTenureDays();
++        if (tenureDays != null && tenureDays > 365) {
++            level++;
++        }
++        return level;
++    }
++
++    /**
++     * The owner's tenure in whole days, the number of days elapsed from the
++     * {@link #getRegistrationDate() registration date} to the server's current date. A tenure of more
++     * than 365 days is what raises the {@link #getMembershipLevel() membership level} to 4. Returns
++     * {@code null} when no registration date has been set yet.
++     *
++     * @return the tenure in whole days, or {@code null} when the registration date is absent
++     */
++    public Long getTenureDays() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1625b66cc..bc65506ea 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,14 +2159,16 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned on create. It
+-                starts at 1, gains 1 when an email address is present, gains 1
+-                when the owner has no namesakes (namesakeCount is 0), and is
+-                capped at 3 (level 4 is reserved for tenure).
++                The owner's numeric membership level. The pre-tenure factors
++                start at 1, gain 1 when an email address is present, gain 1 when
++                the owner has no namesakes (namesakeCount is 0), and are capped at
++                3. Level 4 is reserved for tenure: it is reached only when the
++                owner's tenure exceeds 365 days, so a newly created owner (zero
++                tenure) never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
