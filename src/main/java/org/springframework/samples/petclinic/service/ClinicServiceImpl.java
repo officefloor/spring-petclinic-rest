@@ -29,7 +29,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +38,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -260,16 +258,30 @@ public class ClinicServiceImpl implements ClinicService {
         LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         owner.setRegistrationDate(registrationDate);
+        // Whether this owner was accepted into an existing household because the request declared it
+        // shares one (sharesHousehold). A declared member is deliberately not treated as a suspected
+        // duplicate below.
+        boolean declaredHouseholdMember = false;
         if (owner.isNew()) {
-            // Resolve the household first so the owner's householdId is part of its identityKey. The
-            // members are existing owners with the same last name and address; joining them makes this
-            // owner share their stable householdId (back-filled onto any member still missing it).
+            // The householdId is deterministic: the first 12 hex characters of SHA-256 over
+            // (normalizedLastName | postcode), so owners with the same last name and postcode share
+            // it automatically. It is part of the owner's identityKey, so it is resolved first.
+            owner.setHouseholdId(computeHouseholdId(owner));
+            // The household is keyed on (last name, postcode), so the members are the existing owners
+            // sharing both with this owner.
             List<Owner> householdMembers = findHouseholdMembers(owner);
-            if (!householdMembers.isEmpty()) {
-                owner.setHouseholdId(resolveHouseholdId(householdMembers));
-            }
             // Size of the household after this create: the existing members plus this new owner.
             owner.setHouseholdMemberCount(householdMembers.size() + 1);
+            // A second owner in an existing household is the same household and is rejected as a
+            // household duplicate, UNLESS the request declares (via sharesHousehold) that it genuinely
+            // shares the household. sharesHousehold only bypasses this block; it no longer creates the
+            // link, which is now derived from (last name, postcode).
+            if (!householdMembers.isEmpty()) {
+                if (!owner.isSharesHousehold()) {
+                    throw new HouseholdDuplicateException(owner.getHouseholdId());
+                }
+                declaredHouseholdMember = true;
+            }
         }
         // Single consolidated duplicate check: reject only when the new owner's WHOLE identityKey
         // (normalizedTelephone | email-or-empty | householdId) equals an existing owner's. This
@@ -279,8 +291,9 @@ public class ClinicServiceImpl implements ClinicService {
         }
         // Soft-match: not a hard identityKey duplicate, but shares an existing owner's last name and
         // postcode while carrying a different telephone. Still created, but flagged as a possible
-        // duplicate pointing at the matching owner.
-        if (owner.isNew()) {
+        // duplicate pointing at the matching owner. A declared household member is not a suspected
+        // duplicate, so it is never flagged.
+        if (owner.isNew() && !declaredHouseholdMember) {
             Owner softMatch = findPossibleDuplicate(owner);
             if (softMatch != null) {
                 owner.setPossibleDuplicate(true);
@@ -334,15 +347,13 @@ public class ClinicServiceImpl implements ClinicService {
      * invokes this once the hard {@code identityKey} duplicate check has already passed.
      */
     private Owner findPossibleDuplicate(Owner owner) {
-        String lastName = normalizeHouseholdKey(owner.getLastName());
-        String postcode = owner.getPostcode();
-        if (lastName == null || postcode == null || postcode.isBlank()) {
+        String key = householdKey(owner);
+        if (key == null) {
             return null;
         }
         String telephone = owner.getTelephone();
         return ownerRepository.findAll().stream()
-            .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
-                && postcode.equals(existing.getPostcode())
+            .filter(existing -> key.equals(householdKey(existing))
                 && !Objects.equals(telephone, existing.getTelephone()))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
@@ -366,44 +377,50 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find the owners that already belong to the same household as {@code owner}, i.e. have the same
-     * last name and the same address. Last names are compared case-insensitively with collapsed
-     * whitespace; addresses are compared in their canonical normalized form (see
-     * {@link AddressNormalizer}), so differences in letter case, runs of spaces or street-type
-     * abbreviations are ignored. Returns an empty list when the owner has no last name or address to
-     * match on.
+     * Find the owners that already belong to the same household as {@code owner}, i.e. share both its
+     * last name and its postcode. Last names are compared case-insensitively with collapsed
+     * whitespace; postcodes are compared exactly. This is the same keying used by
+     * {@link #computeHouseholdId(Owner)}, so these are exactly the existing owners that carry the
+     * owner's computed {@code householdId}. Returns an empty list when the owner has no last name or
+     * postcode to match on.
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
-        String lastName = normalizeHouseholdKey(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        if (lastName == null || address == null) {
+        String key = householdKey(owner);
+        if (key == null) {
             return List.of();
         }
         return ownerRepository.findAll().stream()
-            .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
-                && address.equals(AddressNormalizer.normalize(existing.getAddress())))
+            .filter(existing -> key.equals(householdKey(existing)))
             .toList();
     }
 
     /**
-     * Resolve the stable {@code householdId} shared by a household. If any existing member already
-     * carries one it is reused so the identifier stays stable as further owners join; otherwise a
-     * new one is generated. The resolved value is back-filled onto every member that is missing it
-     * (or has a different one) so all members of the household share the same identifier.
+     * Compute an owner's deterministic {@code householdId}: the first 12 lower-case hex characters of
+     * SHA-256 over the UTF-8 bytes of {@code normalizedLastName + '|' + postcode} (see
+     * {@link #householdKey(Owner)}). Owners with the same last name and postcode therefore share the
+     * same {@code householdId} automatically. Returns {@code null} when the owner has no last name or
+     * postcode, so it does not belong to a shared household.
      */
-    private String resolveHouseholdId(List<Owner> members) {
-        String householdId = members.stream()
-            .map(Owner::getHouseholdId)
-            .filter(id -> id != null && !id.isBlank())
-            .findFirst()
-            .orElseGet(() -> UUID.randomUUID().toString());
-        for (Owner member : members) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
+    private String computeHouseholdId(Owner owner) {
+        String key = householdKey(owner);
+        return key == null ? null : sha256Hex(key, 6, false);
+    }
+
+    /**
+     * Build the owner's household key, {@code normalizedLastName + '|' + postcode}, the single value
+     * that identifies a household. The last name is normalized case-insensitively with collapsed
+     * whitespace (see {@link #normalizeHouseholdKey}) and the postcode is used exactly as stored.
+     * Returns {@code null} when the owner has no last name or postcode to key on. This is the shared
+     * basis for both {@link #computeHouseholdId(Owner)} and household membership matching, so the two
+     * cannot drift apart.
+     */
+    private String householdKey(Owner owner) {
+        String lastName = normalizeHouseholdKey(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (lastName == null || postcode == null || postcode.isBlank()) {
+            return null;
         }
-        return householdId;
+        return lastName + "|" + postcode;
     }
 
     /**
@@ -434,16 +451,28 @@ public class ClinicServiceImpl implements ClinicService {
     private String customerHash(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        return sha256Hex(telephone + lastName, 4, true);
+    }
+
+    /**
+     * Compute the leading hex of SHA-256 over the UTF-8 bytes of {@code input}: the first
+     * {@code bytes} bytes of the digest rendered as {@code 2 * bytes} hex characters, upper-case when
+     * {@code upperCase} is {@code true}, otherwise lower-case. Shared by the derived identifiers that
+     * are built from a SHA-256 prefix (e.g. the household id and the customer-code hash), so the
+     * digest handling and the "SHA-256 not available" error live in one place.
+     */
+    private String sha256Hex(String input, int bytes, boolean upperCase) {
         byte[] digest;
         try {
             digest = MessageDigest.getInstance("SHA-256")
-                .digest((telephone + lastName).getBytes(StandardCharsets.UTF_8));
+                .digest(input.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but not available", e);
         }
-        StringBuilder hex = new StringBuilder(16);
-        for (int i = 0; i < 4; i++) {
-            hex.append(String.format("%02X", digest[i]));
+        String format = upperCase ? "%02X" : "%02x";
+        StringBuilder hex = new StringBuilder(bytes * 2);
+        for (int i = 0; i < bytes; i++) {
+            hex.append(String.format(format, digest[i]));
         }
         return hex.toString();
     }
