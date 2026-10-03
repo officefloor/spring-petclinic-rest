@@ -417,6 +417,41 @@ public class Owner extends Person {
         return (value == null || value.isBlank()) ? "" : value;
     }
 
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans: the country code,
+     * a space, then the national digits grouped in threes (e.g.
+     * {@code "+61 412 345 678"}). The {@code '+'} and country code are taken from the
+     * E.164 value (a {@code '+1'} NANP country code is a single digit, any other is
+     * treated as two digits, matching the recognized {@code '+61'}/{@code '+1'} forms),
+     * and the national digits follow in space-separated groups of three. Returns the raw
+     * value unchanged when it is absent or not a {@code '+'}-prefixed run of digits.
+     * Derived from the owner's own fields; the raw {@link #telephone} stays E.164.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.startsWith("+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        if (!digits.matches("\\d+")) {
+            return this.telephone;
+        }
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return this.telephone;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i += 3) {
+            if (grouped.length() > 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national, i, Math.min(i + 3, national.length()));
+        }
+        return "+" + countryCode + " " + grouped;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
