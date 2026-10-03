@@ -68,6 +68,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -176,6 +179,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
@@ -272,31 +283,55 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level: a number from 1 to 4. Starts at 1, gains 1 when an
-     * email address is present, gains a further 1 when the owner has no namesakes
-     * ({@code namesakeCount} is 0), and gains a final 1 for tenure of more than 365 days
-     * (the days from {@link #registrationDate} to the current date). Capped at 4. A newly
-     * created owner has zero tenure, so these pre-tenure factors alone top out at level 3:
-     * an owner with an email and no namesakes is level 3, not 4, until it has been
-     * registered for over a year. Derived from the owner's own fields.
+     * The owner's membership points: a running score built from the owner's own fields.
+     * Starts at 0 and gains 2 when an email address is present, a further 1 when the owner
+     * has no namesakes ({@code namesakeCount} is 0), a further 2 when it belongs to a
+     * household of 3 or more members ({@code householdSize} is 3 or more), and a further 3
+     * for tenure of more than 365 days (the days from {@link #registrationDate} to the
+     * current date). A newly created owner has zero tenure, so the pre-tenure factors alone
+     * top out at 5 points. Derived from the owner's own fields.
      */
     @Transient
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         if (unique) {
-            level++;
+            points += 1;
+        }
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        if (largeHousehold) {
+            points += 2;
         }
         boolean tenured = this.registrationDate != null
             && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
         if (tenured) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level: a number from 1 to 4 derived by banding
+     * {@link #getMembershipPoints()} — 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6
+     * or more. Derived from the owner's own fields.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
