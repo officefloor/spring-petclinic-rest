@@ -42,50 +42,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table used as the fallback when the postcode does not
-     * resolve a region.
-     */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Region-to-inclusive 4-digit postcode range {low, high}, used to resolve the
-     * locality by postcode first.
-     */
-    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
-    /**
-     * Derives the owner's locality (region), preferring the postcode: a 4-digit
-     * postcode falling within a known region's inclusive range yields that region.
-     * When the postcode is absent or in no known range, falls back to the
-     * {@link #CITY_REGION} table, returning {@code UNKNOWN} when the city is not
-     * listed.
-     *
-     * <p>The postcode lookup is inlined here (rather than a helper method) because
-     * MapStruct would otherwise treat a {@code String}-to-{@code String} default
-     * method as an implicit field mapping and apply it to every string property.
+     * Derives the owner's locality (region) from the owner's {@code customerCode}
+     * identity ({@code <REGION>-<HASH8>}): the locality is the {@code REGION} segment
+     * of that identity. When the customer code has not been assigned yet, it falls
+     * back to deriving the region directly (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion}).
      */
     default String locality(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("[0-9]{4}")) {
-            int value = Integer.parseInt(postcode);
-            for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-                int[] range = entry.getValue();
-                if (value >= range[0] && value <= range[1]) {
-                    return entry.getKey();
-                }
-            }
-        }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerRegion
+            .regionFromCustomerCode(owner.getCustomerCode());
+        return region != null ? region
+            : org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.regionOf(owner);
     }
 
     /**
      * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>}
      * where {@code YY} is the last two digits of the registration-date year
-     * (e.g. {@code LON-SMI-0007-M26}). Null when either source field is absent.
+     * (e.g. {@code NSW-1A2B3C4D-M26}). Null when either source field is absent.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
