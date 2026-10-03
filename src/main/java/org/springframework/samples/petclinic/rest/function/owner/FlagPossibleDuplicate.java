@@ -38,6 +38,10 @@ public class FlagPossibleDuplicate {
                 if (existing.getId() == null) {
                     continue;
                 }
+                // A soft-deleted owner is not a real match, so it never triggers the flag.
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue;
+                }
                 if (lastName.equals(OwnerNames.normalize(existing.getLastName()))
                         && postcode.equals(existing.getPostcode())
                         && !postcode.isBlank()

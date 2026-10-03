@@ -36,6 +36,10 @@ public class EnsureUniqueHousehold {
             if (existing.getId() == null) {
                 continue;
             }
+            // A soft-deleted owner no longer occupies its household, so it never blocks a create.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (householdId.equals(Households.householdId(existing.getLastName(), existing.getPostcode()))) {
                 throw new DuplicateHouseholdException(householdId);
             }
