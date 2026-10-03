@@ -69,6 +69,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80L;
 
+    /**
+     * When a new owner's city already holds at least this many owners (but fewer than the hard
+     * {@link CityOwnerLimitExceededException#MAX_OWNERS_PER_CITY} limit), the owner is created but
+     * flagged with {@code capacityWarning} to signal the city is approaching capacity.
+     */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -311,9 +318,14 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setPossibleDuplicateOf(softMatch.getId());
             }
         }
-        if (owner.isNew()
-            && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
-            throw new CityOwnerLimitExceededException(owner.getCity());
+        if (owner.isNew()) {
+            long ownersInCity = countOwnersInCity(owner);
+            if (ownersInCity >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
+                throw new CityOwnerLimitExceededException(owner.getCity());
+            }
+            // Between 40 and 49 existing owners (inclusive): created, but flagged as approaching the
+            // per-city capacity limit of 50.
+            owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
         }
         if (owner.isNew()
             && countOwnersRegisteredOn(registrationDate) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
