@@ -117,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
+        currentOwner.setPostcode(ownerFieldsDto.getPostcode());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerMapper.normalizeTelephone(ownerFieldsDto.getTelephone()));

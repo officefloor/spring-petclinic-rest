@@ -10,11 +10,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.CityRegions;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -27,10 +27,6 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
-
-    /** Fixed city-to-region table used to derive an owner's {@code locality}. */
-    Map<String, String> CITY_REGION = Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
      * Format an owner's stored names as {@code 'LastName, FirstName'} for the
@@ -56,7 +52,8 @@ public interface OwnerMapper {
      * Brisbane->QLD}), or {@code 'UNKNOWN'} when the city is not in the table.
      */
     default String toLocality(Owner owner) {
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        String region = CityRegions.regionOf(owner.getCity());
+        return region != null ? region : "UNKNOWN";
     }
 
     /**
