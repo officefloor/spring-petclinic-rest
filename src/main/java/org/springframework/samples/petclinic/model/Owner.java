@@ -40,6 +40,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -122,6 +125,28 @@ public class Owner extends Person {
         "NSW", "Australia/Sydney",
         "VIC", "Australia/Melbourne",
         "QLD", "Australia/Brisbane");
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation: the {@link #getTitle() title}, a single space and the
+     * {@link #getLastName() last name} (e.g. {@code 'DR Who'}) when a title is present, or just the
+     * last name when no title was supplied.
+     *
+     * @return the composed salutation
+     */
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
+    }
 
     public String getAddress() {
         return this.address;
