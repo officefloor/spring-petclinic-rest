@@ -283,31 +283,54 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level. The pre-tenure factors start at 1, gain 1 when an email
-     * address is present and gain 1 when the owner has no namesakes ({@code namesakeCount} is 0), and
-     * are capped at 3. Level 4 is reserved for tenure: it is reached only when the owner's tenure
-     * exceeds 365 days (see {@link #getTenureDays()}). Because a newly created owner has zero tenure, a
-     * new owner never exceeds level 3 - for example a new owner with an email, a {@code namesakeCount}
-     * of 0 and a 3-member household is level 3, not 4.
+     * The owner's membership points, the score the {@link #getMembershipLevel() membership level} is
+     * derived from. The score starts at 0 and gains: 2 when an email address is present, 1 when the
+     * owner has no namesakes ({@code namesakeCount} is 0), 2 for a household of 3 or more members
+     * ({@code householdSize} is at least 3), and 3 when the owner's tenure exceeds 365 days (see
+     * {@link #getTenureDays()}). Because a newly created owner has zero tenure, the tenure points are
+     * never awarded at create time.
+     *
+     * @return the membership points, a non-negative integer
+     */
+    public Integer getMembershipPoints() {
+        int points = 0;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        if (hasEmail) {
+            points += 2;
+        }
+        boolean hasNoNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        if (hasNoNamesakes) {
+            points += 1;
+        }
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
+        }
+        Long tenureDays = getTenureDays();
+        if (tenureDays != null && tenureDays > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, mapped from the {@link #getMembershipPoints() membership
+     * points}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4
+     * for 6 or more points.
      *
      * @return the membership level, an integer from 1 to 4
      */
     public Integer getMembershipLevel() {
-        int level = 1;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        if (hasEmail) {
-            level++;
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
         }
-        boolean hasNoNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
-        if (hasNoNamesakes) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        Long tenureDays = getTenureDays();
-        if (tenureDays != null && tenureDays > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
