@@ -59,4 +59,27 @@ public final class PostcodeRules {
         int value = Integer.parseInt(postcode);
         return value >= range[0] && value <= range[1];
     }
+
+    /**
+     * Resolve the region that owns {@code postcode} by its range ({@code NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099}), using the same ranges that {@link #isValidForCity} enforces.
+     *
+     * @param postcode the inbound postcode (may be {@code null})
+     * @return the region (e.g. {@code "NSW"}) whose inclusive range contains a present, 4-digit
+     * {@code postcode}, or {@code null} when the postcode is absent, not a 4-digit value, or in no
+     * known range
+     */
+    public static String regionOfPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }

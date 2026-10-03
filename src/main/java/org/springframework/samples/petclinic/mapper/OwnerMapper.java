@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.CityRegions;
+import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -47,12 +48,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's read-only {@code locality}: the canonical region looked up from the
-     * owner's city in the fixed city-to-region table ({@code Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD}), or {@code 'UNKNOWN'} when the city is not in the table.
+     * Derive the owner's read-only {@code locality}: the region resolved from the owner's postcode
+     * range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), falling back to the
+     * canonical region looked up from the owner's city in the fixed city-to-region table
+     * ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}) when the postcode is absent or in no
+     * known range, or {@code 'UNKNOWN'} when neither yields a region. Preferring the postcode
+     * disambiguates cities that share a name while returning the same region for known cities.
      */
     default String toLocality(Owner owner) {
-        String region = CityRegions.regionOf(owner.getCity());
+        String region = PostcodeRules.regionOfPostcode(owner.getPostcode());
+        if (region == null) {
+            region = CityRegions.regionOf(owner.getCity());
+        }
         return region != null ? region : "UNKNOWN";
     }
 
