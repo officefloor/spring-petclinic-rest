@@ -1,0 +1,162 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index b4348ab40..bcd7cff8f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -47,6 +47,14 @@ public interface OwnerRepository {
+ 
+     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
+ 
++    /**
++     * Report whether any <code>Owner</code> already uses the given (already normalized) telephone number.
++     *
++     * @param telephone the normalized telephone number to check for
++     * @return <code>true</code> if at least one <code>Owner</code> has this telephone, <code>false</code> otherwise
++     */
++    boolean existsByTelephone(String telephone) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a3faf618d..9cac223e3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -111,6 +111,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total == null ? 0 : total);
+     }
+ 
++    @Override
++    public boolean existsByTelephone(String telephone) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("telephone", telephone);
++        Long count = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE telephone = :telephone",
++            params,
++            Long.class
++        );
++        return count != null && count > 0;
++    }
++
+     /**
+      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
+      * for the corresponding owner, if not already loaded.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index db2757657..bd405916a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -79,6 +79,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total);
+     }
+ 
++    @Override
++    public boolean existsByTelephone(String telephone) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.telephone = :telephone");
++        query.setParameter("telephone", telephone);
++        return (long) query.getSingleResult() > 0;
++    }
++
+     @Override
+     public Owner findById(int id) {
+         // using 'join fetch' because a single query should load both owners and pets
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index ef05a53c3..bf2873d0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -55,4 +55,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id")
+     Owner findById(@Param("id") int id);
++
++    @Override
++    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN TRUE ELSE FALSE END FROM Owner owner WHERE owner.telephone = :telephone")
++    boolean existsByTelephone(@Param("telephone") String telephone);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index c6aa3c392..63b35d3bb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.validation.FieldError;
+@@ -86,6 +87,26 @@ public class ExceptionControllerAdvice {
+         throw e;
+     }
+ 
++    /**
++     * Handles {@link DuplicateTelephoneException}, raised by the service layer when a new owner's normalized
++     * telephone is already used by another owner, by returning a 409 Conflict status.
++     *
++     * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++        logger.warn("Duplicate telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 873eed0f4..d11dec847 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -232,6 +232,9 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
++            throw new DuplicateTelephoneException(owner.getTelephone());
++        }
+         ownerRepository.save(owner);
+ 
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..fecc9c5bd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DuplicateTelephoneException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown when an attempt is made to create an {@code Owner} whose normalized telephone number is
++ * already used by another owner. Enforcing it in the service layer keeps the uniqueness invariant
++ * in one place regardless of which caller initiates the create; the REST layer maps this to a
++ * {@code 409 Conflict}.
++ */
++public class DuplicateTelephoneException extends RuntimeException {
++
++    public DuplicateTelephoneException(String telephone) {
++        super("An owner with telephone '" + telephone + "' already exists");
++    }
++
++}
