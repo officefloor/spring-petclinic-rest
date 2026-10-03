@@ -214,6 +214,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateHouseholdException} raised when an owner is created whose deterministic
+     * {@code householdId} (derived from the normalized last name and postcode) already belongs to
+     * another owner, without declaring {@code sharesHousehold}. Owners sharing a last name and
+     * postcode are the same household, so a second such owner is a household duplicate. Returns a
+     * 409 Conflict.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getHouseholdId());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("household"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link CityOwnerLimitException} raised when an owner is created in a city that already
      * contains the maximum allowed number of owners (50 or more). Returns a 409 Conflict.
      *

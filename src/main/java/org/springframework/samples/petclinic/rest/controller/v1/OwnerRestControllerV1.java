@@ -34,6 +34,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -186,15 +187,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireCityHasCapacity(owner.getCity());
         validatePostcode(owner);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            joinHousehold(owner);
-        }
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        owner.setHouseholdId(computeHouseholdId(owner.getLastName(), owner.getPostcode()));
+        boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        requireNoHouseholdDuplicate(owner, declaredHouseholdMember);
         requireUniqueIdentity(owner);
-        flagPossibleDuplicate(owner);
+        flagPossibleDuplicate(owner, declaredHouseholdMember);
         owner.setCustomerCode(owner.buildCustomerCode());
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        stampHouseholdSize(owner);
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -477,10 +479,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * set to that owner's id; the lowest matching id is used when several owners match. Otherwise the flag
      * is false and {@code possibleDuplicateOf} is left unset.
      *
+     * <p>A declared household member (one created with {@code sharesHousehold}) is never a suspected
+     * duplicate: it has deliberately opted in to sharing its household, so the flag is forced false.
+     *
      * @param owner the owner being created, with its normalized telephone and postcode set
+     * @param declaredHouseholdMember whether the owner opted in to its household via {@code sharesHousehold}
      */
-    private void flagPossibleDuplicate(Owner owner) {
-        if (owner.getPostcode() == null) {
+    private void flagPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
+        if (declaredHouseholdMember || owner.getPostcode() == null) {
             owner.setPossibleDuplicate(false);
             return;
         }
@@ -496,73 +502,74 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Returns the existing owners that belong to the same household as the given last name and
-     * address, i.e. those whose last name and address match case-insensitively and with runs of
-     * whitespace collapsed to a single space.
+     * Rejects a create that would join an existing household unless it has opted in via
+     * {@code sharesHousehold}. The household is keyed on the deterministic {@code householdId} (derived
+     * from the normalized last name and postcode; see {@link #computeHouseholdId}), so any existing
+     * owner carrying the same {@code householdId} is a member of the same household. When one exists and
+     * the create has not declared household membership, the second owner is a household duplicate.
      *
-     * @param lastName the last name to match
-     * @param address the address to match
-     * @return the matching owners (possibly empty, never {@code null})
+     * <p>A create that declares {@code sharesHousehold} bypasses this block entirely and is created as a
+     * declared household member.
+     *
+     * @param owner the owner being created, with its deterministic {@code householdId} already set
+     * @param declaredHouseholdMember whether the owner opted in to its household via {@code sharesHousehold}
+     * @throws DuplicateHouseholdException if an existing owner already shares the household and the
+     *     create did not declare {@code sharesHousehold}
      */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeAddress(address);
-        return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeAddress(existing.getAddress()).equals(normalizedAddress))
-            .toList();
+    private void requireNoHouseholdDuplicate(Owner owner, boolean declaredHouseholdMember) {
+        if (declaredHouseholdMember) {
+            return;
+        }
+        String householdId = owner.getHouseholdId();
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+        if (inUse) {
+            throw new DuplicateHouseholdException(householdId);
+        }
     }
 
     /**
-     * Joins the owner being created to the shared household of any existing owner(s) that have the
-     * same last name and address (compared case-insensitively with collapsed whitespace). Every
-     * member of the household - the existing owners and the new one - is assigned the same stable
-     * {@code householdId}, so the shared identifier can be read back from any of them.
+     * Stamps the household's member count after this create ({@code householdSize}) onto every member of
+     * the household - the existing owners that share the deterministic {@code householdId} and the new
+     * one - so the shared size can be read back from any of them. The count is the number of existing
+     * members plus the owner being created.
      *
-     * <p>When no existing owner shares the household there is nobody to share an identifier with, so
-     * the owner is left without a {@code householdId}.
-     *
-     * <p>Every member of the household - the existing owners and the new one - is also stamped with
-     * the household's member count after this create ({@code householdSize}), so the shared size can
-     * be read back from any of them.
-     *
-     * @param owner the owner being created, whose {@code householdId} is set when a household is joined
+     * @param owner the owner being created, with its deterministic {@code householdId} already set
      */
-    private void joinHousehold(Owner owner) {
-        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        if (members.isEmpty()) {
-            return;
-        }
-        String householdId = computeHouseholdId(owner.getLastName(), owner.getAddress());
+    private void stampHouseholdSize(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        List<Owner> members = this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
         int householdSize = members.size() + 1;
-        owner.setHouseholdId(householdId);
         owner.setHouseholdSize(householdSize);
         for (Owner member : members) {
-            member.setHouseholdId(householdId);
             member.setHouseholdSize(householdSize);
             this.clinicService.saveOwner(member);
         }
     }
 
     /**
-     * Computes the stable, shared household identifier for a last name and address. The value is
-     * derived deterministically from the normalized (case-insensitive, whitespace-collapsed) last
-     * name and address, so every owner in the same household computes the same identifier.
+     * Computes the deterministic, shared household identifier for a last name and postcode: the first
+     * 12 upper-case hexadecimal characters (the first 6 bytes) of the SHA-256 digest of
+     * {@code normalizedLastName + '|' + postcode}. The last name is normalized (case-insensitive,
+     * whitespace-collapsed) and an absent postcode contributes an empty string, so every owner that
+     * shares a last name and postcode computes the same identifier and therefore the same household.
      *
      * @param lastName the last name of the household
-     * @param address the address of the household
-     * @return the household identifier, formatted {@code 'HH-<12 upper-case hex digits>'}
+     * @param postcode the postcode of the household, possibly {@code null}
+     * @return the 12-character upper-case hex household identifier
      */
-    private String computeHouseholdId(String lastName, String address) {
-        String key = normalizeForHousehold(lastName) + "\n" + normalizeAddress(address);
+    private String computeHouseholdId(String lastName, String postcode) {
+        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
+            StringBuilder hex = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 hex.append(String.format("%02X", digest[i]));
             }
-            return "HH-" + hex;
+            return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 algorithm not available", e);
         }
