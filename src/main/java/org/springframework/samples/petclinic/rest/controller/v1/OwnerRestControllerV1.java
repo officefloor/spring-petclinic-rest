@@ -29,6 +29,7 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -77,6 +78,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * and a domain containing at least one dot, with no whitespace in any segment.
      */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Maximum number of owners permitted in a single city. A create whose city already holds this many
+     * owners (compared case-insensitively) is rejected with a 409 Conflict.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
      * Expansions of the common street-type abbreviations recognised by {@link #normalizeAddress}.
@@ -128,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        requireCityHasCapacity(owner.getCity());
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             joinHousehold(owner);
@@ -145,6 +153,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects an owner whose city already contains the maximum allowed number of owners
+     * ({@value #MAX_OWNERS_PER_CITY}). Existing owners are counted by city compared case-insensitively,
+     * before the new owner is saved, so the count reflects only the owners that existed prior to this
+     * create.
+     *
+     * @param city the city of the owner being created
+     * @throws CityOwnerLimitException if the city already holds {@value #MAX_OWNERS_PER_CITY} or more owners
+     */
+    private void requireCityHasCapacity(String city) {
+        long cityOwnerCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
+            .count();
+        if (cityOwnerCount >= MAX_OWNERS_PER_CITY) {
+            throw new CityOwnerLimitException(city);
+        }
     }
 
     /**
