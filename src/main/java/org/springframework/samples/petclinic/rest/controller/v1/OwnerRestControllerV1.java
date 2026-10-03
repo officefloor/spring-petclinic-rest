@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -40,7 +41,6 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -226,12 +226,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setHouseholdId(computeHouseholdId(owner.getLastName(), owner.getPostcode()));
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        requireNoHouseholdDuplicate(owner, declaredHouseholdMember);
         requireUniqueIdentity(owner);
         flagPossibleDuplicate(owner, declaredHouseholdMember);
         owner.setCustomerCode(deduplicateCustomerCode(owner.buildCustomerCode()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         stampHouseholdSize(owner);
+        capMembershipLevelToHousehold(owner);
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         rememberCreate(idempotencyKey, owner);
@@ -631,34 +631,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create that would join an existing household unless it has opted in via
-     * {@code sharesHousehold}. The household is keyed on the deterministic {@code householdId} (derived
-     * from the normalized last name and postcode; see {@link #computeHouseholdId}), so any existing
-     * owner carrying the same {@code householdId} is a member of the same household. When one exists and
-     * the create has not declared household membership, the second owner is a household duplicate.
-     *
-     * <p>A create that declares {@code sharesHousehold} bypasses this block entirely and is created as a
-     * declared household member.
-     *
-     * @param owner the owner being created, with its deterministic {@code householdId} already set
-     * @param declaredHouseholdMember whether the owner opted in to its household via {@code sharesHousehold}
-     * @throws DuplicateHouseholdException if an existing owner already shares the household and the
-     *     create did not declare {@code sharesHousehold}
-     */
-    private void requireNoHouseholdDuplicate(Owner owner, boolean declaredHouseholdMember) {
-        if (declaredHouseholdMember) {
-            return;
-        }
-        String householdId = owner.getHouseholdId();
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (inUse) {
-            throw new DuplicateHouseholdException(householdId);
-        }
-    }
-
-    /**
      * Stamps the household's member count after this create ({@code householdSize}) onto every member of
      * the household - the existing owners that share the deterministic {@code householdId} and the new
      * one - so the shared size can be read back from any of them. The count is the number of existing
@@ -667,15 +639,53 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the owner being created, with its deterministic {@code householdId} already set
      */
     private void stampHouseholdSize(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        List<Owner> members = this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .toList();
+        List<Owner> members = householdMembers(owner);
         int householdSize = members.size() + 1;
         owner.setHouseholdSize(householdSize);
         for (Owner member : members) {
             member.setHouseholdSize(householdSize);
             this.clinicService.saveOwner(member);
+        }
+    }
+
+    /**
+     * The existing owners that belong to the same household as the given owner - those that share its
+     * deterministic {@code householdId}. This is the single definition of "who is in this household",
+     * shared by the household-size stamp and the membership-level cap. The owner being created is not
+     * among them (it has not been saved yet); soft-deleted owners are included, so callers that need
+     * only live members filter them out themselves.
+     *
+     * @param owner the owner being created, with its deterministic {@code householdId} already set
+     * @return the existing same-household owners
+     */
+    private List<Owner> householdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    /**
+     * Caps the new owner's membership level so it cannot exceed one above the current maximum
+     * membership level among the existing members of its household - the non-deleted owners that share
+     * the deterministic {@code householdId}. The new owner's level is lowered to that ceiling only when
+     * its derived level sits above it; otherwise it is left to be derived normally. When the household
+     * has no existing member no cap applies and the level is left untouched.
+     *
+     * @param owner the owner being created, with its deterministic {@code householdId} and
+     *     {@code householdSize} already set
+     */
+    private void capMembershipLevelToHousehold(Owner owner) {
+        OptionalInt maxMemberLevel = householdMembers(owner).stream()
+            .filter(existing -> !existing.isDeleted())
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        if (maxMemberLevel.isEmpty()) {
+            return;
+        }
+        int cap = maxMemberLevel.getAsInt() + 1;
+        if (owner.getMembershipLevel() > cap) {
+            owner.setMembershipLevel(cap);
         }
     }
 

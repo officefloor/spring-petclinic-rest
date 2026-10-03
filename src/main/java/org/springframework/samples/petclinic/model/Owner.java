@@ -95,6 +95,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "deleted", nullable = false)
     private boolean deleted = false;
 
@@ -414,13 +417,32 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, mapped from the {@link #getMembershipPoints() membership
-     * points}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4
-     * for 6 or more points.
+     * The owner's numeric membership level. This is normally derived from the
+     * {@link #getMembershipPoints() membership points} (see {@link #deriveMembershipLevel()}), but a
+     * household-level cap applied at create time may store a lower value here; when such a capped level
+     * has been stored it is returned in preference to the derived one.
      *
      * @return the membership level, an integer from 1 to 4
      */
     public Integer getMembershipLevel() {
+        if (this.membershipLevel != null) {
+            return this.membershipLevel;
+        }
+        return deriveMembershipLevel();
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
+    }
+
+    /**
+     * The owner's numeric membership level derived purely from the {@link #getMembershipPoints()
+     * membership points}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and
+     * level 4 for 6 or more points. This is the uncapped level, before any household-level cap.
+     *
+     * @return the derived membership level, an integer from 1 to 4
+     */
+    public Integer deriveMembershipLevel() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;
