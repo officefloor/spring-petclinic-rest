@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 15bc678c8..264f6b7c0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -102,6 +103,21 @@ public interface OwnerMapper {
+         return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+     }
+ 
++    /**
++     * Derive the owner's read-only {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
++     * {@code PREMIUM} when the owner's {@code membershipLevel} is 3 or more, otherwise
++     * {@code STANDARD}. AREA is {@code METRO} when the owner's {@code locality} is a known region
++     * ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code REGIONAL} (see
++     * {@link #toLocality(Owner)}).
++     */
++    default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
++        String tier = owner.getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
++        String locality = toLocality(owner);
++        boolean metro = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
++        String area = metro ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
++    }
++
+     /**
+      * Derive the owner's read-only {@code timezone}: the IANA timezone name for the owner's
+      * locality/region, looked up from the fixed region-to-timezone table ({@code NSW->Australia/Sydney,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 912ab9142..d567d0283 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2318,6 +2318,21 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'.
++                AREA is 'METRO' when the owner's locality is a known region (NSW,
++                VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             checkDigit:
+               title: Check digit
+               description: >-
