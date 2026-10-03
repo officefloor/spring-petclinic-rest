@@ -174,6 +174,17 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
+    /**
+     * The owner's preferred contact channel, derived from the owner's details. Returns
+     * {@code 'EMAIL'} when an email address is present, otherwise {@code 'PHONE'}.
+     *
+     * @return {@code 'EMAIL'} when an email address is present, otherwise {@code 'PHONE'}
+     */
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
