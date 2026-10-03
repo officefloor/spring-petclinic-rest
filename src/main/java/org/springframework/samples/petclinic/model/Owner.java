@@ -611,6 +611,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's risk flag: {@code true} when the owner warrants a closer look — it is a
+     * {@link #getPossibleDuplicate() possible duplicate}, or its email domain is
+     * {@link DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or its
+     * city is over soft capacity (the approaching-limit {@link #getCapacityWarning()
+     * capacityWarning}) — and {@code false} otherwise. A cleared or absent underlying flag
+     * counts as not set. Derived from the owner's own fields.
+     */
+    @Transient
+    public Boolean getRiskFlag() {
+        return Boolean.TRUE.equals(getPossibleDuplicate())
+            || Boolean.TRUE.equals(getCapacityWarning())
+            || DisposableEmailDomains.isDisposableAdjacent(getEmail());
+    }
+
+    /**
      * The owner's identity key: the lower-case hex SHA-256 of
      * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}. The
      * telephone is already stored in E.164 form, the email is lower-cased (an empty segment
