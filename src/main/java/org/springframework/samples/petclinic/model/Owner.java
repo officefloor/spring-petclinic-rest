@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -56,6 +57,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date", columnDefinition = "DATE")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -134,6 +138,38 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's age band, derived from the {@link #getBirthDate() birth date} as at the owner's
+     * {@link #getRegistrationDate() registration date}: {@code 'MINOR'} when under 18, {@code 'ADULT'}
+     * when 18 to 64, and {@code 'SENIOR'} when 65 or older. The age is the number of whole years
+     * elapsed from the birth date to the registration date (defaulting to the server's current date
+     * when no registration date is set yet). Returns {@code null} when no birth date was supplied.
+     *
+     * @return the age band, or {@code null} when the birth date is absent
+     */
+    public String getAgeBand() {
+        if (this.birthDate == null) {
+            return null;
+        }
+        LocalDate asAt = this.registrationDate != null ? this.registrationDate : LocalDate.now();
+        int years = Period.between(this.birthDate, asAt).getYears();
+        if (years < 18) {
+            return "MINOR";
+        }
+        if (years < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     public String getCustomerCode() {
