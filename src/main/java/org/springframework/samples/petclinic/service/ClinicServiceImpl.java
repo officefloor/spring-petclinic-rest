@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -237,8 +238,14 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
-        if (owner.isNew() && !owner.isSharesHousehold() && isDuplicateHousehold(owner)) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        if (owner.isNew()) {
+            List<Owner> householdMembers = findHouseholdMembers(owner);
+            if (!householdMembers.isEmpty()) {
+                if (!owner.isSharesHousehold()) {
+                    throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+                }
+                owner.setHouseholdId(resolveHouseholdId(householdMembers));
+            }
         }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -251,19 +258,42 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Report whether another owner already belongs to the same household as {@code owner}, i.e. has
-     * the same last name and the same address. Both values are compared case-insensitively with
-     * collapsed whitespace, so differences in letter case or runs of spaces are ignored.
+     * Find the owners that already belong to the same household as {@code owner}, i.e. have the same
+     * last name and the same address. Both values are compared case-insensitively with collapsed
+     * whitespace, so differences in letter case or runs of spaces are ignored. Returns an empty list
+     * when the owner has no last name or address to match on.
      */
-    private boolean isDuplicateHousehold(Owner owner) {
+    private List<Owner> findHouseholdMembers(Owner owner) {
         String lastName = normalizeHouseholdKey(owner.getLastName());
         String address = normalizeHouseholdKey(owner.getAddress());
         if (lastName == null || address == null) {
-            return false;
+            return List.of();
         }
         return ownerRepository.findAll().stream()
-            .anyMatch(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
-                && address.equals(normalizeHouseholdKey(existing.getAddress())));
+            .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
+                && address.equals(normalizeHouseholdKey(existing.getAddress())))
+            .toList();
+    }
+
+    /**
+     * Resolve the stable {@code householdId} shared by a household. If any existing member already
+     * carries one it is reused so the identifier stays stable as further owners join; otherwise a
+     * new one is generated. The resolved value is back-filled onto every member that is missing it
+     * (or has a different one) so all members of the household share the same identifier.
+     */
+    private String resolveHouseholdId(List<Owner> members) {
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(id -> id != null && !id.isBlank())
+            .findFirst()
+            .orElseGet(() -> UUID.randomUUID().toString());
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        return householdId;
     }
 
     /**
