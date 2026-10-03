@@ -178,14 +178,34 @@ public class Owner extends Person {
     }
 
     /**
-     * Defaults the registration date to the server's current date when none was supplied,
-     * so every newly persisted owner is stamped exactly once on insert.
+     * Stamps the effective registration date exactly once on insert, so every newly persisted owner
+     * carries a resolved, business-day registration date (see {@link #resolveRegistrationDate}).
      */
     @PrePersist
     void onCreate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+        this.registrationDate = resolveRegistrationDate(this.registrationDate);
+    }
+
+    /**
+     * Resolves the effective registration date and rolls it onto a business day. An absent
+     * ({@code null}) value defaults to the server's current date; a supplied value is used as-is.
+     * The resulting date is then rolled forward so it never falls on a weekend: a Saturday or Sunday
+     * becomes the following Monday, while any weekday is returned unchanged.
+     *
+     * <p>This is the single definition of both the defaulting and the business-day roll, used
+     * wherever the effective registration date is needed - by the {@code @PrePersist} hook that
+     * stamps the owner and by the create endpoint that counts owners per business day.
+     *
+     * @param supplied the registration date from the request, or {@code null} when none was supplied
+     * @return the effective registration date, guaranteed to fall on a business day
+     */
+    public static LocalDate resolveRegistrationDate(LocalDate supplied) {
+        LocalDate effective = supplied != null ? supplied : LocalDate.now();
+        return switch (effective.getDayOfWeek()) {
+            case SATURDAY -> effective.plusDays(2);
+            case SUNDAY -> effective.plusDays(1);
+            default -> effective;
+        };
     }
 
     protected Set<Pet> getPetsInternal() {

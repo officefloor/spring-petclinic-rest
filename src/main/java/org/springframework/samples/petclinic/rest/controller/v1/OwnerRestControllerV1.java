@@ -144,7 +144,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        requireDailyCapacity();
+        LocalDate registrationDate = Owner.resolveRegistrationDate(owner.getRegistrationDate());
+        owner.setRegistrationDate(registrationDate);
+        requireDailyCapacity(registrationDate);
         requireCityHasCapacity(owner.getCity());
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
@@ -166,21 +168,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create once {@value #MAX_OWNERS_PER_DAY} or more owners already carry today's
-     * registration date. Existing owners are counted by {@code registrationDate} equal to the server's
-     * current date, before the new owner is saved, so the count reflects only the owners that existed
-     * prior to this create.
+     * Rejects a create once {@value #MAX_OWNERS_PER_DAY} or more owners already carry the new owner's
+     * adjusted business-day registration date. Existing owners are counted by {@code registrationDate}
+     * equal to that date, before the new owner is saved, so the count reflects only the owners that
+     * existed prior to this create.
      *
+     * @param registrationDate the new owner's effective registration date, already rolled forward onto
+     *     a business day
      * @throws DailyOwnerLimitException if {@value #MAX_OWNERS_PER_DAY} or more owners are already
-     *     registered today
+     *     registered on that business day
      */
-    private void requireDailyCapacity() {
-        LocalDate today = LocalDate.now();
-        long todayOwnerCount = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+    private void requireDailyCapacity(LocalDate registrationDate) {
+        long dayOwnerCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
-        if (todayOwnerCount >= MAX_OWNERS_PER_DAY) {
-            throw new DailyOwnerLimitException(today);
+        if (dayOwnerCount >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitException(registrationDate);
         }
     }
 
