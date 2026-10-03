@@ -1,0 +1,107 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index 556e3e56e..034d85a37 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -2,8 +2,9 @@ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+  * Thrown by the create pipeline when the supplied telephone cannot be formatted as a valid
+- * E.164 number (not 8 to 15 digits after the country code). Handled globally by
+- * {@link InvalidTelephoneExceptionHandler}, which responds 400.
++ * E.164 number (not 8 to 15 digits after the country code, or the wrong national-number
++ * length for a recognised country code: '+61' requires 9 national digits, '+1' requires 10).
++ * Handled globally by {@link InvalidTelephoneExceptionHandler}, which responds 400.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 8631ebc8a..56a5e25a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * Normalizes the owner's telephone to E.164 form (see {@link OwnerTelephones}): strip
+  * spaces, dashes and brackets; keep a leading '+' and country code when present, otherwise
+  * assume country code '+61' and drop a single leading '0' from the national digits; require
+- * 8 to 15 digits after the '+'. The E.164 value is stored back on the owner (so it is
+- * persisted and returned); anything that cannot form a valid E.164 number escalates as a
++ * 8 to 15 digits after the '+', and the exact national-number length for a recognised
++ * country code ('+61' => 9, '+1' => 10). The E.164 value is stored back on the owner (so it
++ * is persisted and returned); anything that cannot form a valid E.164 number escalates as a
+  * 400 via {@link InvalidTelephoneException}.
+  */
+ public class NormalizeOwnerTelephone {
+@@ -19,7 +20,9 @@ public class NormalizeOwnerTelephone {
+         if (e164 == null) {
+             throw new InvalidTelephoneException(
+                     "Telephone cannot be formatted as a valid E.164 number "
+-                            + "(8 to 15 digits after the country code)");
++                            + "(8 to 15 digits after the country code, and the national-number "
++                            + "length must match the country code: '+61' needs 9 digits, "
++                            + "'+1' needs 10)");
+         }
+         owner.setTelephone(e164);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+index 620750ebc..a654a7c93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+@@ -1,5 +1,8 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.LinkedHashMap;
++import java.util.Map;
++
+ /**
+  * Single source of truth for the owner "E.164 telephone" rule. Both
+  * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and
+@@ -10,16 +13,33 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  * code when present, otherwise assume country code {@code '+61'} and drop a single leading
+  * {@code '0'} from the national digits; require 8 to 15 digits after the {@code '+'}. So
+  * {@code "0412 345 678"} becomes {@code "+61412345678"}.
++ *
++ * <p>For a recognised country code the national-number length is also fixed: {@code '+61'}
++ * requires exactly 9 national digits and {@code '+1'} exactly 10. A number whose country
++ * code is known but whose national length is wrong is rejected (returns {@code null}).
+  */
+ final class OwnerTelephones {
+ 
++    /**
++     * Recognised country codes mapped to the exact number of national digits they require.
++     * Ordered longest-prefix first so a leading {@code "61"} matches country {@code "61"}
++     * before the shorter {@code "1"}.
++     */
++    private static final Map<String, Integer> NATIONAL_DIGITS = new LinkedHashMap<>();
++
++    static {
++        NATIONAL_DIGITS.put("61", 9);
++        NATIONAL_DIGITS.put("1", 10);
++    }
++
+     private OwnerTelephones() {
+     }
+ 
+     /**
+      * Converts {@code telephone} to its E.164 form, or returns {@code null} when it cannot
+-     * form a valid E.164 number (null input, non-digit content, or fewer than 8 / more than
+-     * 15 digits after the {@code '+'}).
++     * form a valid E.164 number (null input, non-digit content, fewer than 8 / more than
++     * 15 digits after the {@code '+'}, or a recognised country code with the wrong
++     * national-number length).
+      */
+     static String toE164(String telephone) {
+         if (telephone == null) {
+@@ -41,6 +61,14 @@ final class OwnerTelephones {
+         if (!digits.matches("\\d{8,15}")) {
+             return null;
+         }
++        // For a recognised country code, the national-number length is fixed.
++        for (Map.Entry<String, Integer> country : NATIONAL_DIGITS.entrySet()) {
++            String code = country.getKey();
++            if (digits.startsWith(code)) {
++                int nationalLength = digits.length() - code.length();
++                return nationalLength == country.getValue() ? "+" + digits : null;
++            }
++        }
+         return "+" + digits;
+     }
+ }
