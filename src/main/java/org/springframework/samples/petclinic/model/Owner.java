@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -141,13 +144,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier, derived from the namesake count and email. Returns
-     * {@code 'SILVER'} when the owner has no namesakes ({@code namesakeCount} is 0) and an
-     * email address is present; otherwise {@code 'BRONZE'}.
+     * The owner's membership tier. Returns {@code 'GOLD'} when the owner belongs to a household
+     * ({@code householdSize}) of 3 or more members. Otherwise it is derived from the namesake count
+     * and email: {@code 'SILVER'} when the owner has no namesakes ({@code namesakeCount} is 0) and an
+     * email address is present, and {@code 'BRONZE'} in every other case.
      *
-     * @return the membership tier, either {@code 'SILVER'} or {@code 'BRONZE'}
+     * @return the membership tier, one of {@code 'GOLD'}, {@code 'SILVER'} or {@code 'BRONZE'}
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean hasNoNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return hasNoNamesakes && hasEmail ? "SILVER" : "BRONZE";
@@ -178,6 +185,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     public Boolean getBulkSignupWarning() {

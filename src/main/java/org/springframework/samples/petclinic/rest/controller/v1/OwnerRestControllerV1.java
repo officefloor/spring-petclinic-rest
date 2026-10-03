@@ -447,6 +447,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * <p>When no existing owner shares the household there is nobody to share an identifier with, so
      * the owner is left without a {@code householdId}.
      *
+     * <p>Every member of the household - the existing owners and the new one - is also stamped with
+     * the household's member count after this create ({@code householdSize}), so the shared size can
+     * be read back from any of them and drives the {@code GOLD} membership tier (3 or more members).
+     *
      * @param owner the owner being created, whose {@code householdId} is set when a household is joined
      */
     private void joinHousehold(Owner owner) {
@@ -455,12 +459,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         String householdId = computeHouseholdId(owner.getLastName(), owner.getAddress());
+        int householdSize = members.size() + 1;
         owner.setHouseholdId(householdId);
+        owner.setHouseholdSize(householdSize);
         for (Owner member : members) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                this.clinicService.saveOwner(member);
-            }
+            member.setHouseholdId(householdId);
+            member.setHouseholdSize(householdSize);
+            this.clinicService.saveOwner(member);
         }
     }
 
