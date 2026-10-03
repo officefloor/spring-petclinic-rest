@@ -1,0 +1,120 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..ac2ccdef1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a request to create an owner carries a normalized telephone number that is already
++ * used by another owner. Carries the offending normalized value so the
++ * {@link ExceptionControllerAdvice} can report it to the client, which answers with a 409 Conflict.
++ */
++public class DuplicateTelephoneException extends RuntimeException {
++
++    private final transient String telephone;
++
++    public DuplicateTelephoneException(String telephone) {
++        super("Telephone already in use: " + telephone);
++        this.telephone = telephone;
++    }
++
++    public String getTelephone() {
++        return this.telephone;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 87c2fc29d..fb8ceba8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -190,4 +190,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a normalized
++     * telephone number already used by another owner. Returns a 409 Conflict.
++     *
++     * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++        logger.debug("Duplicate owner telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getTelephone());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("telephone"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 69f2c2b4e..087d47081 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -23,6 +23,7 @@ import java.util.List;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+@@ -105,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
++        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
++        requireUniqueTelephone(telephone);
++        owner.setTelephone(telephone);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -161,6 +164,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return digits;
+     }
+ 
++    /**
++     * Rejects a telephone number that, once normalized to its digits, is already used by an existing
++     * owner. This enforces that no two owners share the same normalized telephone.
++     *
++     * @param telephone the normalized (digits-only) telephone of the owner being created
++     * @throws DuplicateTelephoneException if another owner already has this normalized telephone
++     */
++    private void requireUniqueTelephone(String telephone) {
++        boolean inUse = this.clinicService.findAllOwners().stream()
++            .map(Owner::getTelephone)
++            .filter(existing -> existing != null)
++            .map(existing -> existing.replaceAll("\\D", ""))
++            .anyMatch(telephone::equals);
++        if (inUse) {
++            throw new DuplicateTelephoneException(telephone);
++        }
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
