@@ -128,6 +128,19 @@ public class Owner extends Person {
         return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
     }
 
+    /**
+     * The owner's membership tier, derived from the namesake count and email. Returns
+     * {@code 'SILVER'} when the owner has no namesakes ({@code namesakeCount} is 0) and an
+     * email address is present; otherwise {@code 'BRONZE'}.
+     *
+     * @return the membership tier, either {@code 'SILVER'} or {@code 'BRONZE'}
+     */
+    public String getMembershipTier() {
+        boolean hasNoNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return hasNoNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
