@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -24,7 +25,12 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(toLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Fixed city-to-region table used to derive an owner's {@code locality}. */
+    Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
      * Format an owner's stored names as {@code 'LastName, FirstName'} for the
@@ -53,6 +59,15 @@ public interface OwnerMapper {
         boolean uniqueName = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return uniqueName && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * Derive the owner's read-only {@code locality}: the canonical region looked up from the
+     * owner's city in the fixed city-to-region table ({@code Sydney->NSW, Melbourne->VIC,
+     * Brisbane->QLD}), or {@code 'UNKNOWN'} when the city is not in the table.
+     */
+    default String toLocality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
     Owner toOwner(OwnerDto ownerDto);
