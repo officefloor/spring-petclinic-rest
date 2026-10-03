@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 /**
  * Single source of truth for what a "normalized" owner telephone is: the number in
  * <a href="https://en.wikipedia.org/wiki/E.164">E.164</a> form. Used by
- * {@link NormalizeOwnerTelephone} when storing and by {@link EnsureUniqueIdentity} when
+ * {@link NormalizeOwnerTelephone} when storing and by {@link EnsureUniqueHousehold} when
  * forming the telephone part of an owner's identity key, so the rule cannot drift between
  * the two steps.
  *
