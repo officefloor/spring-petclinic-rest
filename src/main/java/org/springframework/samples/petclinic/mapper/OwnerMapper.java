@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -58,6 +59,19 @@ public interface OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Composes the owner's salutation from the optional title and the last name:
+     * {@code <title> <lastName>} when a title is present (non-null and not blank),
+     * or just the last name when no title was supplied.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title != null && !title.isBlank()) {
+            return title + " " + owner.getLastName();
+        }
+        return owner.getLastName();
     }
 
     /**
