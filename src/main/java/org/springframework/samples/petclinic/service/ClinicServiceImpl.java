@@ -257,6 +257,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
+        if (owner.isNew() && isEmailAlreadyUsed(owner)) {
+            throw new DuplicateEmailException(owner.getEmail());
+        }
         if (owner.isNew()
             && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitExceededException(owner.getCity());
@@ -293,6 +296,23 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
                 owner.getRegistrationDate());
         }
+    }
+
+    /**
+     * Report whether {@code owner}'s email is already used by any existing owner, compared
+     * case-insensitively on its lower-cased form. An owner without an email (null or blank) never
+     * collides, so such an owner is reported as not using an already-taken email.
+     */
+    private boolean isEmailAlreadyUsed(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        String normalized = email.toLowerCase();
+        return ownerRepository.findAll().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .anyMatch(existing -> normalized.equals(existing.toLowerCase()));
     }
 
     /**
