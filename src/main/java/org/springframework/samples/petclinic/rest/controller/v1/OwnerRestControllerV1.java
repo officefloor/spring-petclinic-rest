@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,6 +31,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -86,6 +88,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * Maximum number of owners that may be registered on a single day (by registration date). A create
+     * attempted once this many owners already carry today's registration date is rejected with a
+     * 429 Too Many Requests.
+     */
+    private static final int MAX_OWNERS_PER_DAY = 100;
+
+    /**
      * Expansions of the common street-type abbreviations recognised by {@link #normalizeAddress}.
      * Keys and values are upper-case, matching the casing the address is folded to before expansion.
      */
@@ -135,6 +144,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        requireDailyCapacity();
         requireCityHasCapacity(owner.getCity());
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
@@ -153,6 +163,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects a create once {@value #MAX_OWNERS_PER_DAY} or more owners already carry today's
+     * registration date. Existing owners are counted by {@code registrationDate} equal to the server's
+     * current date, before the new owner is saved, so the count reflects only the owners that existed
+     * prior to this create.
+     *
+     * @throws DailyOwnerLimitException if {@value #MAX_OWNERS_PER_DAY} or more owners are already
+     *     registered today
+     */
+    private void requireDailyCapacity() {
+        LocalDate today = LocalDate.now();
+        long todayOwnerCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (todayOwnerCount >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitException(today);
+        }
     }
 
     /**

@@ -255,4 +255,26 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link DailyOwnerLimitException} raised when an owner is created once the maximum number
+     * of owners permitted on a single day (100) already carry today's registration date. Returns a
+     * 429 Too Many Requests.
+     *
+     * @param e The {@link DailyOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitException(DailyOwnerLimitException e, HttpServletRequest request) {
+        logger.debug("Daily owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
