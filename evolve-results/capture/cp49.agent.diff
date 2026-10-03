@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f100923d0..f55c9cba8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -1,8 +1,10 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+ import org.jspecify.annotations.NonNull;
++import org.mapstruct.AfterMapping;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.mapstruct.MappingTarget;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -18,8 +20,26 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    /** Base path of the owner resource; the self link is this plus the owner id. */
++    String OWNER_RESOURCE_PATH = "/api/owners/";
++
++    /** Build an owner's self link from its id, e.g. {@code "/api/owners/1"}. */
++    static String selfLink(Integer ownerId) {
++        return ownerId == null ? null : OWNER_RESOURCE_PATH + ownerId;
++    }
++
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Populate the derived {@code selfLink} in the DTO (web) layer, keeping the owner
++     * URL scheme out of the domain entity. Fires for every {@link OwnerDto} mapping,
++     * including the collection and page variants that delegate to {@link #toOwnerDto}.
++     */
++    @AfterMapping
++    default void fillSelfLink(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        ownerDto.setSelfLink(selfLink(ownerDto.getId()));
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..85baa2c17 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,6 +14,8 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
++        // The self link is the created resource's URL, so reuse it as the Location header
++        // rather than rebuilding the path here.
++        response.send(ResponseEntity.created(URI.create(dto.getSelfLink())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b210d2902..6085436c8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2136,6 +2136,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            selfLink:
++              title: Self link
++              description: >-
++                A link to this owner's own resource, formatted '/api/owners/<id>'
++                using the owner's id. Derived from the owner's own fields.
++              type: string
++              example: '/api/owners/1'
++              readOnly: true
+             displayName:
+               title: Display name
+               description: The owner's name formatted as 'LastName, FirstName'.
