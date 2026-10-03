@@ -356,6 +356,16 @@ public class Owner extends Person {
         "QLD", new int[] {4000, 4099});
 
     /**
+     * Fixed region-to-timezone lookup table, mapping each region to its IANA timezone
+     * name: NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane.
+     * Any region not listed (including {@code "UNKNOWN"}) has no timezone.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
      * The owner's locality: the REGION component of the owner's region-and-hash identity.
      * Read off the {@code customerCode} prefix (the part before the first {@code '-'}) when
      * a customer code is present, otherwise derived straight from the postcode via
@@ -430,6 +440,18 @@ public class Owner extends Person {
      */
     public static boolean hasPostcodeRange(String region) {
         return REGION_POSTCODE_RANGES.containsKey(region);
+    }
+
+    /**
+     * The owner's IANA timezone, derived from the owner's {@link #getLocality() locality}
+     * (its region) via the fixed region-to-timezone table ({@code NSW->Australia/Sydney},
+     * {@code VIC->Australia/Melbourne}, {@code QLD->Australia/Brisbane}). Null when the
+     * region is not one of these (e.g. {@code "UNKNOWN"}). Derived from the owner's own
+     * fields.
+     */
+    @Transient
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
     }
 
     /**
