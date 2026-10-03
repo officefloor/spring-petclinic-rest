@@ -116,10 +116,31 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Compose an owner's canonical {@code address} from whichever address form the request supplied.
+     * The structured form is preferred: when {@code addressLine1} is non-blank after normalization,
+     * the result is the normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when an {@code addressLine2} is present. Otherwise it falls back
+     * to the normalized flat {@code address}. Each part is normalized with {@link AddressNormalizer}
+     * (trimmed and whitespace-collapsed, upper-cased, street-type abbreviations expanded), so the
+     * stored address is in one canonical shape regardless of the form used. Returns {@code null} when
+     * no address was supplied in either form.
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        String line1 = AddressNormalizer.normalize(ownerDto.getAddressLine1());
+        if (line1 != null) {
+            String line2 = AddressNormalizer.normalize(ownerDto.getAddressLine2());
+            return line2 == null ? line1 : line1 + " " + line2;
+        }
+        return AddressNormalizer.normalize(ownerDto.getAddress());
+    }
 
     /**
      * Normalize a postal address to its canonical form (trimmed and whitespace-collapsed,
