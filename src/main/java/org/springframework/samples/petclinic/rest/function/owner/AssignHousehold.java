@@ -10,13 +10,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a shared {@code householdId} when the request set {@code sharesHousehold} true
- * (published by {@link BuildOwner}). A household is defined by {@link HouseholdKey} — the same
- * definition {@link RejectDuplicateHousehold} uses to decide who is a duplicate.
+ * (published by {@link BuildOwner}). A household is defined by {@link HouseholdKey}.
  *
  * <p>The identifier is derived deterministically from the household key, so every owner in a
  * household computes the same value and it is stable across requests. It is assigned to this
  * (new) owner and also back-filled onto the existing same-household owner(s), so all members
- * return the same {@code householdId}.
+ * return the same {@code householdId}. Runs before {@link RejectDuplicateIdentity} because the
+ * {@code householdId} is part of the owner's {@code identityKey}.
  *
  * <p>Does nothing when {@code sharesHousehold} is not true, leaving {@code householdId} absent.
  */

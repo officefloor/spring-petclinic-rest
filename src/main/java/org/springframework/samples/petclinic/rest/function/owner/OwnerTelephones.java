@@ -6,8 +6,8 @@ import java.util.Map;
 /**
  * Single source of truth for the owner "E.164 telephone" rule. Both
  * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and
- * {@link RejectDuplicateTelephone} (which compares against it) go through here, so the two
- * can never drift apart.
+ * {@link OwnerIdentity} (which uses it as the telephone part of the identity key) go through
+ * here, so the two can never drift apart.
  *
  * <p>The rule: strip spaces, dashes and brackets; keep a leading {@code '+'} and country
  * code when present, otherwise assume country code {@code '+61'} and drop a single leading

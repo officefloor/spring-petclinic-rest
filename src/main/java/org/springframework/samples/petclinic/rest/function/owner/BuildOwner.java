@@ -25,7 +25,7 @@ public class BuildOwner {
         }
         built.set(owner);
         // sharesHousehold is a create-time flag, not an Owner field; republish it for
-        // RejectDuplicateHousehold. Absent in the body means false.
+        // AssignHousehold. Absent in the body means false.
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
     }
 }

@@ -11,9 +11,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * in its normalized form (see {@link OwnerAddresses#normalize}), so e.g. "7  elm  ave" matches
  * "7 ELM AVENUE".
  *
- * <p>Single-sources the "what is a household" definition shared by
- * {@link RejectDuplicateHousehold} (who is rejected) and {@link AssignHousehold} (who shares a
- * {@code householdId}); the two steps must agree on it, so it lives in exactly one place.
+ * <p>Single-sources the "what is a household" definition used by {@link AssignHousehold} to
+ * decide who shares a {@code householdId}; that shared id then feeds the owner's
+ * {@code identityKey} (see {@link OwnerIdentity}), which is what duplicate detection rejects on.
  */
 final class HouseholdKey {
 
