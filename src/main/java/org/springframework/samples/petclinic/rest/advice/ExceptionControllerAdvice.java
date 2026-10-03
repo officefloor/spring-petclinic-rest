@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -123,7 +124,9 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles exception thrown by Bean Validation on controller methods parameters
+     * Handles exception thrown by Bean Validation on controller methods parameters. The response
+     * body carries an {@code errors} array naming each rejected field (e.g. a required field that
+     * is missing or blank), alongside the detailed {@code schemaValidationErrors}.
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
@@ -138,6 +141,11 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
+            List<String> invalidFields = bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
+            detail.setProperty("errors", invalidFields);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                 .map(fieldError -> {
                     String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
