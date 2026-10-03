@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 /**
  * Rejects creating an owner when the owner's city already contains 50 or more owners.
  * The count is taken over the existing owners (the new owner is not yet saved), matching
- * cities by exact value as {@link AssignCustomerCode} does. At 50 or more existing owners
- * in the city the request is a 409 Conflict (see {@link CityAtCapacityException}).
+ * cities by exact value. At 50 or more existing owners in the city the request is a 409
+ * Conflict (see {@link CityAtCapacityException}).
  */
 public class EnsureCityCapacity {
 

@@ -173,7 +173,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code "<customerCode>-M<YY>"} where
      * YY is the last two digits of the registration date's year
-     * (e.g. {@code "TOW-SMI-0007-M26"}). Derived from the owner's own fields; null when
+     * (e.g. {@code "NSW-A1B2C3D4-M26"}). Derived from the owner's own fields; null when
      * either the customer code or registration date is absent.
      */
     @Transient
@@ -257,38 +257,41 @@ public class Owner extends Person {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * The owner's locality: the canonical region derived by preferring the postcode
-     * range ({@code 2000-2099->NSW}, {@code 3000-3099->VIC}, {@code 4000-4099->QLD}),
-     * falling back to the fixed city-to-region table ({@code Sydney->NSW},
-     * {@code Melbourne->VIC}, {@code Brisbane->QLD}) when the postcode is absent or in
-     * no known range, or {@code "UNKNOWN"} when neither resolves. Derived from the
-     * owner's own fields.
+     * The owner's locality: the REGION component of the owner's region-and-hash identity.
+     * Read off the {@code customerCode} prefix (the part before the first {@code '-'}) when
+     * a customer code is present, otherwise derived straight from the postcode via
+     * {@link #identityRegion(String)}. Either way this yields the region the customer code
+     * was built from — NSW/VIC/QLD, or {@code "UNKNOWN"} when the postcode is absent or in
+     * no known range. Derived from the owner's own fields.
      */
     @Transient
     public String getLocality() {
-        return region(this.city, this.postcode);
+        if (this.customerCode != null) {
+            int dash = this.customerCode.indexOf('-');
+            if (dash > 0) {
+                return this.customerCode.substring(0, dash);
+            }
+        }
+        return identityRegion(this.postcode);
     }
 
     /**
-     * The canonical region derived by preferring the postcode range over the city.
-     * Looks the postcode up against the known ranges first (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099); only when the postcode is absent or in no known
-     * range does it fall back to the fixed city-to-region table. Returns
-     * {@code "UNKNOWN"} when neither resolves. The single source of truth for region
-     * derivation, so a known city still yields its region while cities that share a
-     * name are disambiguated by postcode.
+     * The REGION component of an owner's region-and-hash identity: the region derived from
+     * the postcode via {@link #regionForPostcode(String)} (NSW/VIC/QLD), or
+     * {@code "UNKNOWN"} when the postcode is absent or in no known range. The single source
+     * of truth for the identity's region, so the {@code customerCode} prefix and the
+     * {@link #getLocality() locality} cannot drift apart.
      */
-    public static String region(String city, String postcode) {
-        String byPostcode = regionForPostcode(postcode);
-        return byPostcode != null ? byPostcode : regionForCity(city);
+    public static String identityRegion(String postcode) {
+        String region = regionForPostcode(postcode);
+        return region != null ? region : "UNKNOWN";
     }
 
     /**
      * The canonical region for a city per the fixed city-to-region table
      * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or
      * {@code "UNKNOWN"} when the city is not in the table. The single source of truth
-     * for the city-to-region mapping, used as the fallback in
-     * {@link #region(String, String)} and as the city's region in postcode validation.
+     * for the city-to-region mapping, used as the city's region in postcode validation.
      */
     public static String regionForCity(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
@@ -298,8 +301,8 @@ public class Owner extends Person {
      * The canonical region for a 4-digit postcode per the fixed range table
      * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or {@code null} when the postcode
      * is absent, not a well-formed integer, or in no known range. Reads the shared
-     * {@link #REGION_POSTCODE_RANGES} table; used by {@link #region(String, String)}
-     * for locality derivation and by postcode validation to range-check a submitted
+     * {@link #REGION_POSTCODE_RANGES} table; used by {@link #identityRegion(String)}
+     * for the identity's region and by postcode validation to range-check a submitted
      * postcode against its city's region.
      */
     public static String regionForPostcode(String postcode) {
