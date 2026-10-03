@@ -331,16 +331,35 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's {@code customerCode} as {@code '<LAST3>-<NNNN>'}: LAST3 is the
-     * upper-cased first three letters of the owner's last name, and NNNN is a global
-     * 4-digit zero-padded sequence equal to one more than the current number of owners
-     * (e.g. {@code 'SMI-0007'}).
+     * Build an owner's {@code customerCode} as {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the
+     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three
+     * letters of the owner's last name, and NNNN a per-city 4-digit zero-padded sequence equal
+     * to one more than the number of owners already in that city (e.g. {@code 'LON-SMI-0007'}).
      */
     private String generateCustomerCode(Owner owner) {
-        String lastName = owner.getLastName();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        long sequence = ownerRepository.findAll().size() + 1L;
-        return String.format("%s-%04d", last3, sequence);
+        String city3 = upperPrefix3(owner.getCity());
+        String last3 = upperPrefix3(owner.getLastName());
+        long sequence = countOwnersInCity(owner) + 1L;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Return the upper-cased first three letters of {@code value} (or fewer when it is shorter),
+     * the shared truncate-and-upper idiom used for each {@code customerCode} prefix segment.
+     */
+    private String upperPrefix3(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    }
+
+    /**
+     * Count the owners that already exist (before this create) in the same city as {@code owner},
+     * compared case-insensitively.
+     */
+    private long countOwnersInCity(Owner owner) {
+        String city = owner.getCity();
+        return ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
     }
 
     /**
