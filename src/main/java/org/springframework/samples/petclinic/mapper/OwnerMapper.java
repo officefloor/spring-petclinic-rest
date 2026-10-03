@@ -38,7 +38,16 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones.toDisplay(owner.getTelephone()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The canonical API path to this owner, formatted {@code /api/owners/<id>}. Null
+     * until the owner has been assigned an id.
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives the owner's age band from the {@code birthDate} measured against the
