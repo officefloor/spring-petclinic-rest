@@ -286,7 +286,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQUENCE.incrementAndGet(),
-            owner.getId(), owner.getMemberId(), owner.getMembershipLevel());
+            owner.getId(), owner.getMemberId(), owner.getMembershipLevel(), owner.getOwnerSegment());
         AUDIT.info(event.toJson());
     }
 
@@ -301,28 +301,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The immutable structured event emitted on a successful owner create. {@code seq} is the
-     * process-wide monotonically increasing sequence across creates; {@code ownerId} is the new
-     * owner's id; {@code memberId} carries the owner's unified member id; {@code membershipLevel} is
-     * the owner's membership level. It serializes to a compact JSON object whose {@code event} is
-     * always {@value #EVENT_TYPE}.
+     * The immutable structured event emitted on a successful owner create, at schema version 2.
+     * {@code seq} is the process-wide monotonically increasing sequence across creates; {@code ownerId}
+     * is the new owner's id; {@code memberId} carries the owner's version-2 member id;
+     * {@code membershipLevel} is the owner's membership level; {@code ownerSegment} is the owner's
+     * segment recomputed from the version-2 owner (its plain-region locality and membership level). It
+     * serializes to a compact JSON object whose {@code event} is always {@value #EVENT_TYPE} and whose
+     * {@code schemaVersion} is always {@value #SCHEMA_VERSION}.
      *
      * @param seq the monotonically increasing create sequence number
      * @param ownerId the created owner's id
-     * @param memberId the owner's unified member id
+     * @param memberId the owner's version-2 member id
      * @param membershipLevel the owner's membership level
+     * @param ownerSegment the owner's segment recomputed from the version-2 owner
      */
-    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel) {
+    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel,
+                                     String ownerSegment) {
 
         /** The fixed {@code event} discriminator carried by every emitted event. */
         private static final String EVENT_TYPE = "OWNER_CREATED";
+
+        /** The fixed schema version carried by every emitted event. */
+        private static final int SCHEMA_VERSION = 2;
 
         /** Shared, thread-safe mapper used only to serialize the event to its JSON form. */
         private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
         /**
          * Serializes this event to its compact JSON form
-         * {@code {seq, ownerId, memberId, membershipLevel, event}}, with the fields in that order.
+         * {@code {seq, ownerId, memberId, membershipLevel, ownerSegment, event, schemaVersion}}, with
+         * the fields in that order.
          *
          * @return the event as a JSON object string
          */
@@ -332,7 +340,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             fields.put("ownerId", this.ownerId);
             fields.put("memberId", this.memberId);
             fields.put("membershipLevel", this.membershipLevel);
+            fields.put("ownerSegment", this.ownerSegment);
             fields.put("event", EVENT_TYPE);
+            fields.put("schemaVersion", SCHEMA_VERSION);
             return MAPPER.writeValueAsString(fields);
         }
     }
@@ -811,18 +821,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Computes the deterministic, shared household identifier for a last name and postcode: the first
-     * 12 upper-case hexadecimal characters (the first 6 bytes) of the SHA-256 digest of
-     * {@code normalizedLastName + '|' + postcode}. The last name is normalized (case-insensitive,
-     * whitespace-collapsed) and an absent postcode contributes an empty string, so every owner that
-     * shares a last name and postcode computes the same identifier and therefore the same household.
+     * Computes the deterministic, shared version-2 household identifier for a last name and postcode: the
+     * first 12 upper-case hexadecimal characters (the first 6 bytes) of the SHA-256 digest of
+     * {@code 'V2' + '|' + normalizedLastName + '|' + postcode}. The fixed {@code 'V2'} version tag (see
+     * {@link Owner#IDENTITY_VERSION_TAG}) is mixed in so the identifier differs from the value produced
+     * under version 1. The last name is normalized (case-insensitive, whitespace-collapsed) and an
+     * absent postcode contributes an empty string, so every owner that shares a last name and postcode
+     * computes the same identifier and therefore the same household.
      *
      * @param lastName the last name of the household
      * @param postcode the postcode of the household, possibly {@code null}
      * @return the 12-character upper-case hex household identifier
      */
     private String computeHouseholdId(String lastName, String postcode) {
-        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = Owner.IDENTITY_VERSION_TAG + "|" + normalizeForHousehold(lastName)
+            + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));

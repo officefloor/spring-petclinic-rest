@@ -149,6 +149,15 @@ public class Owner extends Person {
         "guerrillamail.com");
 
     /**
+     * The fixed version tag mixed into the version-2 identifiers (member id, identity key and household
+     * id). It makes every version-2 identifier differ from the value the same owner would have produced
+     * under version 1, so no version-1 identifier is ever produced again. It is deliberately confined to
+     * the identifiers: the user-facing {@link #getLocality() locality}, {@link #getTimezone() timezone}
+     * and {@link #getOwnerSegment() owner segment} keep the plain region code and never carry it.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * A link to this owner's own resource, {@code '/api/owners/'} followed by the owner's
      * {@link #getId() id}. Returns {@code null} before the owner has been assigned an id.
      *
@@ -328,24 +337,17 @@ public class Owner extends Person {
 
     /**
      * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the two fiscal-year
-     * digits of the owner's {@link #getMemberId() member id} (its {@code FY} segment, the two
-     * characters following the leading region). The fiscal year starts on 1 July and is named by the
-     * calendar year in which it ends, so a registration date on or after 1 July belongs to the
-     * following calendar year's fiscal year (e.g. {@code 2026-07-01} is {@code 'FY27'}) while an
-     * earlier date stays in the current one (e.g. {@code 2026-06-15} is {@code 'FY26'}). Before the
-     * member id has been assigned it falls back to the fiscal year of the
-     * {@link #getRegistrationDate() business-day-adjusted registration date}. Returns {@code null}
-     * when neither a member id nor a registration date is available.
+     * digits of the {@link #getRegistrationDate() business-day-adjusted registration date}. The fiscal
+     * year starts on 1 July and is named by the calendar year in which it ends, so a registration date
+     * on or after 1 July belongs to the following calendar year's fiscal year (e.g. {@code 2026-07-01}
+     * is {@code 'FY27'}) while an earlier date stays in the current one (e.g. {@code 2026-06-15} is
+     * {@code 'FY26'}). This is the plain, user-facing fiscal year; it never carries the {@code 'V2'}
+     * tag that the version-2 identifiers mix into their region. Returns {@code null} when no
+     * registration date is available.
      *
      * @return the fiscal year, or {@code null} when it cannot be derived
      */
     public String getFiscalYear() {
-        if (this.memberId != null) {
-            String region = leadingRegion(this.memberId);
-            if (this.memberId.length() >= region.length() + 2) {
-                return "FY" + this.memberId.substring(region.length(), region.length() + 2);
-            }
-        }
         if (this.registrationDate == null) {
             return null;
         }
@@ -482,38 +484,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, the canonical region string. Once the owner has a
-     * {@link #getMemberId() member id} the locality is the {@code <REGION>} component of that id (its
-     * leading run of letters, before the fiscal-year digits), so the locality and the identity share a
-     * single source of truth. Before the member id is assigned (for example while a create is still
-     * validating the postcode) it falls back to the region the id will be built from: the
-     * {@link #getPostcode() postcode} looked up by range first (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099), then the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
+     * The owner's locality, the plain canonical region string. It is the region derived from the
+     * owner's details: the {@link #getPostcode() postcode} looked up by range first (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), then the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
      * Brisbane->QLD), and finally {@code 'UNKNOWN'} when neither resolves to a region.
      *
-     * @return the canonical region string, or {@code 'UNKNOWN'}
+     * <p>The locality is a user-facing field, not an identifier, so it is always the plain region
+     * (for example {@code 'NSW'}) and never carries the fixed {@code 'V2'} version tag that the
+     * version-2 identifiers (member id, identity key and household id) mix into their derivation.
+     *
+     * @return the plain canonical region string, or {@code 'UNKNOWN'}
      */
     public String getLocality() {
-        if (this.memberId != null) {
-            return leadingRegion(this.memberId);
-        }
         return deriveRegion();
-    }
-
-    /**
-     * The leading region component of a {@link #getMemberId() member id}: its leading run of letters,
-     * which ends at the first fiscal-year digit. The member id has no separators, so the region is the
-     * alphabetic prefix (e.g. {@code 'NSW'} or {@code 'UNKNOWN'}) that precedes the {@code <FY>} digits.
-     *
-     * @param memberId the member id to read the region from
-     * @return the leading region string
-     */
-    private static String leadingRegion(String memberId) {
-        int end = 0;
-        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
-            end++;
-        }
-        return memberId.substring(0, end);
     }
 
     /**
@@ -561,23 +544,35 @@ public class Owner extends Person {
     }
 
     /**
-     * Builds this owner's member id, formatted {@code '<REGION><FY><HASH8><CHK>'}. {@code REGION} is
-     * the region derived from the postcode (falling back to the city, then {@code 'UNKNOWN'}; see
-     * {@link #deriveRegion()}); {@code FY} is the two-digit fiscal year of the
-     * {@link #getRegistrationDate() registration date} (the fiscal year starts on 1 July; see
-     * {@link #fiscalYearOf(LocalDate)}); {@code HASH8} is the first 8 upper-case hexadecimal
-     * characters of the SHA-256 digest of the owner's normalized telephone concatenated with its last
-     * name (the same hash the region-and-hash identity uses); and {@code CHK} is a single Luhn check
-     * digit over the digits of the {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'NSW261A2B3C4D7'}).
-     * It carries no sequence number, so it is a pure function of the owner's region, fiscal year,
-     * telephone and last name. Call this once at create time and store the result via
-     * {@link #setMemberId(String)}, which thereafter backs {@link #getLocality()} and
-     * {@link #getFiscalYear()}.
+     * The version-2 region code used inside the identifiers: the plain region ({@link #deriveRegion()})
+     * with the fixed {@link #IDENTITY_VERSION_TAG 'V2'} version tag mixed in (e.g. {@code 'NSWV2'}). This
+     * is the region that appears inside the member id and is hashed into the identity key and household
+     * id; it is never surfaced as the owner's locality, timezone or segment, which stay on the plain
+     * region.
      *
-     * @return the assembled member id
+     * @return the version-2 region code
+     */
+    private String identityRegion() {
+        return deriveRegion() + IDENTITY_VERSION_TAG;
+    }
+
+    /**
+     * Builds this owner's version-2 member id, formatted {@code '<REGION><FY><HASH8><CHK>'}.
+     * {@code REGION} is the version-2 region code ({@link #identityRegion()}): the region derived from
+     * the postcode (falling back to the city, then {@code 'UNKNOWN'}; see {@link #deriveRegion()}) with
+     * the fixed {@code 'V2'} tag mixed in (e.g. {@code 'NSWV2'}). {@code FY} is the two-digit fiscal year
+     * of the {@link #getRegistrationDate() registration date} (the fiscal year starts on 1 July; see
+     * {@link #fiscalYearOf(LocalDate)}); {@code HASH8} is the first 8 upper-case hexadecimal characters
+     * of the SHA-256 digest of the owner's normalized telephone concatenated with its last name; and
+     * {@code CHK} is a single Luhn check digit over the digits of the {@code <REGION><FY><HASH8>} prefix
+     * (e.g. {@code 'NSWV2261A2B3C4D1'}). It carries no sequence number, so it is a pure function of the
+     * owner's region, fiscal year, telephone and last name. Call this once at create time and store the
+     * result via {@link #setMemberId(String)}.
+     *
+     * @return the assembled version-2 member id
      */
     public String buildMemberId() {
-        String base = deriveRegion()
+        String base = identityRegion()
             + String.format("%02d", fiscalYearOf(this.registrationDate) % 100)
             + sha256Hex8(this.telephone + this.getLastName());
         return base + luhnCheckDigit(base);
@@ -643,21 +638,24 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key, the single derived value used for duplicate detection. It is the
-     * lower-case SHA-256 hex digest (64 characters) of the owner's normalized telephone, lower-cased
-     * email (empty when absent) and the {@linkplain Soundex#encode(String) Soundex} of its last name,
-     * joined with {@code '|'} ({@code sha256hex('<telephone>|<lowerEmail>|<soundex(lastName)>')}); any
-     * absent ({@code null}) component contributes an empty string before hashing. Two owners are
-     * duplicates exactly when their whole identity keys are equal, so two owners sharing a last name
-     * (and its Soundex) and postcode but carrying different telephones differ here and are both
-     * allowed (the second is flagged a soft match rather than rejected).
+     * The owner's version-2 identity key, the single derived value used for duplicate detection. It is
+     * the lower-case SHA-256 hex digest (64 characters) of the fixed {@link #IDENTITY_VERSION_TAG 'V2'}
+     * version tag, the owner's normalized telephone, lower-cased email (empty when absent) and the
+     * {@linkplain Soundex#encode(String) Soundex} of its last name, joined with {@code '|'}
+     * ({@code sha256hex('V2|<telephone>|<lowerEmail>|<soundex(lastName)>')}); any absent ({@code null})
+     * component contributes an empty string before hashing. Mixing the {@code 'V2'} tag in makes this
+     * key differ from the one the same owner produced under version 1. Two owners are duplicates exactly
+     * when their whole identity keys are equal, so two owners sharing a last name (and its Soundex) and
+     * postcode but carrying different telephones differ here and are both allowed (the second is flagged
+     * a soft match rather than rejected).
      *
-     * @return the derived identity key, a 64-character lower-case hex string
+     * @return the derived version-2 identity key, a 64-character lower-case hex string
      */
     public String getIdentityKey() {
         String normalizedTelephone = this.telephone == null ? "" : this.telephone;
         String lowerEmail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
-        String raw = normalizedTelephone + "|" + lowerEmail + "|" + Soundex.encode(this.getLastName());
+        String raw = IDENTITY_VERSION_TAG + "|" + normalizedTelephone + "|" + lowerEmail
+            + "|" + Soundex.encode(this.getLastName());
         return sha256HexLower(raw);
     }
 
