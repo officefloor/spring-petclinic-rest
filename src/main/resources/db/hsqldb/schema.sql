@@ -40,6 +40,8 @@ CREATE TABLE owners (
   first_name VARCHAR(30),
   last_name  VARCHAR_IGNORECASE(30),
   address    VARCHAR(255),
+  address_line1 VARCHAR(255),
+  address_line2 VARCHAR(255),
   city       VARCHAR(80),
   postcode   VARCHAR(10),
   telephone  VARCHAR(20),
