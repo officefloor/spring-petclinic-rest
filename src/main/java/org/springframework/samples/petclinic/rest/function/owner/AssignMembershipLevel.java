@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
@@ -11,15 +10,16 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@code membershipLevel} on create. Points start at 0 and accumulate: add 2 when an
  * email address is present, add 1 when {@code namesakeCount} is 0, add 2 when the owner
  * belongs to a household of three or more members, and add 3 for tenure of more than
- * 365 days. The points then map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for
- * 4-5 points and 4 for 6 or more points. A newly created owner has zero tenure (its
- * registration date is the server date), so a new owner never earns the tenure points.
+ * one elapsed fiscal year (the fiscal year starts on 1 July). The points then map to a
+ * level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points and 4 for 6 or more
+ * points. A newly created owner has zero tenure (its registration date is the server
+ * date), so a new owner never earns the tenure points.
  * Runs after {@code namesakeCount} and {@code householdSize} have been counted and
  * before the owner is saved, so both values are fixed at creation time.
  */
 public class AssignMembershipLevel {
 
-    private static final long TENURE_DAYS_FOR_POINTS = 365;
+    private static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     public void service(@Val Owner owner) {
         int points = 0;
@@ -35,7 +35,7 @@ public class AssignMembershipLevel {
         if (householdSize != null && householdSize >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > TENURE_DAYS_FOR_POINTS) {
+        if (tenureFiscalYears(owner) > TENURE_FISCAL_YEARS_FOR_POINTS) {
             points += 3;
         }
         owner.setMembershipPoints(points);
@@ -55,11 +55,11 @@ public class AssignMembershipLevel {
         return 1;
     }
 
-    private static long tenureDays(Owner owner) {
+    private static int tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return OwnerFiscalYear.elapsedFiscalYears(registrationDate, LocalDate.now());
     }
 }

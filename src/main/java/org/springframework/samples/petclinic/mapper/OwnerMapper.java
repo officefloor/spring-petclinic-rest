@@ -25,6 +25,7 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning",
@@ -109,14 +110,31 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>}
-     * where {@code YY} is the last two digits of the registration-date year
-     * (e.g. {@code NSW-1A2B3C4D-M26}). Null when either source field is absent.
+     * where {@code YY} is the two-digit fiscal year of the (business-day-adjusted)
+     * registration date (e.g. {@code NSW-1A2B3C4D-M26}). The fiscal year starts on
+     * 1 July and is named by the calendar year it ends in. Null when either source
+     * field is absent.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear
+            .fiscalYearOf(owner.getRegistrationDate());
+        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear % 100);
+    }
+
+    /**
+     * Derives the owner's fiscal year, formatted {@code FY<YY>}, from the
+     * (business-day-adjusted) registration date. The fiscal year starts on 1 July and
+     * is named by the calendar year it ends in. Null when no registration date is set.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear
+            .fiscalYearLabel(owner.getRegistrationDate());
     }
 
     /**
