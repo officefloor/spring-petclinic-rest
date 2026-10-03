@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -143,7 +146,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where {@code YY} is
-     * the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}). Derived
+     * the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Derived
      * from the owner's own customer code and registration date; {@code null} when either is absent.
      *
      * @return the membership number, or {@code null} when it cannot be derived
@@ -207,21 +210,78 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, the canonical region string. It is derived by looking up the
-     * {@link #getPostcode() postcode} by range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
-     * and only falling back to the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD) when the postcode is absent or in no known range. Returns {@code 'UNKNOWN'}
-     * when neither the postcode nor the city resolves to a region. Preferring the postcode returns
-     * the same region for known cities but disambiguates cities that share a name.
+     * The owner's locality, the canonical region string. Once the owner has a
+     * {@link #getCustomerCode() customer code} the locality is the {@code <REGION>} component of that
+     * code (the text before the first {@code '-'}), so the locality and the identity share a single
+     * source of truth. Before the customer code is assigned (for example while a create is still
+     * validating the postcode) it falls back to the region the code will be built from: the
+     * {@link #getPostcode() postcode} looked up by range first (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), then the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
+     * Brisbane->QLD), and finally {@code 'UNKNOWN'} when neither resolves to a region.
      *
      * @return the canonical region string, or {@code 'UNKNOWN'}
      */
     public String getLocality() {
+        if (this.customerCode != null) {
+            int dash = this.customerCode.indexOf('-');
+            return dash >= 0 ? this.customerCode.substring(0, dash) : this.customerCode;
+        }
+        return deriveRegion();
+    }
+
+    /**
+     * The region the customer code's {@code <REGION>} component is built from: the postcode looked up
+     * by range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the fixed
+     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or
+     * in no known range, and {@code 'UNKNOWN'} when neither resolves. Preferring the postcode returns
+     * the same region for known cities but disambiguates cities that share a name.
+     *
+     * @return the canonical region string, or {@code 'UNKNOWN'}
+     */
+    private String deriveRegion() {
         String region = regionFromPostcode();
         if (region != null) {
             return region;
         }
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
+     * Builds this owner's customer code, formatted {@code '<REGION>-<HASH8>'}. {@code REGION} is the
+     * region derived from the postcode (falling back to the city, then {@code 'UNKNOWN'}; see
+     * {@link #deriveRegion()}) and {@code HASH8} is the first 8 upper-case hexadecimal characters of
+     * the SHA-256 digest of the owner's normalized telephone concatenated with its last name (e.g.
+     * {@code 'NSW-1A2B3C4D'}). The code carries no sequence number, so it is a pure function of the
+     * owner's region, telephone and last name. Call this once at create time and store the result via
+     * {@link #setCustomerCode(String)}, which thereafter backs {@link #getLocality()},
+     * {@link #getMembershipNumber()} and {@link #getCheckDigit()}.
+     *
+     * @return the assembled customer code
+     */
+    public String buildCustomerCode() {
+        return deriveRegion() + "-" + sha256Hex8(this.telephone + this.getLastName());
+    }
+
+    /**
+     * Computes the first 8 upper-case hexadecimal characters (the first 4 bytes) of the SHA-256 digest
+     * of the given value's UTF-8 bytes, the {@code HASH8} component of the customer code.
+     *
+     * @param value the value to hash
+     * @return the 8-character upper-case hex prefix of the SHA-256 digest
+     */
+    private static String sha256Hex8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                hex.append(String.format("%02X", digest[i]));
+            }
+            return hex.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
     }
 
     /**
