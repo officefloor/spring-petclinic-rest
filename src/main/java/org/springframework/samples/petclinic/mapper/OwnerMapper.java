@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.PostcodeRules;
+import org.springframework.samples.petclinic.util.RegionTimezones;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
@@ -86,6 +88,18 @@ public interface OwnerMapper {
             }
         }
         return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+    }
+
+    /**
+     * Derive the owner's read-only {@code timezone}: the IANA timezone name for the owner's
+     * locality/region, looked up from the fixed region-to-timezone table ({@code NSW->Australia/Sydney,
+     * VIC->Australia/Melbourne, QLD->Australia/Brisbane}). The region is the same value reported as the
+     * owner's {@code locality} (see {@link #toLocality(Owner)}), so timezone and locality stay in
+     * lock-step. Returns {@code null} when the region has no mapped timezone, so the field is omitted
+     * from the response.
+     */
+    default String toTimezone(Owner owner) {
+        return RegionTimezones.timezoneOf(toLocality(owner));
     }
 
     /**
