@@ -104,6 +104,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_DAY = 100;
 
     /**
+     * Threshold above which a create is flagged with a bulk-signup warning. When more than this many
+     * owners already carry the new owner's registration date, the created owner is flagged
+     * ({@code bulkSignupWarning} true); otherwise the flag is false.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
      * Expansions of the common street-type abbreviations recognised by {@link #normalizeAddress}.
      * Keys and values are upper-case, matching the casing the address is folded to before expansion.
      */
@@ -169,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -190,12 +198,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *     registered on that business day
      */
     private void requireDailyCapacity(LocalDate registrationDate) {
-        long dayOwnerCount = this.clinicService.findAllOwners().stream()
-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-            .count();
-        if (dayOwnerCount >= MAX_OWNERS_PER_DAY) {
+        if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitException(registrationDate);
         }
+    }
+
+    /**
+     * Counts the existing owners whose registration date equals the given business-day date. This is
+     * evaluated before the new owner is saved, so it reflects only the owners that existed prior to
+     * this create. It is the single definition of the per-day count shared by the daily-limit rule and
+     * the bulk-signup warning.
+     *
+     * @param registrationDate the effective business-day registration date to count against
+     * @return the number of pre-existing owners registered on that date
+     */
+    private long countOwnersRegisteredOn(LocalDate registrationDate) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
     }
 
     /**
