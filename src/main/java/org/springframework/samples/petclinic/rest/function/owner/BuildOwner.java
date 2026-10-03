@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        owner.setEmail(OwnerEmails.normalize(request.getEmail()));
+        built.set(owner);
     }
 }
