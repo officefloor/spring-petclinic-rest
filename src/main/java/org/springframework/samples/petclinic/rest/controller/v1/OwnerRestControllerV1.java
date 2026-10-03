@@ -16,12 +16,14 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -37,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -99,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -106,6 +110,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects an owner payload that is missing or blank in any required field. Bean Validation
+     * (via {@code @Valid}) already rejects {@code null} values and fields that violate their size
+     * or pattern constraints; this guard additionally rejects whitespace-only values for fields
+     * (such as address and city) that have no pattern constraint, so that no required field is blank.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws InvalidOwnerFieldsException if one or more required fields are missing or blank
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> invalidFields = new ArrayList<>();
+        if (!StringUtils.hasText(ownerFieldsDto.getFirstName())) {
+            invalidFields.add("firstName");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
+            invalidFields.add("lastName");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getAddress())) {
+            invalidFields.add("address");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
+            invalidFields.add("city");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getTelephone())) {
+            invalidFields.add("telephone");
+        }
+        if (!invalidFields.isEmpty()) {
+            throw new InvalidOwnerFieldsException(invalidFields);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
