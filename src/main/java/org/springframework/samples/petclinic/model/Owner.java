@@ -223,6 +223,34 @@ public class Owner extends Person {
         return hasEmail ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's identity key: the single value that duplicate detection is expressed
+     * through, formed as {@code normalizedTelephone + "|" + (email or empty) + "|" +
+     * (householdId or empty)}. The telephone and email are already stored in their
+     * normalized forms (E.164 and lower-cased), and the household id is empty for a solo
+     * owner. Two owners are duplicates only when their whole identity keys are equal, so
+     * two members of the same household with different telephones have distinct keys.
+     * Derived from the owner's own fields.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return identityKey(this.telephone, this.email, this.householdId);
+    }
+
+    /**
+     * Composes an identity key from its already-normalized parts. The single place the
+     * key's shape is defined, so the create-time duplicate check (which normalizes a
+     * request's parts) and this entity's {@link #getIdentityKey()} cannot drift apart. A
+     * null or blank part contributes an empty segment.
+     */
+    public static String identityKey(String normalizedTelephone, String normalizedEmail, String householdId) {
+        return keyPart(normalizedTelephone) + "|" + keyPart(normalizedEmail) + "|" + keyPart(householdId);
+    }
+
+    private static String keyPart(String value) {
+        return (value == null || value.isBlank()) ? "" : value;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
