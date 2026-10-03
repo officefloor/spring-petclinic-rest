@@ -19,7 +19,16 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Format an owner's stored names as {@code 'LastName, FirstName'} for the
+     * read-only {@code displayName} field returned on the Owner DTO.
+     */
+    default String toDisplayName(Owner owner) {
+        return owner.getLastName() + ", " + owner.getFirstName();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
