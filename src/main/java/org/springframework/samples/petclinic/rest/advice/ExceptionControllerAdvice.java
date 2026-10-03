@@ -191,67 +191,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a normalized
-     * telephone number already used by another owner. Returns a 409 Conflict.
+     * Handles {@link DuplicateIdentityException} raised when an owner is created whose whole identity
+     * key ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) is already used
+     * by another owner. This is the single consolidated duplicate check covering the former telephone,
+     * email and household rules. Returns a 409 Conflict.
      *
-     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param e The {@link DuplicateIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner telephone at {} {}: {}",
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner identity key at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
-            e.getTelephone());
+            e.getIdentityKey());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateHouseholdException} raised when an owner is created with the same last
-     * name and address (compared case-insensitively with collapsed whitespace) as an existing owner,
-     * without opting in via {@code sharesHousehold}. Returns a 409 Conflict.
-     *
-     * @param e The {@link DuplicateHouseholdException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner household at {} {}: {}, {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getLastName(),
-            e.getAddress());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("lastName", "address"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateEmailException} raised when an owner is created with an email whose
-     * lower-cased form is already used by another owner. Returns a 409 Conflict.
-     *
-     * @param e The {@link DuplicateEmailException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner email at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getEmail());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("email"));
+        detail.setProperty("errors", List.of("identityKey"));
         return ResponseEntity.status(status).body(detail);
     }
 
