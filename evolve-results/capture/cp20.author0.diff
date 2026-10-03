@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e2cacdefe..9b9c90af1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -179,13 +179,32 @@ public class Owner extends Person {
+ 
+     /**
+      * Defaults the registration date to the server's current date when none was supplied,
+-     * so every newly persisted owner is stamped exactly once on insert.
++     * so every newly persisted owner is stamped exactly once on insert, then rolls the
++     * effective date forward to a business day so no owner is ever registered on a weekend.
+      */
+     @PrePersist
+     void onCreate() {
+         if (this.registrationDate == null) {
+             this.registrationDate = LocalDate.now();
+         }
++        this.registrationDate = toBusinessDay(this.registrationDate);
++    }
++
++    /**
++     * Rolls a registration date forward onto a business day: a Saturday or Sunday becomes the
++     * following Monday, while any weekday is returned unchanged. This is the single definition of
++     * the business-day rule, applied to the effective registration date whether it was supplied in
++     * the request or defaulted to the server's current date.
++     *
++     * @param date the effective registration date
++     * @return the date itself when it is a weekday, otherwise the next Monday
++     */
++    public static LocalDate toBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 98765a663..e1b3f4ec3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -144,7 +144,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        requireDailyCapacity();
++        LocalDate registrationDate = Owner.toBusinessDay(
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
++        owner.setRegistrationDate(registrationDate);
++        requireDailyCapacity(registrationDate);
+         requireCityHasCapacity(owner.getCity());
+         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+@@ -166,21 +169,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rejects a create once {@value #MAX_OWNERS_PER_DAY} or more owners already carry today's
+-     * registration date. Existing owners are counted by {@code registrationDate} equal to the server's
+-     * current date, before the new owner is saved, so the count reflects only the owners that existed
+-     * prior to this create.
++     * Rejects a create once {@value #MAX_OWNERS_PER_DAY} or more owners already carry the new owner's
++     * adjusted business-day registration date. Existing owners are counted by {@code registrationDate}
++     * equal to that date, before the new owner is saved, so the count reflects only the owners that
++     * existed prior to this create.
+      *
++     * @param registrationDate the new owner's effective registration date, already rolled forward onto
++     *     a business day
+      * @throws DailyOwnerLimitException if {@value #MAX_OWNERS_PER_DAY} or more owners are already
+-     *     registered today
++     *     registered on that business day
+      */
+-    private void requireDailyCapacity() {
+-        LocalDate today = LocalDate.now();
+-        long todayOwnerCount = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> today.equals(existing.getRegistrationDate()))
++    private void requireDailyCapacity(LocalDate registrationDate) {
++        long dayOwnerCount = this.clinicService.findAllOwners().stream()
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+             .count();
+-        if (todayOwnerCount >= MAX_OWNERS_PER_DAY) {
+-            throw new DailyOwnerLimitException(today);
++        if (dayOwnerCount >= MAX_OWNERS_PER_DAY) {
++            throw new DailyOwnerLimitException(registrationDate);
+         }
+     }
+ 
