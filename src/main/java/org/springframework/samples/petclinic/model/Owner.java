@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -141,6 +144,14 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
+    }
+
     /**
      * The owner's name formatted for display as {@code "LastName, FirstName"}.
      */
@@ -210,7 +221,18 @@ public class Owner extends Person {
      */
     @Transient
     public String getLocality() {
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        return regionForCity(this.city);
+    }
+
+    /**
+     * The canonical region for a city per the fixed city-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or
+     * {@code "UNKNOWN"} when the city is not in the table. The single source of truth
+     * for the city-to-region mapping, shared by {@link #getLocality()} and postcode
+     * validation.
+     */
+    public static String regionForCity(String city) {
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     /**
