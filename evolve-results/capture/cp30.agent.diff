@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6053f8ab8..acc8471d8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -41,17 +41,43 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Fixed city-to-region table used to derive the owner's locality.
++     * Fixed city-to-region table used as the fallback when the postcode does not
++     * resolve a region.
+      */
+     java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+     /**
+-     * Derives the owner's locality (region) from the city using the fixed
++     * Region-to-inclusive 4-digit postcode range {low, high}, used to resolve the
++     * locality by postcode first.
++     */
++    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Derives the owner's locality (region), preferring the postcode: a 4-digit
++     * postcode falling within a known region's inclusive range yields that region.
++     * When the postcode is absent or in no known range, falls back to the
+      * {@link #CITY_REGION} table, returning {@code UNKNOWN} when the city is not
+      * listed.
++     *
++     * <p>The postcode lookup is inlined here (rather than a helper method) because
++     * MapStruct would otherwise treat a {@code String}-to-{@code String} default
++     * method as an implicit field mapping and apply it to every string property.
+      */
+     default String locality(Owner owner) {
++        String postcode = owner.getPostcode();
++        if (postcode != null && postcode.matches("[0-9]{4}")) {
++            int value = Integer.parseInt(postcode);
++            for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++                int[] range = entry.getValue();
++                if (value >= range[0] && value <= range[1]) {
++                    return entry.getKey();
++                }
++            }
++        }
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
