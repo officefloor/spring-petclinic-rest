@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Month;
 import java.time.Period;
@@ -573,22 +576,102 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: a display-only composite value formed as
-     * {@code normalizedTelephone + "|" + (email or empty) + "|" + (householdId or empty)}.
-     * The telephone and email are already stored in their normalized forms (E.164 and
-     * lower-cased), and the household id is derived from the last name and postcode (empty
-     * for an owner with no postcode). It drives no logic — duplicate detection is keyed on
-     * the household (same last name and postcode); this value is exposed on the API purely
-     * for reference. A null or blank part contributes an empty segment. Derived from the
-     * owner's own fields.
+     * The owner's identity key: the lower-case hex SHA-256 of
+     * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}. The
+     * telephone is already stored in E.164 form, the email is lower-cased (an empty segment
+     * when absent), and the last name is reduced to its {@link #soundex(String) Soundex}
+     * code. This is the single identity used for duplicate detection: two owners with the
+     * same key are the same person (a 409 on create); an owner whose key differs but whose
+     * Soundex last name and postcode match an existing owner is a soft match instead.
+     * Derived from the owner's own fields.
      */
     @Transient
     public String getIdentityKey() {
-        return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
+        String normalizedTelephone = keyPart(this.telephone);
+        String lowerEmail = keyPart(this.email == null ? null : this.email.toLowerCase(Locale.ROOT));
+        String soundexLastName = soundex(this.getLastName());
+        return sha256Hex(normalizedTelephone + "|" + lowerEmail + "|" + soundexLastName);
     }
 
     private static String keyPart(String value) {
         return (value == null || value.isBlank()) ? "" : value;
+    }
+
+    /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
+    /**
+     * The American Soundex code of {@code name}: the upper-cased first letter followed by
+     * three digits that encode the remaining consonants. Vowels and {@code H}/{@code W} are
+     * not coded; adjacent letters with the same code collapse to one, as do two same-coded
+     * letters separated only by {@code H} or {@code W}. The code is right-padded with zeros
+     * and truncated to four characters. An absent or letter-free name yields the empty
+     * string. The single source of truth for an owner's last-name phonetic key, used by the
+     * {@link #getIdentityKey() identity key} and by soft-duplicate matching. It lives here
+     * (rather than beside the exact-match name normalization in the package-private
+     * {@code OwnerNames} helper) because {@code getIdentityKey()} is an entity-level derived
+     * getter and must not depend on the request-function layer; the two are distinct name
+     * concerns — exact comparison vs. phonetic keying — not a duplicated utility.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char prev = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            // Vowels reset the previous code so same-coded consonants either side are coded
+            // twice; H and W do not, so same-coded letters they separate still collapse.
+            if (c != 'H' && c != 'W') {
+                prev = digit;
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**
