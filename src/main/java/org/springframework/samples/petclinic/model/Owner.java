@@ -174,6 +174,26 @@ public class Owner extends Person {
         return (unique && hasEmail) ? "SILVER" : "BRONZE";
     }
 
+    /**
+     * Fixed city-to-region lookup table. Any city not listed derives locality
+     * {@code "UNKNOWN"}.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /**
+     * The owner's locality: the canonical region derived from the city using the
+     * fixed city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC},
+     * {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the city is not in the table.
+     * Derived from the owner's own fields.
+     */
+    @Transient
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
