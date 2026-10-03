@@ -199,7 +199,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireDailyCapacity(registrationDate);
         requireCityHasCapacity(owner.getCity());
         validatePostcode(owner);
-        owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddress(owner, ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setHouseholdId(computeHouseholdId(owner.getLastName(), owner.getPostcode()));
@@ -357,7 +357,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
             invalidFields.add("lastName");
         }
-        if (!StringUtils.hasText(normalizeAddress(ownerFieldsDto.getAddress()))) {
+        if (!StringUtils.hasText(normalizeAddress(ownerFieldsDto.getAddressLine1()))
+            && !StringUtils.hasText(normalizeAddress(ownerFieldsDto.getAddress()))) {
             invalidFields.add("address");
         }
         if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
@@ -675,6 +676,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
             normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return normalized.toString();
+    }
+
+    /**
+     * Applies the owner's address from the request, preferring the structured form over the flat one.
+     * When a non-blank {@code addressLine1} is supplied it is normalized ({@link #normalizeAddress}) and
+     * stored, along with the normalized {@code addressLine2} when present, and the stored {@code address}
+     * is the composed string ({@link #composeAddress}). Otherwise the flat {@code address} input is
+     * normalized and stored, and the structured lines are cleared. Normalization therefore applies to
+     * whichever address fields are supplied, and everything that reads {@link Owner#getAddress()} sees
+     * the structured address when present, falling back to the flat address.
+     *
+     * @param owner the owner being created
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void applyAddress(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        String line1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        if (StringUtils.hasText(line1)) {
+            String line2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+            String normalizedLine2 = StringUtils.hasText(line2) ? line2 : null;
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(normalizedLine2);
+            owner.setAddress(composeAddress(line1, normalizedLine2));
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        }
+    }
+
+    /**
+     * Composes the stored-and-returned {@code address} string from the normalized structured lines: the
+     * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended when the second line is present.
+     *
+     * @param line1 the normalized first address line
+     * @param line2 the normalized second address line, or {@code null} when absent
+     * @return the composed address string
+     */
+    private String composeAddress(String line1, String line2) {
+        return line2 == null ? line1 : line1 + " " + line2;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
