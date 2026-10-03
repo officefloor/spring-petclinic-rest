@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Fixed city-to-region table used to derive an owner's {@code locality}. */
@@ -56,6 +57,16 @@ public interface OwnerMapper {
      */
     default String toLocality(Owner owner) {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * Derive the owner's read-only {@code contactPreference}: {@code EMAIL} when the owner has an
+     * email address, otherwise {@code PHONE}.
+     */
+    default OwnerDto.ContactPreferenceEnum toContactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank()
+            ? OwnerDto.ContactPreferenceEnum.EMAIL
+            : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     Owner toOwner(OwnerDto ownerDto);
