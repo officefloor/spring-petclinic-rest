@@ -58,6 +58,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -551,15 +552,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner whose whole identity key is already used by an existing owner. This is the
-     * single consolidated duplicate check: the identity key ({@link Owner#getIdentityKey()}) is the
-     * owner's normalized telephone, email (empty when absent) and household id joined with
+     * Rejects an owner whose whole identity key is already used by an existing (non-deleted) owner.
+     * This is the single consolidated duplicate check: the identity key
+     * ({@link Owner#getIdentityKey()}) is the lower-case SHA-256 hex of the owner's normalized
+     * telephone, lower-cased email (empty when absent) and the Soundex of its last name joined with
      * {@code '|'}, and a create is a duplicate only when the new owner's whole key equals an existing
-     * owner's. Because the telephone is part of the key, two members of the same household
-     * (same {@code householdId}) with different telephones have different identity keys and are both
-     * allowed.
+     * owner's. Because the telephone is part of the key, two owners sharing a last name and postcode
+     * but carrying different telephones have different identity keys and are both allowed (the second
+     * is flagged a soft match by {@link #flagPossibleDuplicate}). Owners flagged deleted are ignored.
      *
-     * @param owner the owner being created, with its normalized telephone, email and household id set
+     * @param owner the owner being created, with its normalized telephone, email and last name set
      * @throws DuplicateIdentityException if another owner already has this identity key
      */
     private void requireUniqueIdentity(Owner owner) {
@@ -602,8 +604,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Flags the owner being created as a possible (soft) duplicate of an existing owner. A soft match is
      * not a hard duplicate (its identity key is unique, already enforced by {@link #requireUniqueIdentity})
-     * but it shares an existing owner's last name (compared case-insensitively) and postcode (both
-     * present and equal) while carrying a different normalized telephone. When such an existing owner is
+     * but it shares an existing owner's last-name {@linkplain Soundex#encode(String) Soundex} and postcode
+     * (both present and equal) while carrying a different identity key. When such an existing owner is
      * found the created owner is flagged ({@code possibleDuplicate} true) with {@code possibleDuplicateOf}
      * set to that owner's id; the lowest matching id is used when several owners match. Otherwise the flag
      * is false and {@code possibleDuplicateOf} is left unset.
@@ -611,7 +613,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * <p>A declared household member (one created with {@code sharesHousehold}) is never a suspected
      * duplicate: it has deliberately opted in to sharing its household, so the flag is forced false.
      *
-     * @param owner the owner being created, with its normalized telephone and postcode set
+     * @param owner the owner being created, with its normalized telephone, email, last name and postcode set
      * @param declaredHouseholdMember whether the owner opted in to its household via {@code sharesHousehold}
      */
     private void flagPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
@@ -619,10 +621,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(false);
             return;
         }
+        String identityKey = owner.getIdentityKey();
+        String soundex = Soundex.encode(owner.getLastName());
         Integer matchId = this.clinicService.findAllOwners().stream()
-            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName()))
                 && owner.getPostcode().equals(existing.getPostcode())
-                && !owner.getTelephone().equals(existing.getTelephone()))
+                && !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);

@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -599,18 +600,43 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key, the single derived value used for duplicate detection. It is the
-     * owner's normalized telephone, email (empty when absent) and household id joined with
-     * {@code '|'} ({@code '<telephone>|<email>|<householdId>'}); any absent ({@code null}) component
-     * contributes an empty string. Two owners are duplicates exactly when their whole identity keys
-     * are equal, so two members of the same household with different telephones differ here and are
-     * both allowed.
+     * lower-case SHA-256 hex digest (64 characters) of the owner's normalized telephone, lower-cased
+     * email (empty when absent) and the {@linkplain Soundex#encode(String) Soundex} of its last name,
+     * joined with {@code '|'} ({@code sha256hex('<telephone>|<lowerEmail>|<soundex(lastName)>')}); any
+     * absent ({@code null}) component contributes an empty string before hashing. Two owners are
+     * duplicates exactly when their whole identity keys are equal, so two owners sharing a last name
+     * (and its Soundex) and postcode but carrying different telephones differ here and are both
+     * allowed (the second is flagged a soft match rather than rejected).
      *
-     * @return the derived identity key
+     * @return the derived identity key, a 64-character lower-case hex string
      */
     public String getIdentityKey() {
-        return (this.telephone == null ? "" : this.telephone) + "|"
-            + (this.email == null ? "" : this.email) + "|"
-            + (this.householdId == null ? "" : this.householdId);
+        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
+        String lowerEmail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String raw = normalizedTelephone + "|" + lowerEmail + "|" + Soundex.encode(this.getLastName());
+        return sha256HexLower(raw);
+    }
+
+    /**
+     * The full lower-case SHA-256 hex digest (64 characters) of the given value's UTF-8 bytes, the
+     * form the {@linkplain #getIdentityKey() identity key} takes.
+     *
+     * @param value the value to hash
+     * @return the 64-character lower-case hex SHA-256 digest
+     */
+    private static String sha256HexLower(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
     }
 
     public String getHouseholdId() {
