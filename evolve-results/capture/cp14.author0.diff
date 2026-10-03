@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 409b08dc7..cd5d57209 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @Column(name = "household_id")
+     private String householdId;
+ 
+@@ -123,6 +126,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 3b8b65de8..764bf3c24 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -257,6 +257,9 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew()) {
+             owner.setNamesakeCount(countNamesakes(owner));
+         }
++        if (owner.getMembershipNumber() == null) {
++            owner.setMembershipNumber(generateMembershipNumber(owner));
++        }
+         ownerRepository.save(owner);
+ 
+     }
+@@ -340,6 +343,15 @@ public class ClinicServiceImpl implements ClinicService {
+         return String.format("%s-%04d", last3, sequence);
+     }
+ 
++    /**
++     * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
++     * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
++     */
++    private String generateMembershipNumber(Owner owner) {
++        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++        return String.format("%s-M%s", owner.getCustomerCode(), yy);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..e071cafe2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..b7977f246 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..bb253e124 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  membership_number VARCHAR(30),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..2eac545a1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_number TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f54176345..02ed7c99b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2150,6 +2150,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The owner's membership number, formatted '<customerCode>-M<YY>'
++                where YY is the last two digits of the registrationDate year.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
