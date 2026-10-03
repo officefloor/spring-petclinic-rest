@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_size INTEGER,
                                       membership_level_cap INTEGER,
                                       bulk_signup_warning BOOLEAN,
+                                      capacity_warning BOOLEAN,
                                       postcode   TEXT,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
