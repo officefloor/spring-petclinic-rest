@@ -39,6 +39,9 @@ public final class CityRegions {
      * @return the region (e.g. {@code "NSW"}) or {@code null} when the city has no known region
      */
     public static String regionOf(String city) {
+        if (city == null) {
+            return null;
+        }
         return CITY_REGION.get(city);
     }
 }
