@@ -1,6 +1,20 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Runs first: an already-seen Idempotency-Key replays the original owner (200) instead of
+# creating a duplicate. A missing or new key takes the 'proceed' branch to validation.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  govern: [ transaction ]
+  outputs:
+    replay: respondReplay
+    proceed: validate
+
+# Replay branch: 200 with the originally created owner, via the shared owner responder.
+respondReplay:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
   govern: [ transaction ]
@@ -83,6 +97,11 @@ flagPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: audit
 
