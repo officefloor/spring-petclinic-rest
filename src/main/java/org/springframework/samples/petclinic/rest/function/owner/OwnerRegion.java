@@ -29,6 +29,17 @@ public final class OwnerRegion {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-IANA-timezone table. */
+    static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
+    /** The IANA timezone name for a region code, or {@code null} when the region has no mapping. */
+    public static String timezoneOfRegion(String region) {
+        return region == null ? null : REGION_TIMEZONE.get(region);
+    }
+
     /** The owner's region code, derived from the postcode (city table as fallback). */
     public static String regionOf(Owner owner) {
         String postcode = owner.getPostcode();
