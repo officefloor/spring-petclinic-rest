@@ -23,6 +23,7 @@ import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
@@ -105,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        requireUniqueTelephone(telephone);
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -154,11 +157,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws InvalidOwnerFieldsException if the value does not contain exactly 10 digits after stripping
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String digits = digitsOf(telephone);
         if (digits.length() != 10) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Strips every non-digit character from a telephone value, giving the single authoritative
+     * definition of a telephone's normalized digit form. Unlike {@link #normalizeTelephone(String)}
+     * this performs no length validation, so it is safe to apply to already-stored (possibly legacy)
+     * values when comparing them.
+     *
+     * @param telephone the raw telephone value, possibly {@code null}
+     * @return the value's digits, or the empty string if {@code null}
+     */
+    private String digitsOf(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Rejects a telephone number that, once normalized to its digits, is already used by an existing
+     * owner. This enforces that no two owners share the same normalized telephone.
+     *
+     * @param telephone the normalized (digits-only) telephone of the owner being created
+     * @throws DuplicateTelephoneException if another owner already has this normalized telephone
+     */
+    private void requireUniqueTelephone(String telephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(this::digitsOf)
+            .anyMatch(telephone::equals);
+        if (inUse) {
+            throw new DuplicateTelephoneException(telephone);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
