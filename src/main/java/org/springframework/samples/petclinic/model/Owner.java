@@ -81,6 +81,12 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "possible_duplicate")
+    private boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -278,6 +284,31 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
+    }
+
+    /**
+     * Whether this owner was flagged at creation as a possible (soft) duplicate: it is not a hard
+     * {@code identityKey} duplicate, but shares an existing owner's last name and postcode while
+     * carrying a different telephone. The owner is still created; this flag is advisory.
+     */
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this one soft-matched against (same last name and postcode,
+     * different telephone), or {@code null} when {@link #isPossibleDuplicate()} is {@code false}.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public boolean isSharesHousehold() {

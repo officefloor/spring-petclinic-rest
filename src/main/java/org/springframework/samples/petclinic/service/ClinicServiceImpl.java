@@ -35,7 +35,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -275,6 +277,16 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && isIdentityKeyAlreadyUsed(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
+        // Soft-match: not a hard identityKey duplicate, but shares an existing owner's last name and
+        // postcode while carrying a different telephone. Still created, but flagged as a possible
+        // duplicate pointing at the matching owner.
+        if (owner.isNew()) {
+            Owner softMatch = findPossibleDuplicate(owner);
+            if (softMatch != null) {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(softMatch.getId());
+            }
+        }
         if (owner.isNew()
             && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitExceededException(owner.getCity());
@@ -312,6 +324,28 @@ public class ClinicServiceImpl implements ClinicService {
         String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    }
+
+    /**
+     * Find an existing owner this (new) owner soft-matches against: one sharing the same last name
+     * (compared case-insensitively with collapsed whitespace, like household matching) and the same
+     * postcode, but carrying a different telephone. Returns the lowest-id such owner, or {@code null}
+     * when the owner has no last name or postcode to match on, or nothing matches. The caller only
+     * invokes this once the hard {@code identityKey} duplicate check has already passed.
+     */
+    private Owner findPossibleDuplicate(Owner owner) {
+        String lastName = normalizeHouseholdKey(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (lastName == null || postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        return ownerRepository.findAll().stream()
+            .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
+                && postcode.equals(existing.getPostcode())
+                && !Objects.equals(telephone, existing.getTelephone()))
+            .min(Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     /**
