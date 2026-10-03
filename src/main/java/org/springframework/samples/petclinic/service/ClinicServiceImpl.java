@@ -243,6 +243,10 @@ public class ClinicServiceImpl implements ClinicService {
             && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitExceededException(owner.getCity());
         }
+        if (owner.isNew()
+            && countOwnersRegisteredOn(LocalDate.now()) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(LocalDate.now());
+        }
         if (owner.isNew()) {
             List<Owner> householdMembers = findHouseholdMembers(owner);
             if (!householdMembers.isEmpty()) {
@@ -363,6 +367,16 @@ public class ClinicServiceImpl implements ClinicService {
         String city = owner.getCity();
         return ownerRepository.findAll().stream()
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+    }
+
+    /**
+     * Count the owners that already exist (before this create) whose {@code registrationDate} falls
+     * on the given {@code date}. Used to enforce the per-day create cap.
+     */
+    private long countOwnersRegisteredOn(LocalDate date) {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
 
