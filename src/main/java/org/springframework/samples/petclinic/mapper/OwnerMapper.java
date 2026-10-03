@@ -45,10 +45,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier: {@code SILVER} when {@code namesakeCount}
-     * is 0 and an email address is present, otherwise {@code BRONZE}.
+     * Derives the owner's membership tier: {@code GOLD} when the owner's household
+     * (owners sharing the same {@code householdId}) has 3 or more members, otherwise
+     * {@code SILVER} when {@code namesakeCount} is 0 and an email address is present,
+     * otherwise {@code BRONZE}.
      */
     default String membershipTier(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            return "GOLD";
+        }
         Integer namesakeCount = owner.getNamesakeCount();
         String email = owner.getEmail();
         boolean unique = namesakeCount != null && namesakeCount == 0;
