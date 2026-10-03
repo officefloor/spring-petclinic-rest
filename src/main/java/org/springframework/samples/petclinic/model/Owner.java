@@ -76,6 +76,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "membership_points")
+    private Integer membershipPoints;
+
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
@@ -182,6 +185,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getMembershipPoints() {
+        return this.membershipPoints;
+    }
+
+    public void setMembershipPoints(Integer membershipPoints) {
+        this.membershipPoints = membershipPoints;
     }
 
     public Integer getMembershipLevel() {

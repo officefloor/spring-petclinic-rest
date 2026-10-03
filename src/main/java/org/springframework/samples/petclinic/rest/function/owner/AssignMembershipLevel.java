@@ -7,40 +7,52 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's numeric {@code membershipLevel} on create. Starts at 1, adds 1
- * when an email address is present, adds 1 when {@code namesakeCount} is 0, and adds 1
- * when the owner belongs to a household of three or more members. Those factors can
- * raise the raw level to 4, but <strong>level 4 requires tenure of more than 365
- * days</strong>: when tenure is 365 days or less the level is capped at 3. A newly
- * created owner has zero tenure (its registration date is the server date), so a new
- * owner never exceeds level 3 — a new owner with an email, a {@code namesakeCount} of 0
- * and a 3-member household is level 3, not 4. Runs after {@code namesakeCount} and
- * {@code householdSize} have been counted and before the owner is saved, so the level
- * is fixed at creation time.
+ * Assigns the owner's {@code membershipPoints} and derived numeric
+ * {@code membershipLevel} on create. Points start at 0 and accumulate: add 2 when an
+ * email address is present, add 1 when {@code namesakeCount} is 0, add 2 when the owner
+ * belongs to a household of three or more members, and add 3 for tenure of more than
+ * 365 days. The points then map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for
+ * 4-5 points and 4 for 6 or more points. A newly created owner has zero tenure (its
+ * registration date is the server date), so a new owner never earns the tenure points.
+ * Runs after {@code namesakeCount} and {@code householdSize} have been counted and
+ * before the owner is saved, so both values are fixed at creation time.
  */
 public class AssignMembershipLevel {
 
-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+    private static final long TENURE_DAYS_FOR_POINTS = 365;
 
     public void service(@Val Owner owner) {
-        int level = 1;
+        int points = 0;
         String email = owner.getEmail();
         if (email != null && !email.isBlank()) {
-            level++;
+            points += 2;
         }
         Integer namesakeCount = owner.getNamesakeCount();
         if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+            points += 1;
         }
         Integer householdSize = owner.getHouseholdSize();
         if (householdSize != null && householdSize >= 3) {
-            level++;
+            points += 2;
         }
-        // Level 4 requires tenure of more than 365 days; otherwise cap at 3.
-        if (level >= 4 && tenureDays(owner) <= TENURE_DAYS_FOR_LEVEL_4) {
-            level = 3;
+        if (tenureDays(owner) > TENURE_DAYS_FOR_POINTS) {
+            points += 3;
         }
-        owner.setMembershipLevel(level);
+        owner.setMembershipPoints(points);
+        owner.setMembershipLevel(levelForPoints(points));
+    }
+
+    private static int levelForPoints(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     private static long tenureDays(Owner owner) {
