@@ -59,4 +59,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Override
     @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN TRUE ELSE FALSE END FROM Owner owner WHERE owner.telephone = :telephone")
     boolean existsByTelephone(@Param("telephone") String telephone);
+
+    @Override
+    @Query("SELECT owner FROM Owner owner WHERE owner.idempotencyKey = :idempotencyKey AND owner.deleted = false")
+    Owner findByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey);
 }

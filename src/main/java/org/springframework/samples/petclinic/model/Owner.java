@@ -99,6 +99,9 @@ public class Owner extends Person {
     @Column(name = "deleted")
     private boolean deleted;
 
+    @Column(name = "idempotency_key")
+    private String idempotencyKey;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -439,6 +442,20 @@ public class Owner extends Person {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    /**
+     * The {@code Idempotency-Key} the owner was first created under, or {@code null} when the create
+     * carried no such header. When a create repeats with an already-seen key, the originally created
+     * owner is returned instead of a duplicate being created, so the key is retained to recognise the
+     * repeat.
+     */
+    public String getIdempotencyKey() {
+        return this.idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     public boolean isSharesHousehold() {

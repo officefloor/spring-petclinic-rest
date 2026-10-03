@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_member_count INTEGER,
                                       possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
                                       possible_duplicate_of INTEGER,
-                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
+                                      deleted BOOLEAN DEFAULT FALSE NOT NULL,
+                                      idempotency_key VARCHAR(255)
 );
 CREATE INDEX ON owners (last_name);
 

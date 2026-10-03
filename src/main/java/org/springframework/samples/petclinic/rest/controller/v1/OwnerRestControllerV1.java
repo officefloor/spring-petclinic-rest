@@ -42,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -53,6 +54,9 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
 
+    /** Request header carrying the client-supplied idempotency key for creates. */
+    static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -61,14 +65,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final HttpServletRequest request;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -99,8 +107,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Idempotent create: when the request repeats an already-seen Idempotency-Key, return the
+        // owner first created under that key with 200 OK instead of creating a duplicate.
+        String idempotencyKey = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
+        boolean hasIdempotencyKey = idempotencyKey != null && !idempotencyKey.isBlank();
+        if (hasIdempotencyKey) {
+            Owner existing = this.clinicService.findOwnerByIdempotencyKey(idempotencyKey);
+            if (existing != null) {
+                return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (hasIdempotencyKey) {
+            owner.setIdempotencyKey(idempotencyKey);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

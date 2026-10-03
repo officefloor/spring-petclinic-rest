@@ -572,6 +572,20 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findByLastName(lastName);
     }
 
+    /**
+     * Find the owner originally created under the given {@code Idempotency-Key}, or {@code null} when
+     * the key is blank or no (non-deleted) owner carries it. Used by the create endpoint to recognise
+     * a repeated create and return the first-created owner instead of creating a duplicate.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        return ownerRepository.findByIdempotencyKey(idempotencyKey);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {

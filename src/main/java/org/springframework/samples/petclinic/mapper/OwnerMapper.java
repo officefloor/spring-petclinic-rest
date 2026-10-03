@@ -124,10 +124,12 @@ public interface OwnerMapper {
             : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
+    @Mapping(target = "idempotencyKey", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "idempotencyKey", ignore = true)
     @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
     @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
     @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")

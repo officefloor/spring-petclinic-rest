@@ -64,6 +64,16 @@ public interface OwnerRepository {
      */
     Owner findById(int id) throws DataAccessException;
 
+    /**
+     * Retrieve the (non-deleted) <code>Owner</code> originally created under the given
+     * <code>Idempotency-Key</code>, used to recognise a repeated create and return the first-created
+     * owner instead of a duplicate.
+     *
+     * @param idempotencyKey the idempotency key to search for
+     * @return the matching <code>Owner</code>, or <code>null</code> if none carries this key
+     */
+    Owner findByIdempotencyKey(String idempotencyKey) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

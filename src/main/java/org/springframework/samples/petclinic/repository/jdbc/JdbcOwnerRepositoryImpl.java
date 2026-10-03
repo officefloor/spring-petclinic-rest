@@ -145,6 +145,23 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return owner;
     }
 
+    @Override
+    public Owner findByIdempotencyKey(String idempotencyKey) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("idempotencyKey", idempotencyKey);
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE idempotency_key = :idempotencyKey AND deleted = false",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+        if (owners.isEmpty()) {
+            return null;
+        }
+        Owner owner = owners.get(0);
+        loadPetsAndVisits(owner);
+        return owner;
+    }
+
     public void loadPetsAndVisits(final Owner owner) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", owner.getId());
