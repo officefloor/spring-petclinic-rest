@@ -89,7 +89,7 @@ public final class PostcodeRules {
      * canonical region of the city (see {@link CityRegions#regionOf(String)}) when the postcode is
      * absent or in no known range, or {@code "UNKNOWN"} when neither yields a region. This is the
      * single composition of the postcode and city lookups used wherever an owner's region is
-     * derived (its {@code customerCode} identity and its reported {@code locality}), so the two stay
+     * derived (its {@code memberId} identity and its reported {@code locality}), so the two stay
      * in lock-step.
      *
      * @param postcode the owner's postcode (may be {@code null})

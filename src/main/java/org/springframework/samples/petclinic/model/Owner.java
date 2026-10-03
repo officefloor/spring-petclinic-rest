@@ -74,11 +74,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -229,20 +226,50 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
-    public String getMembershipNumber() {
-        return this.membershipNumber;
+    /**
+     * The leading alphabetic REGION segment of a {@code memberId} formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} (e.g. {@code 'NSW'} for {@code 'NSW271A2B3C4D5'}), or
+     * {@code null} when {@code memberId} is {@code null} or does not begin with a letter. REGION is
+     * always a run of letters immediately followed by the 2-digit fiscal year, so the leading letter
+     * run is exactly the region code.
+     */
+    public static String regionSegment(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? null : memberId.substring(0, i);
     }
 
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
+    /**
+     * The 2-digit fiscal-year (FY) segment of a {@code memberId} formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} (e.g. {@code '27'} for {@code 'NSW271A2B3C4D5'}), the two
+     * digits immediately following the {@link #regionSegment(String) REGION}. Returns {@code null}
+     * when {@code memberId} has no region prefix or is too short to carry a 2-digit FY.
+     */
+    public static String fiscalYearSegment(String memberId) {
+        String region = regionSegment(memberId);
+        if (region == null || memberId.length() < region.length() + 2) {
+            return null;
+        }
+        String fy = memberId.substring(region.length(), region.length() + 2);
+        for (int i = 0; i < fy.length(); i++) {
+            if (fy.charAt(i) < '0' || fy.charAt(i) > '9') {
+                return null;
+            }
+        }
+        return fy;
     }
 
     public String getHouseholdId() {
@@ -345,14 +372,22 @@ public class Owner extends Person {
     }
 
     /**
-     * Derive the owner's read-only {@code fiscalYear}: {@code 'FY<YY>'} where YY is the last two
-     * digits of the fiscal year of the owner's business-day-adjusted {@code registrationDate}. The
-     * fiscal year starts on 1 July, so a registration on or after 1 July belongs to the fiscal year
-     * ending the following 30 June. Returns {@code null} when no {@code registrationDate} has been
-     * assigned yet, so the field is omitted from the response.
+     * Derive the owner's read-only {@code fiscalYear}: {@code 'FY<YY>'} where YY is the two-digit
+     * fiscal-year (FY) segment carried by the owner's {@code memberId}
+     * ({@code '<REGION><FY><HASH8><CHK>'}), so the reported fiscal year and the FY embedded in the
+     * memberId stay in lock-step. Falls back to computing YY from the last two digits of the fiscal
+     * year of the owner's business-day-adjusted {@code registrationDate} (the fiscal year starting on
+     * 1 July, so a registration on or after 1 July belongs to the fiscal year ending the following
+     * 30 June) when the owner has no {@code memberId} yet. Returns {@code null} when the owner has
+     * neither a {@code memberId} nor a {@code registrationDate}, so the field is omitted from the
+     * response.
      */
     @Transient
     public String getFiscalYear() {
+        String fy = fiscalYearSegment(this.memberId);
+        if (fy != null) {
+            return "FY" + fy;
+        }
         if (this.registrationDate == null) {
             return null;
         }
@@ -367,37 +402,6 @@ public class Owner extends Person {
      */
     public static int fiscalYearOf(LocalDate date) {
         return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
-     * Derive the owner's read-only {@code checkDigit}: a single Luhn check digit (0-9) computed
-     * over the digits contained in the owner's {@code customerCode}. Non-digit characters (the
-     * '-' separators and letters) are ignored. Returns {@code null} when no {@code customerCode}
-     * has been assigned yet.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**

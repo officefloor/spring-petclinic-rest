@@ -331,22 +331,19 @@ public class ClinicServiceImpl implements ClinicService {
             && countOwnersRegisteredOn(registrationDate) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(registrationDate);
         }
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.isNew() && owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         if (owner.isNew()) {
             owner.setNamesakeCount(countNamesakes(owner));
             owner.setBulkSignupWarning(
                 countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         }
-        if (owner.getMembershipNumber() == null) {
-            owner.setMembershipNumber(generateMembershipNumber(owner));
-        }
         ownerRepository.save(owner);
         if (isNew) {
-            AUDIT.info("owner created id={} customerCode={} membershipLevel={} membershipNumber={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
-                owner.getMembershipNumber(), owner.getRegistrationDate());
+            AUDIT.info("owner created id={} memberId={} membershipLevel={} registrationDate={}",
+                owner.getId(), owner.getMemberId(), owner.getMembershipLevel(),
+                owner.getRegistrationDate());
             AUDIT.info(ownerCreatedEvent(owner));
         }
     }
@@ -356,10 +353,9 @@ public class ClinicServiceImpl implements ClinicService {
      * line and serialize it to JSON. {@code seq} is a process-wide monotonically increasing integer
      * stamped once per create, so the ordering of creates is recoverable from the audit stream.
      *
-     * <p>The event carries the owner's <em>current primary identifier</em> under the
-     * {@code customerCode} field (see {@link #primaryIdentifier(Owner)}); when the customerCode is
-     * later unified into the memberId, that single method changes and the event automatically carries
-     * the memberId instead.
+     * <p>The event carries the owner's <em>primary identifier</em> under the {@code memberId} field
+     * (see {@link #primaryIdentifier(Owner)}), the unified member id that replaced the former
+     * customerCode and membershipNumber.
      */
     private String ownerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
@@ -369,20 +365,19 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * The owner's current primary identifier carried by audit events. Today this is the
-     * {@code customerCode}; the single source of truth lives here so that when the customerCode is
-     * unified into the memberId, only this method changes and every emitted event follows.
+     * The owner's primary identifier carried by audit events: the unified {@code memberId}. The
+     * single source of truth lives here so every emitted event references the same identifier.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Immutable structured owner-created audit event. Serialized to the JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}; the
-     * {@code customerCode} field carries the owner's current primary identifier.
+     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}; the
+     * {@code memberId} field carries the owner's primary identifier.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
@@ -508,30 +503,34 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's {@code customerCode} as {@code '<REGION>-<HASH8>'}: REGION is the region
-     * code resolved from the owner's postcode (falling back to the owner's city, else
-     * {@code 'UNKNOWN'}), and HASH8 the first 8 upper-case hex characters of SHA-256 computed over
-     * the owner's normalized telephone concatenated with the owner's last name (e.g.
-     * {@code 'NSW-1A2B3C4D'}). There are no per-city sequence numbers; the identity is fully
-     * derived from the owner's own attributes.
+     * Build an owner's unified {@code memberId} as {@code '<REGION><FY><HASH8><CHK>'}: REGION the
+     * region code resolved from the owner's postcode (falling back to the owner's city, else
+     * {@code 'UNKNOWN'}); FY the two-digit fiscal year of the owner's business-day-adjusted
+     * {@code registrationDate} (the fiscal year starting 1 July); HASH8 the first 8 upper-case hex
+     * characters of SHA-256 computed over the owner's normalized telephone concatenated with the
+     * owner's last name; and CHK a single Luhn check digit computed over the digits of
+     * {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW271A2B3C4D5'}). The identity is fully derived
+     * from the owner's own attributes.
      * <p>
-     * When the derived code collides with an existing owner's {@code customerCode}, a
-     * {@code '-<n>'} suffix is appended with the smallest {@code n} of 2 or more that makes it
-     * unique, so distinct owners always receive distinct customer codes.
+     * When the derived id collides with an existing owner's {@code memberId}, a {@code '-<n>'}
+     * suffix is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct
+     * owners always receive distinct member ids.
      */
-    private String generateCustomerCode(Owner owner) {
-        String base = PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity()) + "-" + customerHash(owner);
-        return deduplicateCustomerCode(base);
+    private String generateMemberId(Owner owner) {
+        String region = PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+        String fy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
+        String core = region + fy + memberHash(owner);
+        return deduplicateMemberId(core + luhnCheckDigit(core));
     }
 
     /**
-     * Return {@code base} when no existing owner already uses it as their {@code customerCode};
+     * Return {@code base} when no existing owner already uses it as their {@code memberId};
      * otherwise append {@code '-<n>'} with the smallest {@code n} of 2 or more that is not already
      * taken (counting both the bare {@code base} and any earlier {@code '-<n>'} de-duplications).
      */
-    private String deduplicateCustomerCode(String base) {
+    private String deduplicateMemberId(String base) {
         Set<String> existing = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         if (!existing.contains(base)) {
@@ -545,14 +544,40 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Compute the hash segment of an owner's {@code customerCode}: the first 8 upper-case hex
+     * Compute the HASH8 segment of an owner's {@code memberId}: the first 8 upper-case hex
      * characters of SHA-256 over the UTF-8 bytes of the owner's normalized telephone concatenated
      * with the owner's last name.
      */
-    private String customerHash(Owner owner) {
+    private String memberHash(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         return Sha256.hexPrefix(telephone + lastName, 4, true);
+    }
+
+    /**
+     * Compute the single Luhn check digit (0-9) over the digits contained in {@code s}; non-digit
+     * characters are ignored. This is the CHK segment appended to {@code <REGION><FY><HASH8>} to
+     * form the owner's {@code memberId}.
+     */
+    private int luhnCheckDigit(String s) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -599,16 +624,6 @@ public class ClinicServiceImpl implements ClinicService {
             date = date.plusDays(1);
         }
         return date;
-    }
-
-    /**
-     * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the fiscal year of the owner's business-day-adjusted
-     * {@code registrationDate} (the fiscal year starting 1 July), e.g. {@code 'NSW-1A2B3C4D-M27'}.
-     */
-    private String generateMembershipNumber(Owner owner) {
-        String yy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
-        return String.format("%s-M%s", owner.getCustomerCode(), yy);
     }
 
     @Override

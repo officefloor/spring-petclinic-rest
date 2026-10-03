@@ -85,20 +85,17 @@ public interface OwnerMapper {
 
     /**
      * Derive the owner's read-only {@code locality}: the REGION segment of the owner's
-     * {@code customerCode} ({@code '<REGION>-<HASH8>'}), the region-and-hash identity the owner is
+     * {@code memberId} ({@code '<REGION><FY><HASH8><CHK>'}), the unified member id the owner is
      * assigned at creation. Falls back to resolving the region directly from the owner's postcode
      * range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), then the canonical region
      * of the owner's city ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), else {@code 'UNKNOWN'},
-     * when the owner has no {@code customerCode} yet. Sourcing it from the identity keeps the
-     * owner's reported locality and its {@code customerCode} region in lock-step.
+     * when the owner has no {@code memberId} yet. Sourcing it from the identity keeps the owner's
+     * reported locality and its {@code memberId} region in lock-step.
      */
     default String toLocality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
+        String region = Owner.regionSegment(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
     }
