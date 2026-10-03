@@ -273,6 +273,8 @@ public class ClinicServiceImpl implements ClinicService {
                 }
                 owner.setHouseholdId(resolveHouseholdId(householdMembers));
             }
+            // Size of the household after this create: the existing members plus this new owner.
+            owner.setHouseholdMemberCount(householdMembers.size() + 1);
         }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));

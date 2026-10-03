@@ -51,11 +51,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's read-only {@code membershipTier}: {@code 'SILVER'} when the owner's name was
-     * unique at creation time ({@code namesakeCount} is 0) and an email is present, otherwise
-     * {@code 'BRONZE'}.
+     * Derive the owner's read-only {@code membershipTier}: {@code 'GOLD'} when the owner's household
+     * had 3 or more members after creation ({@code householdMemberCount} is 3+); otherwise
+     * {@code 'SILVER'} when the owner's name was unique at creation time ({@code namesakeCount} is 0)
+     * and an email is present, otherwise {@code 'BRONZE'}.
      */
     default String toMembershipTier(Owner owner) {
+        Integer householdMemberCount = owner.getHouseholdMemberCount();
+        if (householdMemberCount != null && householdMemberCount >= 3) {
+            return "GOLD";
+        }
         boolean uniqueName = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return uniqueName && hasEmail ? "SILVER" : "BRONZE";

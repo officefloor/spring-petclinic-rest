@@ -48,7 +48,8 @@ CREATE TABLE owners (
   household_id VARCHAR(64),
   namesake_count INTEGER,
   membership_number VARCHAR(30),
-  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
+  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+  household_member_count INTEGER
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

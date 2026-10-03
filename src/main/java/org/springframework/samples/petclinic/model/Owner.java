@@ -71,6 +71,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private boolean bulkSignupWarning;
 
+    @Column(name = "household_member_count")
+    private Integer householdMemberCount;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -159,6 +162,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getHouseholdMemberCount() {
+        return this.householdMemberCount;
+    }
+
+    public void setHouseholdMemberCount(Integer householdMemberCount) {
+        this.householdMemberCount = householdMemberCount;
     }
 
     public boolean isSharesHousehold() {
