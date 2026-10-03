@@ -23,6 +23,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
@@ -33,6 +34,15 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive the owner's read-only {@code selfLink}: the canonical API path of this owner,
+     * {@code '/api/owners/<id>'}, built from the owner's assigned id. Returns {@code null}
+     * when the owner has no id yet, so the field is omitted from the response.
+     */
+    default String toSelfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derive the owner's read-only {@code telephoneDisplay}: the stored E.164 {@code telephone}
