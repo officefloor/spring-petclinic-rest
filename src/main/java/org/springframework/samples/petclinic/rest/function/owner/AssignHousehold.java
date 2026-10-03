@@ -32,7 +32,7 @@ public class AssignHousehold {
             return;
         }
         String lastName = Households.normalize(owner.getLastName());
-        String address = Households.normalize(owner.getAddress());
+        String address = Households.normalizeAddress(owner.getAddress());
         String householdId = deriveHouseholdId(lastName, address);
         owner.setHouseholdId(householdId);
         for (Owner existing : ownerRepository.findAll()) {
