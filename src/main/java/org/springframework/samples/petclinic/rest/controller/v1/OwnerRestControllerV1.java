@@ -192,6 +192,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         requireUniqueIdentity(owner);
+        flagPossibleDuplicate(owner);
         owner.setCustomerCode(owner.buildCustomerCode());
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
@@ -465,6 +466,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateIdentityException(identityKey);
         }
+    }
+
+    /**
+     * Flags the owner being created as a possible (soft) duplicate of an existing owner. A soft match is
+     * not a hard duplicate (its identity key is unique, already enforced by {@link #requireUniqueIdentity})
+     * but it shares an existing owner's last name (compared case-insensitively) and postcode (both
+     * present and equal) while carrying a different normalized telephone. When such an existing owner is
+     * found the created owner is flagged ({@code possibleDuplicate} true) with {@code possibleDuplicateOf}
+     * set to that owner's id; the lowest matching id is used when several owners match. Otherwise the flag
+     * is false and {@code possibleDuplicateOf} is left unset.
+     *
+     * @param owner the owner being created, with its normalized telephone and postcode set
+     */
+    private void flagPossibleDuplicate(Owner owner) {
+        if (owner.getPostcode() == null) {
+            owner.setPossibleDuplicate(false);
+            return;
+        }
+        Integer matchId = this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !owner.getTelephone().equals(existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
     }
 
     /**
