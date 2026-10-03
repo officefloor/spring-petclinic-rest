@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.LocalDate;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -20,10 +18,7 @@ public class RejectOverDailyLimit {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DailyOwnerLimitExceededException {
-        LocalDate registrationDate = owner.getRegistrationDate();
-        long count = ownerRepository.findAll().stream()
-                .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-                .count();
+        long count = OwnerDailyCount.sharingRegistrationDate(ownerRepository, owner.getRegistrationDate());
         if (count >= DAILY_LIMIT) {
             throw new DailyOwnerLimitExceededException(
                     DAILY_LIMIT + " or more owners have already been created today");

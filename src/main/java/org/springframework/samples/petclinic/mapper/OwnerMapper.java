@@ -25,6 +25,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "bulkSignupWarning",
+        expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
