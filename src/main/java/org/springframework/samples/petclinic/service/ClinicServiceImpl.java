@@ -257,6 +257,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew()) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        if (owner.getMembershipNumber() == null) {
+            owner.setMembershipNumber(generateMembershipNumber(owner));
+        }
         ownerRepository.save(owner);
 
     }
@@ -338,6 +341,15 @@ public class ClinicServiceImpl implements ClinicService {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         long sequence = ownerRepository.findAll().size() + 1L;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
+     * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
+     */
+    private String generateMembershipNumber(Owner owner) {
+        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%s", owner.getCustomerCode(), yy);
     }
 
     @Override
