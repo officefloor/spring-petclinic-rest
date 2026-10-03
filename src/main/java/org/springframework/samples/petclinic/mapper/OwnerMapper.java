@@ -23,7 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
@@ -42,24 +41,6 @@ public interface OwnerMapper {
      */
     default String locality(Owner owner) {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * Derives the owner's membership tier: {@code GOLD} when the owner's household
-     * (owners sharing the same {@code householdId}) has 3 or more members, otherwise
-     * {@code SILVER} when {@code namesakeCount} is 0 and an email address is present,
-     * otherwise {@code BRONZE}.
-     */
-    default String membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean unique = namesakeCount != null && namesakeCount == 0;
-        boolean hasEmail = email != null && !email.isBlank();
-        return (unique && hasEmail) ? "SILVER" : "BRONZE";
     }
 
     /**

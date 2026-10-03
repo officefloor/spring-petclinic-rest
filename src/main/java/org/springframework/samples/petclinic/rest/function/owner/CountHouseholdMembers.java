@@ -13,9 +13,6 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <p>The new owner is not yet saved, so it is counted by adding one to the existing same-household
  * members. An owner with no {@code householdId} (did not opt into a shared household) is a
  * household of one.
- *
- * <p>Consumed by {@link org.springframework.samples.petclinic.mapper.OwnerMapper}, which derives
- * the {@code GOLD} membership tier when a household reaches three or more members.
  */
 public class CountHouseholdMembers {
 
