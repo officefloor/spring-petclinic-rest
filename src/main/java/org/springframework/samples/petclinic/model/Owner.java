@@ -72,8 +72,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -306,41 +306,34 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where {@code YY} is
-     * the last two digits of the {@link #getFiscalYear() fiscal year} of the registration date
-     * (e.g. {@code 'NSW-1A2B3C4D-M26'}). Derived from the owner's own customer code and registration
-     * date; {@code null} when either is absent.
-     *
-     * @return the membership number, or {@code null} when it cannot be derived
-     */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the last two digits of
-     * the fiscal year of the {@link #getRegistrationDate() business-day-adjusted registration date}.
-     * The fiscal year starts on 1 July and is named by the calendar year in which it ends, so a
-     * registration date on or after 1 July belongs to the following calendar year's fiscal year
-     * (e.g. {@code 2026-07-01} is {@code 'FY27'}) while an earlier date stays in the current one
-     * (e.g. {@code 2026-06-15} is {@code 'FY26'}). Returns {@code null} when the registration date is
-     * absent.
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the two fiscal-year
+     * digits of the owner's {@link #getMemberId() member id} (its {@code FY} segment, the two
+     * characters following the leading region). The fiscal year starts on 1 July and is named by the
+     * calendar year in which it ends, so a registration date on or after 1 July belongs to the
+     * following calendar year's fiscal year (e.g. {@code 2026-07-01} is {@code 'FY27'}) while an
+     * earlier date stays in the current one (e.g. {@code 2026-06-15} is {@code 'FY26'}). Before the
+     * member id has been assigned it falls back to the fiscal year of the
+     * {@link #getRegistrationDate() business-day-adjusted registration date}. Returns {@code null}
+     * when neither a member id nor a registration date is available.
      *
-     * @return the fiscal year, or {@code null} when the registration date is absent
+     * @return the fiscal year, or {@code null} when it cannot be derived
      */
     public String getFiscalYear() {
+        if (this.memberId != null) {
+            String region = leadingRegion(this.memberId);
+            if (this.memberId.length() >= region.length() + 2) {
+                return "FY" + this.memberId.substring(region.length(), region.length() + 2);
+            }
+        }
         if (this.registrationDate == null) {
             return null;
         }
@@ -360,20 +353,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's Luhn check digit, a single digit (0-9) computed over the digits contained in the
-     * {@link #getCustomerCode() customer code}. Non-digit characters (such as the separators and the
-     * letter prefixes) are ignored. Returns {@code null} when the customer code is absent.
+     * The single Luhn check digit (0-9) computed over the digits contained in the given value.
+     * Non-digit characters (such as the letter region and hex characters) are ignored. This is the
+     * {@code CHK} segment of the {@link #getMemberId() member id}, computed over the digits of its
+     * {@code <REGION><FY><HASH8>} prefix.
      *
-     * @return the Luhn check digit, or {@code null} when the customer code is absent
+     * @param value the value whose digits the check digit is computed over
+     * @return the Luhn check digit
      */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
+    private static int luhnCheckDigit(String value) {
         int sum = 0;
         boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }
@@ -479,10 +471,10 @@ public class Owner extends Person {
 
     /**
      * The owner's locality, the canonical region string. Once the owner has a
-     * {@link #getCustomerCode() customer code} the locality is the {@code <REGION>} component of that
-     * code (the text before the first {@code '-'}), so the locality and the identity share a single
-     * source of truth. Before the customer code is assigned (for example while a create is still
-     * validating the postcode) it falls back to the region the code will be built from: the
+     * {@link #getMemberId() member id} the locality is the {@code <REGION>} component of that id (its
+     * leading run of letters, before the fiscal-year digits), so the locality and the identity share a
+     * single source of truth. Before the member id is assigned (for example while a create is still
+     * validating the postcode) it falls back to the region the id will be built from: the
      * {@link #getPostcode() postcode} looked up by range first (NSW 2000-2099, VIC 3000-3099,
      * QLD 4000-4099), then the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
      * Brisbane->QLD), and finally {@code 'UNKNOWN'} when neither resolves to a region.
@@ -490,11 +482,26 @@ public class Owner extends Person {
      * @return the canonical region string, or {@code 'UNKNOWN'}
      */
     public String getLocality() {
-        if (this.customerCode != null) {
-            int dash = this.customerCode.indexOf('-');
-            return dash >= 0 ? this.customerCode.substring(0, dash) : this.customerCode;
+        if (this.memberId != null) {
+            return leadingRegion(this.memberId);
         }
         return deriveRegion();
+    }
+
+    /**
+     * The leading region component of a {@link #getMemberId() member id}: its leading run of letters,
+     * which ends at the first fiscal-year digit. The member id has no separators, so the region is the
+     * alphabetic prefix (e.g. {@code 'NSW'} or {@code 'UNKNOWN'}) that precedes the {@code <FY>} digits.
+     *
+     * @param memberId the member id to read the region from
+     * @return the leading region string
+     */
+    private static String leadingRegion(String memberId) {
+        int end = 0;
+        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
+            end++;
+        }
+        return memberId.substring(0, end);
     }
 
     /**
@@ -542,19 +549,26 @@ public class Owner extends Person {
     }
 
     /**
-     * Builds this owner's customer code, formatted {@code '<REGION>-<HASH8>'}. {@code REGION} is the
-     * region derived from the postcode (falling back to the city, then {@code 'UNKNOWN'}; see
-     * {@link #deriveRegion()}) and {@code HASH8} is the first 8 upper-case hexadecimal characters of
-     * the SHA-256 digest of the owner's normalized telephone concatenated with its last name (e.g.
-     * {@code 'NSW-1A2B3C4D'}). The code carries no sequence number, so it is a pure function of the
-     * owner's region, telephone and last name. Call this once at create time and store the result via
-     * {@link #setCustomerCode(String)}, which thereafter backs {@link #getLocality()},
-     * {@link #getMembershipNumber()} and {@link #getCheckDigit()}.
+     * Builds this owner's member id, formatted {@code '<REGION><FY><HASH8><CHK>'}. {@code REGION} is
+     * the region derived from the postcode (falling back to the city, then {@code 'UNKNOWN'}; see
+     * {@link #deriveRegion()}); {@code FY} is the two-digit fiscal year of the
+     * {@link #getRegistrationDate() registration date} (the fiscal year starts on 1 July; see
+     * {@link #fiscalYearOf(LocalDate)}); {@code HASH8} is the first 8 upper-case hexadecimal
+     * characters of the SHA-256 digest of the owner's normalized telephone concatenated with its last
+     * name (the same hash the region-and-hash identity uses); and {@code CHK} is a single Luhn check
+     * digit over the digits of the {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'NSW261A2B3C4D7'}).
+     * It carries no sequence number, so it is a pure function of the owner's region, fiscal year,
+     * telephone and last name. Call this once at create time and store the result via
+     * {@link #setMemberId(String)}, which thereafter backs {@link #getLocality()} and
+     * {@link #getFiscalYear()}.
      *
-     * @return the assembled customer code
+     * @return the assembled member id
      */
-    public String buildCustomerCode() {
-        return deriveRegion() + "-" + sha256Hex8(this.telephone + this.getLastName());
+    public String buildMemberId() {
+        String base = deriveRegion()
+            + String.format("%02d", fiscalYearOf(this.registrationDate) % 100)
+            + sha256Hex8(this.telephone + this.getLastName());
+        return base + luhnCheckDigit(base);
     }
 
     /**

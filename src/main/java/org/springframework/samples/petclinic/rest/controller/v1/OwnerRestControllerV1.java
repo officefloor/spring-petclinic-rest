@@ -84,7 +84,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. A successful owner create emits here, independently of the application
-     * log: first a human-readable line carrying the new owner's id, customer code, registration date
+     * log: first a human-readable line carrying the new owner's id, member id, registration date
      * and membership level, then the immutable structured {@code OWNER_CREATED} event (see
      * {@link OwnerCreatedEvent}) as a compact JSON object.
      */
@@ -252,16 +252,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         requireUniqueIdentity(owner);
         flagPossibleDuplicate(owner, declaredHouseholdMember);
-        owner.setCustomerCode(deduplicateCustomerCode(owner.buildCustomerCode()));
+        owner.setMemberId(deduplicateMemberId(owner.buildMemberId()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         stampHouseholdSize(owner);
         capMembershipLevelToHousehold(owner);
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         rememberCreate(idempotencyKey, owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -280,37 +279,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQUENCE.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
+            owner.getId(), owner.getMemberId(), owner.getMembershipLevel());
         AUDIT.info(event.toJson());
-    }
-
-    /**
-     * The owner's current primary identifier, the single value the structured {@code OWNER_CREATED}
-     * event carries to identify the owner. Today that is the owner's {@link Owner#getCustomerCode()
-     * customer code}; when the customer code is later unified into the member id, this becomes the
-     * sole place to switch so the event carries the member id instead.
-     *
-     * @param owner the owner that was just created
-     * @return the owner's current primary identifier
-     */
-    private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
     }
 
     /**
      * The immutable structured event emitted on a successful owner create. {@code seq} is the
      * process-wide monotonically increasing sequence across creates; {@code ownerId} is the new
-     * owner's id; {@code customerCode} carries the owner's current primary identifier (today the
-     * customer code, whatever replaces it later); {@code membershipLevel} is the owner's membership
-     * level. It serializes to a compact JSON object whose {@code event} is always
-     * {@value #EVENT_TYPE}.
+     * owner's id; {@code memberId} carries the owner's unified member id; {@code membershipLevel} is
+     * the owner's membership level. It serializes to a compact JSON object whose {@code event} is
+     * always {@value #EVENT_TYPE}.
      *
      * @param seq the monotonically increasing create sequence number
      * @param ownerId the created owner's id
-     * @param customerCode the owner's current primary identifier
+     * @param memberId the owner's unified member id
      * @param membershipLevel the owner's membership level
      */
-    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel) {
 
         /** The fixed {@code event} discriminator carried by every emitted event. */
         private static final String EVENT_TYPE = "OWNER_CREATED";
@@ -320,7 +305,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
         /**
          * Serializes this event to its compact JSON form
-         * {@code {seq, ownerId, customerCode, membershipLevel, event}}, with the fields in that order.
+         * {@code {seq, ownerId, memberId, membershipLevel, event}}, with the fields in that order.
          *
          * @return the event as a JSON object string
          */
@@ -328,7 +313,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("seq", this.seq);
             fields.put("ownerId", this.ownerId);
-            fields.put("customerCode", this.customerCode);
+            fields.put("memberId", this.memberId);
             fields.put("membershipLevel", this.membershipLevel);
             fields.put("event", EVENT_TYPE);
             return MAPPER.writeValueAsString(fields);
@@ -690,27 +675,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * De-duplicates a newly computed customer code against the codes already held by existing owners.
-     * When the computed code is unique it is returned unchanged. When it collides with an existing
-     * owner's {@code customerCode}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or more
-     * that makes the result unique (so a second collision yields {@code '-2'}, a third {@code '-3'}, and
-     * so on), and that de-duplicated code is returned.
+     * De-duplicates a newly computed member id against the ids already held by existing owners. When
+     * the computed id is unique it is returned unchanged. When it collides with an existing owner's
+     * {@code memberId}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that makes
+     * the result unique (so a second collision yields {@code '-2'}, a third {@code '-3'}, and so on),
+     * and that de-duplicated id is returned.
      *
-     * @param customerCode the freshly computed customer code to de-duplicate
-     * @return a customer code not held by any existing owner
+     * @param memberId the freshly computed member id to de-duplicate
+     * @return a member id not held by any existing owner
      */
-    private String deduplicateCustomerCode(String customerCode) {
+    private String deduplicateMemberId(String memberId) {
         Set<String> inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!inUse.contains(customerCode)) {
-            return customerCode;
+        if (!inUse.contains(memberId)) {
+            return memberId;
         }
         int n = 2;
         String candidate;
         do {
-            candidate = customerCode + "-" + n;
+            candidate = memberId + "-" + n;
             n++;
         } while (inUse.contains(candidate));
         return candidate;
