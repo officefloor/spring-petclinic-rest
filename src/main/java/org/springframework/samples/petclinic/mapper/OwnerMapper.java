@@ -24,6 +24,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+    @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")

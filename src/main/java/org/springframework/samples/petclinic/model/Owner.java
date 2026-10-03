@@ -38,6 +38,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     private String address;
 
@@ -102,6 +105,28 @@ public class Owner extends Person {
      */
     @Transient
     private boolean sharesHousehold;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * Derive the owner's read-only {@code salutation}: the honorific {@code title} and
+     * {@code lastName} joined by a single space ({@code '<title> <lastName>'}) when a title has
+     * been supplied, otherwise just the {@code lastName}. A {@code null} or blank title yields the
+     * bare last name.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
+    }
 
     public String getAddress() {
         return this.address;
