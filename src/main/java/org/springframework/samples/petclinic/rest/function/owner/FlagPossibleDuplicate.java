@@ -9,12 +9,17 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner sharing an existing owner's household is admitted (its membership level is capped by
  * {@link CapMembershipLevel}) rather than blocked — so this step only raises a non-rejecting signal.
  *
- * <p>This step flags a weaker signal: a new owner that shares an existing owner's
- * {@code lastName} (case-insensitive) and
- * {@code postcode} while carrying a <em>different</em> telephone. In that case the owner is
- * still created, but {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} is
- * set to the matching owner's id (the lowest-id match when several exist). Otherwise
- * {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
+ * <p>This step flags a weaker signal: a new owner whose {@code identityKey} <em>differs</em> from
+ * an existing owner's while they share a last-name {@link Soundex} code and
+ * the same {@code postcode}. In that case the owner is still created, but {@code possibleDuplicate}
+ * is set true and {@code possibleDuplicateOf} is set to the matching owner's id (the lowest-id
+ * match when several exist). Otherwise {@code possibleDuplicate} is false and
+ * {@code possibleDuplicateOf} is left absent.
+ *
+ * <p>A matching identityKey is a <em>hard</em> duplicate already rejected upstream by
+ * {@link RejectDuplicateIdentity}, so it never reaches here; two owners sharing a last name and
+ * postcode but carrying different telephones have different identity keys and so are a soft match
+ * rather than a rejection.
  *
  * <p>A declared household member ({@code sharesHousehold} true) is never flagged: sharing an
  * existing owner's last name and postcode is expected for it rather than a suspected duplicate.
@@ -27,7 +32,6 @@ public class FlagPossibleDuplicate {
     public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository) {
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
-        String telephone = normalizedTelephone(owner);
 
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
@@ -41,6 +45,9 @@ public class FlagPossibleDuplicate {
             return;
         }
 
+        String soundex = Soundex.of(lastName);
+        String identityKey = OwnerIdentity.identityKey(owner);
+
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() == null || existing.getId().equals(owner.getId())) {
@@ -50,16 +57,15 @@ public class FlagPossibleDuplicate {
                 // A soft-deleted owner is not a duplicate signal.
                 continue;
             }
-            if (!lastName.equalsIgnoreCase(existing.getLastName())) {
+            if (!soundex.equals(Soundex.of(existing.getLastName()))) {
                 continue;
             }
             if (!postcode.equals(existing.getPostcode())) {
                 continue;
             }
-            // A different telephone is what distinguishes a soft match from a hard
-            // (identityKey) duplicate, which has already been rejected upstream. Compare
-            // through the same normalization as the hard check so the two can't drift.
-            if (telephone.equals(normalizedTelephone(existing))) {
+            // A matching identityKey is a hard duplicate (rejected upstream); the soft signal is
+            // for a different key that still shares the last-name soundex and postcode.
+            if (identityKey.equals(OwnerIdentity.identityKey(existing))) {
                 continue;
             }
             if (matchId == null || existing.getId() < matchId) {
@@ -71,19 +77,5 @@ public class FlagPossibleDuplicate {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(matchId);
         }
-    }
-
-    /**
-     * The owner's telephone in the same normalized form {@link OwnerIdentity} compares on:
-     * the E.164 value via {@link OwnerTelephones#toE164}, falling back to the stored raw value
-     * (or empty) when it cannot be normalized, so a stored value that predates the pipeline
-     * still compares correctly.
-     */
-    private static String normalizedTelephone(Owner owner) {
-        String telephone = OwnerTelephones.toE164(owner.getTelephone());
-        if (telephone == null) {
-            telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        }
-        return telephone;
     }
 }

@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -51,18 +48,7 @@ final class HouseholdKey {
      * same value, so they share a household automatically.
      */
     String householdId() {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(canonical().getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+        return Hashing.sha256HexPrefix(canonical(), 6);
     }
 
     @Override
