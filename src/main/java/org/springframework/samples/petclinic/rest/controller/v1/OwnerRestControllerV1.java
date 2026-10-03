@@ -139,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -159,6 +160,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Counts the existing owners that already share the given first name and last name, compared
+     * case-insensitively. This is evaluated before the new owner is saved, so it reflects only the
+     * owners that existed prior to this create.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of pre-existing namesakes
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
+                && equalsIgnoreCase(existing.getLastName(), lastName))
+            .count();
+    }
+
+    /**
+     * Compares two possibly-{@code null} strings for equality, ignoring case. Two {@code null} values
+     * are considered equal and a {@code null} is never equal to a non-{@code null} value.
+     *
+     * @param a the first value, possibly {@code null}
+     * @param b the second value, possibly {@code null}
+     * @return whether the values are equal ignoring case
+     */
+    private boolean equalsIgnoreCase(String a, String b) {
+        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 
     /**
