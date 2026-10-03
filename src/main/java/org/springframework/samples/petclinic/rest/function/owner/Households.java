@@ -76,11 +76,14 @@ final class Households {
     }
 
     /** Stable identifier for a household: the first 12 upper-case hex characters of the
-     *  SHA-256 of {@code normalizedLastName + "|" + postcode}. */
+     *  SHA-256 of {@code "V2" + "|" + normalizedLastName + "|" + postcode}. The leading
+     *  {@link Owner#IDENTITY_VERSION_TAG version-2 tag} is mixed in so every householdId
+     *  differs from its version-1 value (domain separation). */
     static String deriveHouseholdId(String normalizedLastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest((Owner.IDENTITY_VERSION_TAG + "|" + normalizedLastName + "|" + postcode)
+                            .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));

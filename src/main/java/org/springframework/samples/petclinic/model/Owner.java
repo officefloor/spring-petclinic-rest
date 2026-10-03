@@ -486,33 +486,62 @@ public class Owner extends Person {
         "QLD", "Australia/Brisbane");
 
     /**
-     * The owner's locality: the REGION component of the owner's region-and-hash identity.
-     * Read off the leading REGION segment of the {@link #getMemberId() memberId} (the part
-     * before the fixed-width FY, HASH8 and CHK segments) when a memberId is present,
-     * otherwise derived straight from the postcode via {@link #identityRegion(String)}.
-     * Either way this yields the region the memberId was built from — NSW/VIC/QLD, or
-     * {@code "UNKNOWN"} when the postcode is absent or in no known range. Derived from the
-     * owner's own fields.
+     * The user-facing locality: the plain REGION component of the owner's identity —
+     * NSW/VIC/QLD, or {@code "UNKNOWN"} when the postcode is absent or in no known range.
+     * It is read off the leading REGION segment of the {@link #getMemberId() memberId}
+     * (the part before the fixed-width FY, HASH8 and CHK segments) when a memberId is
+     * present, otherwise derived straight from the postcode via
+     * {@link #identityRegion(String)}. The memberId's REGION segment now carries the
+     * version-2 identity tag ({@link #IDENTITY_VERSION_TAG}); locality is NOT an identifier,
+     * so that tag is stripped here — locality stays the plain region (e.g. {@code "NSW"}),
+     * never {@code "V2NSW"}. Derived from the owner's own fields.
      */
     @Transient
     public String getLocality() {
         String base = memberIdBase();
         if (base != null && base.length() > MEMBER_ID_SUFFIX_WIDTH) {
-            return base.substring(0, base.length() - MEMBER_ID_SUFFIX_WIDTH);
+            String region = base.substring(0, base.length() - MEMBER_ID_SUFFIX_WIDTH);
+            if (region.startsWith(IDENTITY_VERSION_TAG)) {
+                region = region.substring(IDENTITY_VERSION_TAG.length());
+            }
+            return region;
         }
         return identityRegion(this.postcode);
     }
 
     /**
+     * The fixed version tag mixed into the version-2 identity derivations. It appears only
+     * <em>inside</em> the identifiers (the {@link #getMemberId() memberId} REGION segment,
+     * the {@link #getHouseholdId() householdId} hash and the {@link #getIdentityKey()
+     * identity key} hash), never in the user-facing {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} or {@link #getOwnerSegment() owner segment}. Mixing it
+     * in guarantees every version-2 identifier differs from its version-1 value.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * The REGION component of an owner's region-and-hash identity: the region derived from
      * the postcode via {@link #regionForPostcode(String)} (NSW/VIC/QLD), or
      * {@code "UNKNOWN"} when the postcode is absent or in no known range. The single source
-     * of truth for the identity's region, so the {@code memberId} REGION segment and the
-     * {@link #getLocality() locality} cannot drift apart.
+     * of truth for the identity's plain region, so the {@link #getLocality() locality} and
+     * the region the version-2 identifiers are built from cannot drift apart.
      */
     public static String identityRegion(String postcode) {
         String region = regionForPostcode(postcode);
         return region != null ? region : "UNKNOWN";
+    }
+
+    /**
+     * The version-2 region code used <em>inside</em> the identifiers: the plain
+     * {@link #identityRegion(String) identity region} with the fixed
+     * {@link #IDENTITY_VERSION_TAG version tag} mixed in (e.g. {@code "V2NSW"}). The
+     * {@link #getMemberId() memberId} REGION segment is built from this, so every version-2
+     * memberId differs from its version-1 value. The user-facing {@link #getLocality()
+     * locality} strips the tag back off, so it never leaks into locality, timezone or the
+     * owner segment.
+     */
+    public static String identityRegionV2(String postcode) {
+        return IDENTITY_VERSION_TAG + identityRegion(postcode);
     }
 
     /**
@@ -590,8 +619,10 @@ public class Owner extends Person {
      * {@code "STANDARD_REGIONAL"}. TIER is {@code "PREMIUM"} when
      * {@link #getMembershipLevel() membershipLevel} is 3 or more, otherwise
      * {@code "STANDARD"}. AREA is {@code "METRO"} when the {@link #getLocality() locality}
-     * is a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. Derived from the
-     * owner's own fields.
+     * is a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. The locality is
+     * recomputed from the version-2 identity (the memberId REGION segment with the
+     * {@link #IDENTITY_VERSION_TAG version tag} stripped), so the tag never surfaces in the
+     * segment's derived region. Derived from the owner's own fields.
      */
     @Transient
     public String getOwnerSegment() {
@@ -627,10 +658,11 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the lower-case hex SHA-256 of
-     * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}. The
-     * telephone is already stored in E.164 form, the email is lower-cased (an empty segment
-     * when absent), and the last name is reduced to its {@link #soundex(String) Soundex}
-     * code. This is the single identity used for duplicate detection: two owners with the
+     * {@code "V2" + "|" + normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)},
+     * where the leading {@link #IDENTITY_VERSION_TAG "V2"} is the version-2 identity tag.
+     * The telephone is already stored in E.164 form, the email is lower-cased (an empty
+     * segment when absent), and the last name is reduced to its {@link #soundex(String)
+     * Soundex} code. This is the single identity used for duplicate detection: two owners with the
      * same key are the same person (a 409 on create); an owner whose key differs but whose
      * Soundex last name and postcode match an existing owner is a soft match instead.
      * Derived from the owner's own fields.
@@ -640,7 +672,10 @@ public class Owner extends Person {
         String normalizedTelephone = keyPart(this.telephone);
         String lowerEmail = keyPart(this.email == null ? null : this.email.toLowerCase(Locale.ROOT));
         String soundexLastName = soundex(this.getLastName());
-        return sha256Hex(normalizedTelephone + "|" + lowerEmail + "|" + soundexLastName);
+        // Version-2 identity: the fixed version tag is mixed into the hashed material so
+        // every key differs from its version-1 value (domain separation).
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + normalizedTelephone + "|" + lowerEmail
+            + "|" + soundexLastName);
     }
 
     private static String keyPart(String value) {

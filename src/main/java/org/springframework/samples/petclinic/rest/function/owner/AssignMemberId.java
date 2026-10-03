@@ -13,8 +13,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>}:
  * <ul>
- * <li>REGION is the region code derived from the postcode (NSW/VIC/QLD, or {@code UNKNOWN}
- * when the postcode is absent or in no known range);</li>
+ * <li>REGION is the version-2 region code derived from the postcode: the fixed {@code V2}
+ * version tag followed by the plain region (NSW/VIC/QLD, or {@code UNKNOWN} when the
+ * postcode is absent or in no known range), e.g. {@code V2NSW};</li>
  * <li>FY is the 2-digit fiscal year (starting 1 July) of the registration date;</li>
  * <li>HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the
  * normalized telephone concatenated with the last name (the same hash used by the
@@ -22,7 +23,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <li>CHK is a single Luhn check digit computed over the digits of
  * {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * For example {@code NSW26A1B2C3D45}. Runs after the telephone has been normalized to
+ * For example {@code V2NSW26A1B2C3D45}. Runs after the telephone has been normalized to
  * E.164, so the hash is stable for a given owner.
  *
  * <p>When the computed memberId collides with an existing owner's {@code memberId}, it is
@@ -33,7 +34,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Owner.identityRegion(owner.getPostcode());
+        String region = Owner.identityRegionV2(owner.getPostcode());
         String fy = owner.getRegistrationDate() == null ? "00"
             : String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String hash8 = sha256UpperHex8(owner.getTelephone() + owner.getLastName());
