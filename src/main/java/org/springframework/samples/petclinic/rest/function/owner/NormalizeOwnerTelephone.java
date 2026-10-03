@@ -13,8 +13,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 public class NormalizeOwnerTelephone {
 
     public void service(@Val Owner owner) throws InvalidTelephoneException {
-        String raw = owner.getTelephone();
-        String digits = raw == null ? "" : raw.replaceAll("\\D", "");
+        String digits = OwnerTelephones.normalize(owner.getTelephone());
         if (digits.length() != 10) {
             throw new InvalidTelephoneException(
                     "Telephone must be exactly 10 digits after removing non-digit characters");
