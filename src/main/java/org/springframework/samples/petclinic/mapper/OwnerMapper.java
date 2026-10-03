@@ -23,6 +23,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -41,6 +42,17 @@ public interface OwnerMapper {
     default String toInitials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * Derive the owner's read-only {@code membershipTier}: {@code 'SILVER'} when the owner's name was
+     * unique at creation time ({@code namesakeCount} is 0) and an email is present, otherwise
+     * {@code 'BRONZE'}.
+     */
+    default String toMembershipTier(Owner owner) {
+        boolean uniqueName = Integer.valueOf(0).equals(owner.getNamesakeCount());
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
     }
 
     Owner toOwner(OwnerDto ownerDto);
