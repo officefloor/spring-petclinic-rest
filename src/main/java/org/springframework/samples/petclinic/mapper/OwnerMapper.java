@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -46,9 +47,22 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Normalize a postal address to its canonical form (trimmed and whitespace-collapsed,
+     * upper-cased, with common street-type abbreviations expanded) so it is stored, returned and
+     * compared in one shape. Blank-after-normalization is rejected separately by
+     * {@code AddressValidation} on the inbound DTO, so this only performs the transform the stored
+     * value needs.
+     */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        return AddressNormalizer.normalize(address);
+    }
 
     /**
      * Normalize a telephone number to canonical E.164 form (a leading {@code '+'}, country

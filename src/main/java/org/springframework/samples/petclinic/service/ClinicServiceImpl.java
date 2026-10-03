@@ -24,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -259,19 +260,21 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Find the owners that already belong to the same household as {@code owner}, i.e. have the same
-     * last name and the same address. Both values are compared case-insensitively with collapsed
-     * whitespace, so differences in letter case or runs of spaces are ignored. Returns an empty list
-     * when the owner has no last name or address to match on.
+     * last name and the same address. Last names are compared case-insensitively with collapsed
+     * whitespace; addresses are compared in their canonical normalized form (see
+     * {@link AddressNormalizer}), so differences in letter case, runs of spaces or street-type
+     * abbreviations are ignored. Returns an empty list when the owner has no last name or address to
+     * match on.
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
         String lastName = normalizeHouseholdKey(owner.getLastName());
-        String address = normalizeHouseholdKey(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         if (lastName == null || address == null) {
             return List.of();
         }
         return ownerRepository.findAll().stream()
             .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
-                && address.equals(normalizeHouseholdKey(existing.getAddress())))
+                && address.equals(AddressNormalizer.normalize(existing.getAddress())))
             .toList();
     }
 
