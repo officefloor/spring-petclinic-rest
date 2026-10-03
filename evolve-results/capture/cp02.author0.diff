@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e52..164155ff2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -99,8 +99,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
++        if (telephone == null) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(telephone);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -188,6 +193,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+ 
++    /**
++     * Normalize a telephone number submitted on create by stripping every non-digit
++     * character. The result is accepted only when it contains exactly 10 digits.
++     *
++     * @param rawTelephone the telephone value as supplied in the request
++     * @return the 10-digit telephone, or {@code null} when it is not exactly 10 digits
++     *         after stripping (the caller rejects the request with 400 in that case)
++     */
++    private static String normalizeTelephone(String rawTelephone) {
++        if (rawTelephone == null) {
++            return null;
++        }
++        String digits = rawTelephone.replaceAll("\\D", "");
++        return digits.length() == 10 ? digits : null;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<PetDto> getOwnersPet(Integer ownerId, Integer petId) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 72b98bf60..fdc784a10 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,11 +2029,13 @@ components:
+           x-field-extra-annotation: "@jakarta.validation.constraints.NotBlank"
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create the value is
++            normalized by removing every non-digit character and must contain
++            exactly 10 digits once stripped.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+           x-field-extra-annotation: "@jakarta.validation.constraints.NotBlank"
+       required:
