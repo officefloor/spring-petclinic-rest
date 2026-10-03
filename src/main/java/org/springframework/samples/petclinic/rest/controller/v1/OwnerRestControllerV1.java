@@ -486,6 +486,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void requireUniqueIdentity(Owner owner) {
         String identityKey = owner.getIdentityKey();
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (inUse) {
             throw new DuplicateIdentityException(identityKey);
@@ -571,6 +572,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String householdId = owner.getHouseholdId();
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (inUse) {
             throw new DuplicateHouseholdException(householdId);
@@ -743,7 +745,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
