@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+    @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
@@ -37,6 +38,17 @@ public interface OwnerMapper {
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
         return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Normalize an email address by trimming surrounding whitespace and lower-casing
+     * it so it is stored and returned in a canonical form. Syntactic validity is
+     * enforced separately by {@code @Email} on the inbound DTO, so this only performs
+     * the transform the stored value needs.
+     */
+    @Named("normalizeEmail")
+    default String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase();
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
