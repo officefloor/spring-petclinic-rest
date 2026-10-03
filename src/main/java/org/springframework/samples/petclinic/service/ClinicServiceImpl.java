@@ -49,6 +49,12 @@ public class ClinicServiceImpl implements ClinicService {
     /** Dedicated audit channel; create side-effects are published here for auditing. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /**
+     * When more owners than this have already been created on a given day (by {@code
+     * registrationDate}), a newly created owner is flagged with {@code bulkSignupWarning}.
+     */
+    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80L;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -273,6 +279,8 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (owner.isNew()) {
             owner.setNamesakeCount(countNamesakes(owner));
+            owner.setBulkSignupWarning(
+                countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         }
         if (owner.getMembershipNumber() == null) {
             owner.setMembershipNumber(generateMembershipNumber(owner));
