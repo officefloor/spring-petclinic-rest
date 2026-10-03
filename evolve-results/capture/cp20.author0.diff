@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index b089de16d..a3936d518 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -1,5 +1,6 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ 
+ import jakarta.validation.Valid;
+@@ -16,12 +17,30 @@ public class BuildOwner {
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+             Out<Boolean> sharesHousehold) {
+         Owner owner = ownerMapper.toOwner(request);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            registrationDate = LocalDate.now();
+         }
++        // The effective registration date must fall on a business day: roll a Saturday
++        // or Sunday forward to the following Monday. Applies whether the date was
++        // supplied in the request or defaulted to the server date. Every value derived
++        // from the registration date (membership number, daily create-limit) reads it
++        // back from the owner, so adjusting here keeps them consistent.
++        owner.setRegistrationDate(rollForwardToBusinessDay(registrationDate));
+         built.set(owner);
+         // sharesHousehold is a create-time flag, not an Owner field; republish it for
+         // RejectDuplicateHousehold. Absent in the body means false.
+         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+     }
++
++    private static LocalDate rollForwardToBusinessDay(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOverDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOverDailyLimit.java
+index 64eef38e5..0bcbc2b72 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOverDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOverDailyLimit.java
+@@ -8,9 +8,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitExceededException;
+ 
+ /**
+- * Rejects creating an owner when 100 or more owners have already been created today, as
+- * counted by {@link Owner#getRegistrationDate()}. Runs before {@link SaveOwner}, so the
+- * owner being created is not counted. At (or over) the limit escalates as a 429 via
++ * Rejects creating an owner when 100 or more owners already share the new owner's
++ * (business-day-adjusted) registration date, as counted by
++ * {@link Owner#getRegistrationDate()}. Runs before {@link SaveOwner}, so the owner being
++ * created is not counted. At (or over) the limit escalates as a 429 via
+  * {@link DailyOwnerLimitExceededException}.
+  */
+ public class RejectOverDailyLimit {
+@@ -19,9 +20,9 @@ public class RejectOverDailyLimit {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DailyOwnerLimitExceededException {
+-        LocalDate today = LocalDate.now();
++        LocalDate registrationDate = owner.getRegistrationDate();
+         long count = ownerRepository.findAll().stream()
+-                .filter(existing -> today.equals(existing.getRegistrationDate()))
++                .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+                 .count();
+         if (count >= DAILY_LIMIT) {
+             throw new DailyOwnerLimitExceededException(
