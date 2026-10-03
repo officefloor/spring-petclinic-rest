@@ -136,6 +136,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * Lower bound of the per-city capacity-warning band. When a city already holds at least this many
+     * but fewer than {@value #MAX_OWNERS_PER_CITY} owners it is approaching capacity, and a create in
+     * that city is flagged ({@code capacityWarning} true); the hard rejection at
+     * {@value #MAX_OWNERS_PER_CITY} is unaffected.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Maximum number of owners that may be registered on a single day (by registration date). A create
      * attempted once this many owners already carry today's registration date is rejected with a
      * 429 Too Many Requests.
@@ -233,7 +241,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = Owner.resolveRegistrationDate(owner.getRegistrationDate());
         owner.setRegistrationDate(registrationDate);
         requireDailyCapacity(registrationDate);
-        requireCityHasCapacity(owner.getCity());
+        long cityOwnerCount = countOwnersInCity(owner.getCity());
+        requireCityHasCapacity(owner.getCity(), cityOwnerCount);
+        owner.setCapacityWarning(isApproachingCityCapacity(cityOwnerCount));
         validatePostcode(owner);
         applyAddress(owner, ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
@@ -431,20 +441,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects an owner whose city already contains the maximum allowed number of owners
-     * ({@value #MAX_OWNERS_PER_CITY}). Existing owners are counted by city compared case-insensitively,
-     * before the new owner is saved, so the count reflects only the owners that existed prior to this
-     * create.
+     * ({@value #MAX_OWNERS_PER_CITY}). The count is supplied by {@link #countOwnersInCity(String)} and
+     * reflects only the owners that existed prior to this create.
      *
      * @param city the city of the owner being created
+     * @param cityOwnerCount the number of pre-existing owners already in that city
      * @throws CityOwnerLimitException if the city already holds {@value #MAX_OWNERS_PER_CITY} or more owners
      */
-    private void requireCityHasCapacity(String city) {
-        long cityOwnerCount = this.clinicService.findAllOwners().stream()
-            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
-            .count();
+    private void requireCityHasCapacity(String city, long cityOwnerCount) {
         if (cityOwnerCount >= MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(city);
         }
+    }
+
+    /**
+     * Counts the existing owners whose city equals the given city, compared case-insensitively. This is
+     * evaluated before the new owner is saved, so it reflects only the owners that existed prior to this
+     * create. It is the single definition of the per-city count shared by the city hard-limit rule and
+     * the approaching-capacity warning.
+     *
+     * @param city the city of the owner being created
+     * @return the number of pre-existing owners in that city
+     */
+    private long countOwnersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
+            .count();
+    }
+
+    /**
+     * Whether a city holding the given number of owners is approaching the per-city capacity limit: at
+     * least {@value #CITY_CAPACITY_WARNING_THRESHOLD} but fewer than {@value #MAX_OWNERS_PER_CITY}. A
+     * create in such a city is flagged ({@code capacityWarning} true); the hard rejection at
+     * {@value #MAX_OWNERS_PER_CITY} is unaffected.
+     *
+     * @param cityOwnerCount the number of pre-existing owners already in the city
+     * @return whether the city is in the 40-49 approaching-capacity band
+     */
+    private boolean isApproachingCityCapacity(long cityOwnerCount) {
+        return cityOwnerCount >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwnerCount < MAX_OWNERS_PER_CITY;
     }
 
     /**
