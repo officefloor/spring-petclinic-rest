@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0bb139b2b..c5c003d78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -91,6 +91,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Required national-number length per E.164 country code. A normalized telephone whose country
++     * code appears here must carry exactly this many national digits after the code; Australia
++     * ({@code +61}) requires 9 and the North American Numbering Plan ({@code +1}) requires 10.
++     * Country codes not listed are only subject to the generic 8-to-15 total-digit rule.
++     */
++    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTH = Map.of("61", 9, "1", 10);
++
+     /**
+      * Maximum number of owners permitted in a single city. A create whose city already holds this many
+      * owners (compared case-insensitively) is rejected with a 409 Conflict.
+@@ -340,7 +348,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * telephone's normalized form. Spaces, dashes and brackets are stripped. A leading {@code '+'}
+      * and its country code are kept when present; otherwise country code {@code '+61'} is assumed and
+      * a single leading {@code '0'} is dropped from the national digits. The result is valid only when
+-     * it contains 8 to 15 digits after the {@code '+'}.
++     * it contains 8 to 15 digits after the {@code '+'} and, for a recognized country code (see
++     * {@link #NATIONAL_NUMBER_LENGTH}), carries exactly that country's required national-number length.
+      *
+      * <p>Returns {@code null} rather than throwing when the value cannot form a valid E.164 number, so
+      * it is safe to apply to already-stored (possibly legacy) values when comparing them.
+@@ -363,9 +372,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!digits.matches("[0-9]{8,15}")) {
+             return null;
+         }
++        if (!nationalNumberLengthValid(digits)) {
++            return null;
++        }
+         return "+" + digits;
+     }
+ 
++    /**
++     * Checks a normalized E.164 digit string (country code followed by national digits, without the
++     * leading {@code '+'}) against the per-country national-number length rule. For a country code
++     * listed in {@link #NATIONAL_NUMBER_LENGTH} the national part must have exactly the required length
++     * (e.g. {@code '+61'} needs 9 national digits, {@code '+1'} needs 10); any other country code is
++     * accepted, leaving only the generic total-length rule to apply.
++     *
++     * @param digits the E.164 digits without the leading {@code '+'}
++     * @return {@code true} if the national-number length matches the country code's requirement
++     */
++    private boolean nationalNumberLengthValid(String digits) {
++        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTH.entrySet()) {
++            String code = entry.getKey();
++            if (digits.startsWith(code)) {
++                return digits.length() - code.length() == entry.getValue();
++            }
++        }
++        return true;
++    }
++
+     /**
+      * Normalizes an optional owner email. An absent (null or blank) email is allowed and yields
+      * {@code null}. When present, the value must be a syntactically valid address; it is then stored
