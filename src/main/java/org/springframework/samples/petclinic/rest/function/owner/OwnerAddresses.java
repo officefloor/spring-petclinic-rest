@@ -49,4 +49,18 @@ final class OwnerAddresses {
         }
         return sb.toString();
     }
+
+    /**
+     * Composes the canonical stored address from the structured lines, both already
+     * {@link #normalize(String) normalized}: the normalized {@code addressLine1}, with a
+     * single space and the normalized {@code addressLine2} appended when a line 2 is
+     * present. Pass a {@code null} or empty {@code normalizedLine2} when no second line
+     * was supplied, in which case the composed address is just line 1.
+     */
+    static String compose(String normalizedLine1, String normalizedLine2) {
+        if (normalizedLine2 == null || normalizedLine2.isEmpty()) {
+            return normalizedLine1;
+        }
+        return normalizedLine1 + " " + normalizedLine2;
+    }
 }
