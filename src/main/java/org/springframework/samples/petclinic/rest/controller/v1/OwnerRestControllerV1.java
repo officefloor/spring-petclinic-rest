@@ -91,6 +91,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. On a successful owner create a welcome notification is enqueued
+     * here, emitting a single line carrying the new owner's id and member id.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Process-wide sequence backing the {@code seq} of the structured {@code OWNER_CREATED} event. It
      * is incremented once per successful create so each emitted event carries a strictly larger,
      * monotonically increasing sequence number than the one before it.
@@ -262,6 +268,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
+        enqueueWelcomeNotification(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -281,6 +288,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQUENCE.incrementAndGet(),
             owner.getId(), owner.getMemberId(), owner.getMembershipLevel());
         AUDIT.info(event.toJson());
+    }
+
+    /**
+     * Enqueues a welcome notification for a just-created owner by emitting a single line to the
+     * {@link #NOTIFY} logger carrying the owner's id and its member id.
+     *
+     * @param owner the owner that was just created and saved
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("Welcome owner: id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 
     /**
