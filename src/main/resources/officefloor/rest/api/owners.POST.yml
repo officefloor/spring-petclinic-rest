@@ -1,6 +1,26 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# A repeated create carrying an already-seen Idempotency-Key replays the originally
+# created owner (200) rather than creating a duplicate. First seen (or no key): proceed
+# to build. This runs first so the replay short-circuits before the duplicate check. It
+# only reads an in-memory token store and branches, so it needs no transaction.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  outputs:
+    proceed: build
+    replay: replayLoad
+
+# Replay branch: load and respond with the remembered owner (200), mirroring GET. A read,
+# so readonly-transaction; reuses the shared RespondWithOwner responder.
+replayLoad:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadReplayedOwner
+  govern: [ readonly-transaction ]
+  next: replayRespond
+replayRespond:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
@@ -99,6 +119,13 @@ flagPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Remember this owner under the request's Idempotency-Key (when present) so a repeat
+# create replays it. After save so the owner has its id; no-op when no key was supplied.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: audit
 
