@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 3fd2ad4d9..c5e3215c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.service.CityOwnerLimitExceededException;
++import org.springframework.samples.petclinic.service.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -150,6 +151,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyOwnerLimitExceededException}, raised by the service layer when the maximum
++     * number of owners for the current day have already been registered, by returning a 429 Too Many
++     * Requests status.
++     *
++     * @param e The {@link DailyOwnerLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status
++     */
++    @ExceptionHandler(DailyOwnerLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitExceededException(DailyOwnerLimitExceededException e, HttpServletRequest request) {
++        logger.warn("Daily owner limit exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 995404224..e8109d3f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -243,6 +243,10 @@ public class ClinicServiceImpl implements ClinicService {
+             && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
+             throw new CityOwnerLimitExceededException(owner.getCity());
+         }
++        if (owner.isNew()
++            && countOwnersRegisteredOn(LocalDate.now()) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
++            throw new DailyOwnerLimitExceededException(LocalDate.now());
++        }
+         if (owner.isNew()) {
+             List<Owner> householdMembers = findHouseholdMembers(owner);
+             if (!householdMembers.isEmpty()) {
+@@ -366,6 +370,16 @@ public class ClinicServiceImpl implements ClinicService {
+             .count();
+     }
+ 
++    /**
++     * Count the owners that already exist (before this create) whose {@code registrationDate} falls
++     * on the given {@code date}. Used to enforce the per-day create cap.
++     */
++    private long countOwnersRegisteredOn(LocalDate date) {
++        return ownerRepository.findAll().stream()
++            .filter(existing -> date.equals(existing.getRegistrationDate()))
++            .count();
++    }
++
+     /**
+      * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
+      * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DailyOwnerLimitExceededException.java b/src/main/java/org/springframework/samples/petclinic/service/DailyOwnerLimitExceededException.java
+new file mode 100644
+index 000000000..f0a021fa2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DailyOwnerLimitExceededException.java
+@@ -0,0 +1,34 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an attempt is made to create an {@code Owner} once the maximum number of owners
++ * ({@value #MAX_OWNERS_PER_DAY}) have already been registered today (by {@code registrationDate}).
++ * Enforcing it in the service layer keeps the daily capacity invariant in one place regardless of
++ * which caller initiates the create; the REST layer maps this to a {@code 429 Too Many Requests}.
++ */
++public class DailyOwnerLimitExceededException extends RuntimeException {
++
++    public static final int MAX_OWNERS_PER_DAY = 100;
++
++    public DailyOwnerLimitExceededException(LocalDate date) {
++        super("The maximum of " + MAX_OWNERS_PER_DAY + " owners has already been registered on " + date);
++    }
++
++}
