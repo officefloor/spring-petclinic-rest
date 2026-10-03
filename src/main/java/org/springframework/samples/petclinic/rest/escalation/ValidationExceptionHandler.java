@@ -10,6 +10,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 public class ValidationExceptionHandler {
@@ -33,6 +34,11 @@ public class ValidationExceptionHandler {
                     })
                     .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            List<String> errors = bindingResult.getFieldErrors().stream()
+                    .map(FieldError::getField)
+                    .distinct()
+                    .toList();
+            detail.setProperty("errors", errors);
         }
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
