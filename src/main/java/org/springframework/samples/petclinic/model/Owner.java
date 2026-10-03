@@ -129,6 +129,16 @@ public class Owner extends Person {
         "VIC", "Australia/Melbourne",
         "QLD", "Australia/Brisbane");
 
+    /**
+     * A link to this owner's own resource, {@code '/api/owners/'} followed by the owner's
+     * {@link #getId() id}. Returns {@code null} before the owner has been assigned an id.
+     *
+     * @return the self link, or {@code null} when the owner has no id yet
+     */
+    public String getSelfLink() {
+        return this.getId() == null ? null : "/api/owners/" + this.getId();
+    }
+
     public String getTitle() {
         return this.title;
     }
