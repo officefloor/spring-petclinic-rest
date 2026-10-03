@@ -173,6 +173,21 @@ public class Owner extends Person {
         return Math.min(level, 3);
     }
 
+    /**
+     * Derive the owner's {@code identityKey}, the single value used to detect duplicate owners:
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. The telephone and
+     * email are already stored in their canonical (E.164 / lower-cased) form, so a {@code null} or
+     * blank email contributes an empty segment and an absent {@code householdId} an empty segment.
+     * Two owners are duplicates only when their whole {@code identityKey} is equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
     public boolean isBulkSignupWarning() {
         return this.bulkSignupWarning;
     }

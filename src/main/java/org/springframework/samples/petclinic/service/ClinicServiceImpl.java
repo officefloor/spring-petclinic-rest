@@ -254,11 +254,22 @@ public class ClinicServiceImpl implements ClinicService {
         LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         owner.setRegistrationDate(registrationDate);
-        if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
-            throw new DuplicateTelephoneException(owner.getTelephone());
+        if (owner.isNew()) {
+            // Resolve the household first so the owner's householdId is part of its identityKey. The
+            // members are existing owners with the same last name and address; joining them makes this
+            // owner share their stable householdId (back-filled onto any member still missing it).
+            List<Owner> householdMembers = findHouseholdMembers(owner);
+            if (!householdMembers.isEmpty()) {
+                owner.setHouseholdId(resolveHouseholdId(householdMembers));
+            }
+            // Size of the household after this create: the existing members plus this new owner.
+            owner.setHouseholdMemberCount(householdMembers.size() + 1);
         }
-        if (owner.isNew() && isEmailAlreadyUsed(owner)) {
-            throw new DuplicateEmailException(owner.getEmail());
+        // Single consolidated duplicate check: reject only when the new owner's WHOLE identityKey
+        // (normalizedTelephone | email-or-empty | householdId) equals an existing owner's. This
+        // subsumes the former separate telephone, email and household checks.
+        if (owner.isNew() && isIdentityKeyAlreadyUsed(owner)) {
+            throw new DuplicateIdentityException(owner.getIdentityKey());
         }
         if (owner.isNew()
             && countOwnersInCity(owner) >= CityOwnerLimitExceededException.MAX_OWNERS_PER_CITY) {
@@ -267,17 +278,6 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew()
             && countOwnersRegisteredOn(registrationDate) >= DailyOwnerLimitExceededException.MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(registrationDate);
-        }
-        if (owner.isNew()) {
-            List<Owner> householdMembers = findHouseholdMembers(owner);
-            if (!householdMembers.isEmpty()) {
-                if (!owner.isSharesHousehold()) {
-                    throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-                }
-                owner.setHouseholdId(resolveHouseholdId(householdMembers));
-            }
-            // Size of the household after this create: the existing members plus this new owner.
-            owner.setHouseholdMemberCount(householdMembers.size() + 1);
         }
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -299,20 +299,15 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Report whether {@code owner}'s email is already used by any existing owner, compared
-     * case-insensitively on its lower-cased form. An owner without an email (null or blank) never
-     * collides, so such an owner is reported as not using an already-taken email.
+     * Report whether {@code owner}'s derived {@code identityKey} is already used by any existing
+     * owner. The key consolidates telephone, email and household into one value, so two owners
+     * collide only when their whole key is equal (see {@link Owner#getIdentityKey()}). By this point
+     * the owner's {@code householdId} has been resolved, so its key is complete.
      */
-    private boolean isEmailAlreadyUsed(Owner owner) {
-        String email = owner.getEmail();
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String normalized = email.toLowerCase();
+    private boolean isIdentityKeyAlreadyUsed(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .anyMatch(existing -> normalized.equals(existing.toLowerCase()));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**
