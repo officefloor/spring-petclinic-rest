@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 40e907347..e0fb967c2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -51,19 +51,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derive the owner's read-only {@code membershipTier}: {@code 'GOLD'} when the owner's household
+-     * had 3 or more members after creation ({@code householdMemberCount} is 3+); otherwise
+-     * {@code 'SILVER'} when the owner's name was unique at creation time ({@code namesakeCount} is 0)
+-     * and an email is present, otherwise {@code 'BRONZE'}.
++     * Derive the owner's read-only numeric {@code membershipLevel}, from 1 to 3, assigned at
++     * creation: it starts at 1, gains 1 when an email is present, gains 1 when the owner's name was
++     * unique at creation time ({@code namesakeCount} is 0), and is capped at 3. Level 4 is reserved
++     * for tenure.
+      */
+-    default String toMembershipTier(Owner owner) {
+-        Integer householdMemberCount = owner.getHouseholdMemberCount();
+-        if (householdMemberCount != null && householdMemberCount >= 3) {
+-            return "GOLD";
+-        }
+-        boolean uniqueName = Integer.valueOf(0).equals(owner.getNamesakeCount());
++    default Integer toMembershipLevel(Owner owner) {
++        int level = 1;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
++        if (hasEmail) {
++            level++;
++        }
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4d0d07348..aac06b3e7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -289,8 +289,9 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+         ownerRepository.save(owner);
+         if (isNew) {
+-            AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++            AUDIT.info("owner created id={} customerCode={} membershipLevel={} registrationDate={}",
++                owner.getId(), owner.getCustomerCode(), computeMembershipLevel(owner),
++                owner.getRegistrationDate());
+         }
+     }
+ 
+@@ -427,6 +428,22 @@ public class ClinicServiceImpl implements ClinicService {
+         return String.format("%s-M%s", owner.getCustomerCode(), yy);
+     }
+ 
++    /**
++     * Compute an owner's numeric {@code membershipLevel}, from 1 to 3, assigned at creation: it
++     * starts at 1, gains 1 when an email is present, gains 1 when the owner's name was unique at
++     * creation time ({@code namesakeCount} is 0), and is capped at 3. Level 4 is reserved for tenure.
++     */
++    private int computeMembershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
++        }
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9cc25bcd5..0f210516a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2168,14 +2168,18 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'SILVER' when the owner's name was
+-                unique at creation time (namesakeCount is 0) and an email is
+-                present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, from 1 to 3, assigned at
++                creation. Starts at 1; adds 1 when an email is present; adds 1
++                when the owner's name was unique at creation time (namesakeCount
++                is 0); capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning

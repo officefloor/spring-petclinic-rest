@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 40e907347..dfbf160e8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,6 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -50,22 +49,6 @@ public interface OwnerMapper {
+             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+     }
+ 
+-    /**
+-     * Derive the owner's read-only {@code membershipTier}: {@code 'GOLD'} when the owner's household
+-     * had 3 or more members after creation ({@code householdMemberCount} is 3+); otherwise
+-     * {@code 'SILVER'} when the owner's name was unique at creation time ({@code namesakeCount} is 0)
+-     * and an email is present, otherwise {@code 'BRONZE'}.
+-     */
+-    default String toMembershipTier(Owner owner) {
+-        Integer householdMemberCount = owner.getHouseholdMemberCount();
+-        if (householdMemberCount != null && householdMemberCount >= 3) {
+-            return "GOLD";
+-        }
+-        boolean uniqueName = Integer.valueOf(0).equals(owner.getNamesakeCount());
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
+-    }
+-
+     /**
+      * Derive the owner's read-only {@code locality}: the canonical region looked up from the
+      * owner's city in the fixed city-to-region table ({@code Sydney->NSW, Melbourne->VIC,
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b47bf66d4..b1aec333f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -156,6 +156,23 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * Derive the owner's numeric {@code membershipLevel}, from 1 to 3, assigned at creation: it
++     * starts at 1, gains 1 when an email is present, gains 1 when the owner's name was unique at
++     * creation time ({@code namesakeCount} is 0), and is capped at 3. Level 4 is reserved for tenure.
++     */
++    @Transient
++    public Integer getMembershipLevel() {
++        int level = 1;
++        if (this.email != null && !this.email.isBlank()) {
++            level++;
++        }
++        if (Integer.valueOf(0).equals(this.namesakeCount)) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++
+     public boolean isBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4d0d07348..035eb2f0c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -289,8 +289,9 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+         ownerRepository.save(owner);
+         if (isNew) {
+-            AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++            AUDIT.info("owner created id={} customerCode={} membershipLevel={} registrationDate={}",
++                owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
++                owner.getRegistrationDate());
+         }
+     }
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9cc25bcd5..0f210516a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2168,14 +2168,18 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'SILVER' when the owner's name was
+-                unique at creation time (namesakeCount is 0) and an email is
+-                present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, from 1 to 3, assigned at
++                creation. Starts at 1; adds 1 when an email is present; adds 1
++                when the owner's name was unique at creation time (namesakeCount
++                is 0); capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
