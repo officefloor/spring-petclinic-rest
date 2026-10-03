@@ -6,26 +6,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code householdSize} on create: the number of owners sharing the same
- * {@code householdId} once this owner is counted. Runs after {@link AssignHousehold} (which sets
- * the {@code householdId} on this owner and back-fills existing household members), so the shared
- * identifier is in place before the count.
+ * household once this owner is counted. The household is keyed on the deterministic
+ * {@code householdId} (normalized last name and postcode — see {@link HouseholdKey}), so a member
+ * is any other owner that computes the same id.
  *
  * <p>The new owner is not yet saved, so it is counted by adding one to the existing same-household
- * members. An owner with no {@code householdId} (did not opt into a shared household) is a
+ * members. A fully-unique owner (no other owner shares its last name and postcode) is therefore a
  * household of one.
  */
 public class CountHouseholdMembers {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            owner.setHouseholdSize(1);
-            return;
-        }
+        HouseholdKey household = HouseholdKey.of(owner);
         int existing = (int) ownerRepository.findAll().stream()
                 .filter(existingOwner -> existingOwner.getId() == null
                         || !existingOwner.getId().equals(owner.getId()))
-                .filter(existingOwner -> householdId.equals(existingOwner.getHouseholdId()))
+                .filter(household::matches)
                 .count();
         owner.setHouseholdSize(existing + 1);
     }

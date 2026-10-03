@@ -5,17 +5,16 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Single source of truth for an owner's {@code identityKey} — the one derived value that all
- * duplicate detection is now expressed through. The key is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, so two owners are
- * duplicates only when their WHOLE keys match: two members of the same household (same
- * {@code householdId}) with different telephones have different keys and are both allowed.
+ * Single source of truth for an owner's {@code identityKey} — a derived value returned on the
+ * owner DTO. The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId},
+ * where the {@code householdId} is now deterministic from the owner's household (last name and
+ * postcode — see {@link HouseholdKey}).
  *
  * <p>The three parts are normalized the same way they are stored: the telephone to its E.164
  * form (see {@link OwnerTelephones}, so a stored value that predates the pipeline still
  * compares correctly), the email trimmed and lower-cased (empty when absent), and the
- * {@code householdId} as stored (empty when absent). Used by {@link RejectDuplicateIdentity}
- * to find collisions and by the owner mapper to return the key.
+ * {@code householdId} as stored (empty when absent). Duplicate detection itself is keyed on the
+ * household (see {@link RejectDuplicateIdentity}); this key is exposed by the owner mapper.
  */
 public final class OwnerIdentity {
 

@@ -16,18 +16,27 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * set to the matching owner's id (the lowest-id match when several exist). Otherwise
  * {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
  *
+ * <p>A declared household member ({@code sharesHousehold} true) is never flagged: it reached this
+ * step only because it deliberately bypassed the duplicate block, so sharing an existing owner's
+ * last name and postcode is expected rather than a suspected duplicate.
+ *
  * <p>Runs after the telephone and postcode have been normalized/assigned and before
  * {@link SaveOwner}, so the flags are fixed at creation time and returned on later reads.
  */
 public class FlagPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository) {
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = normalizedTelephone(owner);
 
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
+
+        if (Boolean.TRUE.equals(sharesHousehold)) {
+            // Declared household member: expected to share a household, not a suspected duplicate.
+            return;
+        }
 
         if (lastName == null || postcode == null) {
             return;

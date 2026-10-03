@@ -40,14 +40,16 @@ normalizeRegistrationDate:
   govern: [ transaction ]
   next: assignHousehold
 
-# Assign the householdId before the identity check, because it is part of the identityKey.
+# Store the deterministic householdId (hash of last name + postcode) on the owner, for
+# OwnerIdentity and the DTO. The duplicate check and household-size count below derive the
+# household themselves, so they do not read this stored value.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
   govern: [ transaction ]
   next: rejectDuplicateIdentity
 
-# One consolidated duplicate check: reject only when the WHOLE identityKey
-# (normalizedTelephone + '|' + email-or-empty + '|' + householdId) matches an existing owner.
+# Household duplicate check: reject (409) when another owner is already in this household
+# (same householdId = same last name + postcode), unless sharesHousehold declares a shared member.
 rejectDuplicateIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateIdentity
   govern: [ transaction ]
@@ -88,8 +90,8 @@ assignMembershipLevel:
   govern: [ transaction ]
   next: flagPossibleDuplicate
 
-# Soft duplicate signal: not a hard duplicate (already rejected above) but shares an
-# existing owner's lastName and postcode with a different telephone. Flags, never rejects.
+# Soft duplicate signal: shares an existing owner's lastName and postcode with a different
+# telephone. Flags, never rejects; skipped for a declared household member (sharesHousehold).
 flagPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
   govern: [ transaction ]

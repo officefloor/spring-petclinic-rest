@@ -1,34 +1,38 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The identity of a household: the same last name and the same address. The last name is
- * compared case-insensitively with whitespace trimmed and collapsed; the address is compared
- * in its normalized form (see {@link OwnerAddresses#normalize}), so e.g. "7  elm  ave" matches
- * "7 ELM AVENUE".
+ * The identity of a household: the same last name and the same postcode. The last name is
+ * compared case-insensitively with whitespace trimmed and collapsed; the postcode is compared
+ * as stored. So e.g. "  Smith " at postcode "2000" is the same household as "smith" at "2000".
  *
- * <p>Single-sources the "what is a household" definition used by {@link AssignHousehold} to
- * decide who shares a {@code householdId}; that shared id then feeds the owner's
- * {@code identityKey} (see {@link OwnerIdentity}), which is what duplicate detection rejects on.
+ * <p>Single-sources the "what is a household" definition. The {@code householdId} is derived
+ * <em>deterministically</em> from this key (see {@link #householdId()}): the first 12 hex
+ * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Every owner computes
+ * the same id for the same household automatically, so two owners share a {@code householdId}
+ * exactly when they share a last name and postcode — no opt-in and no back-filling required.
  */
 final class HouseholdKey {
 
     private final String lastName;
 
-    private final String address;
+    private final String postcode;
 
-    private HouseholdKey(String lastName, String address) {
+    private HouseholdKey(String lastName, String postcode) {
         this.lastName = lastName;
-        this.address = address;
+        this.postcode = postcode;
     }
 
     /** The household the given owner belongs to. */
     static HouseholdKey of(Owner owner) {
-        return new HouseholdKey(normalize(owner.getLastName()), OwnerAddresses.normalize(owner.getAddress()));
+        return new HouseholdKey(normalize(owner.getLastName()), owner.getPostcode() == null ? "" : owner.getPostcode());
     }
 
     /** Whether {@code owner} belongs to this household. */
@@ -37,8 +41,28 @@ final class HouseholdKey {
     }
 
     /** Stable canonical form of the key, suitable for deriving a shared identifier. */
-    String canonical() {
-        return lastName + "|" + address;
+    private String canonical() {
+        return lastName + "|" + postcode;
+    }
+
+    /**
+     * The deterministic {@code householdId} for this household: the first 12 hex characters of
+     * SHA-256 over {@link #canonical()}. Owners with the same last name and postcode compute the
+     * same value, so they share a household automatically.
+     */
+    String householdId() {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(canonical().getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     @Override
@@ -49,12 +73,12 @@ final class HouseholdKey {
         if (!(o instanceof HouseholdKey other)) {
             return false;
         }
-        return lastName.equals(other.lastName) && address.equals(other.address);
+        return lastName.equals(other.lastName) && postcode.equals(other.postcode);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(lastName, address);
+        return Objects.hash(lastName, postcode);
     }
 
     @Override
