@@ -209,37 +209,56 @@ public class Owner extends Person {
     }
 
     /**
-     * Derive the owner's numeric {@code membershipLevel}, from 1 to 4: it starts at 1, gains 1 when
-     * an email is present, gains 1 when the owner's name was unique at creation time
-     * ({@code namesakeCount} is 0), and gains 1 when the owner belongs to a household of three or
-     * more members. Level 4 additionally requires tenure of more than 365 days (measured from the
-     * {@code registrationDate} to today); without it the level is capped at 3. Because a newly
-     * created owner has zero tenure, a new owner never exceeds level 3 — a new owner with an email,
-     * a {@code namesakeCount} of 0 and a 3-member household lands at level 3, not 4.
+     * Derive the owner's {@code membershipPoints}: a score starting at 0 that adds 2 when an email
+     * is present, adds 1 when the owner's name was unique at creation time ({@code namesakeCount}
+     * is 0), adds 2 when the owner belongs to a household of three or more members, and adds 3 when
+     * the owner's tenure exceeds 365 days (measured from the {@code registrationDate} to today).
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (Integer.valueOf(0).equals(this.namesakeCount)) {
+            points += 1;
+        }
+        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
+            points += 2;
+        }
+        if (hasTenureOver365Days()) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Derive the owner's numeric {@code membershipLevel}, from 1 to 4, by mapping the owner's
+     * {@code membershipPoints}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5
+     * points, and level 4 for 6 or more points.
      */
     @Transient
     public Integer getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
         }
-        if (Integer.valueOf(0).equals(this.namesakeCount)) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        int cap = hasTenureForLevel4() ? 4 : 3;
-        return Math.min(level, cap);
+        return 4;
     }
 
     /**
      * Whether the owner's tenure, measured as the number of whole days from {@code registrationDate}
-     * to today, exceeds 365 days — the prerequisite for reaching membership level 4. A missing
-     * {@code registrationDate} (and therefore zero tenure) never qualifies.
+     * to today, exceeds 365 days — worth 3 membership points. A missing {@code registrationDate}
+     * (and therefore zero tenure) never qualifies.
      */
     @Transient
-    private boolean hasTenureForLevel4() {
+    private boolean hasTenureOver365Days() {
         if (this.registrationDate == null) {
             return false;
         }
