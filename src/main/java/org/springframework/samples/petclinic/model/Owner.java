@@ -137,6 +137,18 @@ public class Owner extends Person {
         "QLD", "Australia/Brisbane");
 
     /**
+     * Email domains belonging to known disposable/throwaway mail providers. An exact match is rejected
+     * at create time, so this table backs the looser {@link #isDisposableAdjacentEmail()} check that
+     * flags an owner whose email domain is <em>adjacent</em> to one of these (a subdomain or a sibling
+     * top-level domain that shares the provider's second-level name), feeding the {@link #getRiskFlag()
+     * risk flag}.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
+    /**
      * A link to this owner's own resource, {@code '/api/owners/'} followed by the owner's
      * {@link #getId() id}. Returns {@code null} before the owner has been assigned an id.
      *
@@ -733,6 +745,71 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * A consolidated risk indicator for the owner, derived from its other attributes. It is
+     * {@code true} when any of the following hold, and {@code false} otherwise:
+     * <ul>
+     *   <li>the owner is a possible duplicate ({@link #getPossibleDuplicate() possibleDuplicate});</li>
+     *   <li>its email domain is disposable-adjacent (see {@link #isDisposableAdjacentEmail()});</li>
+     *   <li>its city is over its soft capacity ({@link #getCapacityWarning() capacityWarning}, the city
+     *       already held 40 or more owners when this owner was created).</li>
+     * </ul>
+     *
+     * @return whether the owner carries any of the risk conditions
+     */
+    public Boolean getRiskFlag() {
+        return Boolean.TRUE.equals(this.possibleDuplicate)
+            || Boolean.TRUE.equals(this.capacityWarning)
+            || isDisposableAdjacentEmail();
+    }
+
+    /**
+     * Whether the owner's email domain is <em>disposable-adjacent</em>: it shares the second-level name
+     * of a known disposable mail provider ({@link #DISPOSABLE_EMAIL_DOMAINS}) without necessarily being
+     * an exact match. This catches the common evasions of the exact-match create-time block - a subdomain
+     * of a disposable provider (e.g. {@code mail.mailinator.com}) and a sibling top-level domain of one
+     * (e.g. {@code mailinator.net}) - both of which resolve to the same second-level label
+     * (e.g. {@code mailinator}). The comparison is case-insensitive. An absent or malformed email is not
+     * disposable-adjacent.
+     *
+     * @return whether the owner's email domain is adjacent to a known disposable provider
+     */
+    private boolean isDisposableAdjacentEmail() {
+        if (this.email == null || this.email.isBlank()) {
+            return false;
+        }
+        int at = this.email.lastIndexOf('@');
+        if (at < 0 || at == this.email.length() - 1) {
+            return false;
+        }
+        String base = secondLevelLabel(this.email.substring(at + 1).toLowerCase(Locale.ROOT));
+        if (base.isEmpty()) {
+            return false;
+        }
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (base.equals(secondLevelLabel(disposable))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The second-level label of a dot-separated domain - the label immediately before the final one
+     * (e.g. {@code mailinator} for {@code mailinator.com}, {@code mail.mailinator.com} and
+     * {@code mailinator.net} alike). A domain with no dot is returned unchanged.
+     *
+     * @param domain the lower-cased domain to inspect
+     * @return the second-level label
+     */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return domain;
+        }
+        return labels[labels.length - 2];
     }
 
     /**
