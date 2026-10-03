@@ -62,6 +62,13 @@ public class Owner extends Person {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
+    /**
+     * Transient, write-only request flag: when {@code true}, creating this owner is allowed even if
+     * another owner already shares the same last name and address. Never persisted or returned.
+     */
+    @Transient
+    private boolean sharesHousehold;
+
     public String getAddress() {
         return this.address;
     }
@@ -108,6 +115,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public boolean isSharesHousehold() {
+        return this.sharesHousehold;
+    }
+
+    public void setSharesHousehold(boolean sharesHousehold) {
+        this.sharesHousehold = sharesHousehold;
     }
 
     protected Set<Pet> getPetsInternal() {

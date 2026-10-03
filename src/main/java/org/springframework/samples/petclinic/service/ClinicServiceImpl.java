@@ -237,6 +237,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
+        if (owner.isNew() && !owner.isSharesHousehold() && isDuplicateHousehold(owner)) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -245,6 +248,30 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Report whether another owner already belongs to the same household as {@code owner}, i.e. has
+     * the same last name and the same address. Both values are compared case-insensitively with
+     * collapsed whitespace, so differences in letter case or runs of spaces are ignored.
+     */
+    private boolean isDuplicateHousehold(Owner owner) {
+        String lastName = normalizeHouseholdKey(owner.getLastName());
+        String address = normalizeHouseholdKey(owner.getAddress());
+        if (lastName == null || address == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
+                && address.equals(normalizeHouseholdKey(existing.getAddress())));
+    }
+
+    /**
+     * Normalize a value for case-insensitive, whitespace-insensitive household comparison by
+     * trimming, collapsing internal runs of whitespace to a single space and lower-casing it.
+     */
+    private String normalizeHouseholdKey(String value) {
+        return value == null ? null : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**
