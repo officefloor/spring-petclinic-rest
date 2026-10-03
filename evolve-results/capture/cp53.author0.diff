@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 5c0125dc0..bbccd66df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -38,6 +38,7 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Objects;
+ import java.util.Set;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.function.Supplier;
+ import java.util.stream.Collectors;
+ 
+@@ -54,6 +55,9 @@ public class ClinicServiceImpl implements ClinicService {
+     /** Dedicated audit channel; create side-effects are published here for auditing. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Monotonically increasing sequence number stamped onto each structured owner-created event. */
++    private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong(0);
++
+     /**
+      * When more owners than this have already been created on a given day (by {@code
+      * registrationDate}), a newly created owner is flagged with {@code bulkSignupWarning}.
+@@ -326,7 +330,66 @@ public class ClinicServiceImpl implements ClinicService {
+             AUDIT.info("owner created id={} customerCode={} membershipLevel={} membershipNumber={} registrationDate={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
+                 owner.getMembershipNumber(), owner.getRegistrationDate());
++            AUDIT.info(ownerCreatedEvent(owner));
++        }
++    }
++
++    /**
++     * Build the immutable structured owner-created event emitted alongside the human-readable audit
++     * line: a JSON object {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
++     * {@code seq} is a process-wide monotonically increasing integer stamped once per create, so the
++     * ordering of creates is recoverable from the audit stream.
++     *
++     * <p>The event carries the owner's <em>current primary identifier</em> under the
++     * {@code customerCode} field (see {@link #primaryIdentifier(Owner)}); when the customerCode is
++     * later unified into the memberId, that single method changes and the event automatically carries
++     * the memberId instead.
++     */
++    private String ownerCreatedEvent(Owner owner) {
++        long seq = OWNER_CREATED_SEQ.incrementAndGet();
++        return "{\"seq\":" + seq
++            + ",\"ownerId\":" + owner.getId()
++            + ",\"customerCode\":" + jsonString(primaryIdentifier(owner))
++            + ",\"membershipLevel\":" + owner.getMembershipLevel()
++            + ",\"event\":\"OWNER_CREATED\"}";
++    }
++
++    /**
++     * The owner's current primary identifier carried by audit events. Today this is the
++     * {@code customerCode}; the single source of truth lives here so that when the customerCode is
++     * unified into the memberId, only this method changes and every emitted event follows.
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /** Render a value as a JSON string literal (or {@code null}) with the minimal escaping needed. */
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    }
++                    else {
++                        sb.append(c);
++                    }
++                }
++            }
+         }
++        sb.append('"');
++        return sb.toString();
+     }
+ 
+     /**
