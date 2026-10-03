@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -133,6 +136,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
@@ -174,12 +185,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code "SILVER"} when the owner has no namesakes
-     * (namesakeCount is 0) and an email address is present, otherwise {@code "BRONZE"}.
-     * Derived from the owner's own fields.
+     * The owner's membership tier: {@code "GOLD"} when the owner's household (owners
+     * sharing the same {@code householdId}) has 3 or more members as of the owner's
+     * creation ({@code householdSize} is 3 or more); otherwise {@code "SILVER"} when the
+     * owner has no namesakes (namesakeCount is 0) and an email address is present, else
+     * {@code "BRONZE"}. Derived from the owner's own fields.
      */
     @Transient
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return (unique && hasEmail) ? "SILVER" : "BRONZE";
