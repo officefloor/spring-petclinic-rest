@@ -130,6 +130,56 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * Known E.164 country codes whose national-number length is fixed, used to split the stored
+     * telephone into its country code and national digits for display: Australia ({@code '61'}) and
+     * the North American Numbering Plan ({@code '1'}). A number whose country code is not listed is
+     * split by taking its leading digit as the (minimal) country code.
+     */
+    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTH = Map.of("61", 9, "1", 10);
+
+    /**
+     * The stored E.164 {@link #getTelephone() telephone} formatted for humans: the country code, a
+     * single space, then the national digits grouped in threes from the left (e.g. the stored
+     * {@code '+61412345678'} becomes {@code '+61 412 345 678'}). The raw telephone itself stays in
+     * E.164 form. Returns the stored value unchanged when it is absent or not a {@code '+'}-prefixed
+     * digit string.
+     *
+     * @return the human-readable telephone, or the stored value when it cannot be formatted
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+[0-9]+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        String countryCode = extractCountryCode(digits);
+        String national = digits.substring(countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
+    }
+
+    /**
+     * Splits the country code off an E.164 digit string (country code followed by national digits,
+     * without the leading {@code '+'}). A country code listed in {@link #COUNTRY_NATIONAL_LENGTH}
+     * whose required national-number length matches the remaining digits is preferred; failing that,
+     * the leading digit is used as the country code.
+     *
+     * @param digits the E.164 digits without the leading {@code '+'}
+     * @return the country-code portion of {@code digits}
+     */
+    private static String extractCountryCode(String digits) {
+        for (Map.Entry<String, Integer> entry : COUNTRY_NATIONAL_LENGTH.entrySet()) {
+            String code = entry.getKey();
+            if (digits.startsWith(code) && digits.length() - code.length() == entry.getValue()) {
+                return code;
+            }
+        }
+        return digits.substring(0, 1);
+    }
+
     public String getEmail() {
         return this.email;
     }
