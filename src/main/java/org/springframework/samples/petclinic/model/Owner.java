@@ -531,6 +531,17 @@ public class Owner extends Person {
     }
 
     /**
+     * Whether {@code region} is a known region (NSW, VIC or QLD) rather than the
+     * {@code "UNKNOWN"} sentinel that {@link #identityRegion(String)} yields for a postcode
+     * in no known range. The single source of truth for "is this a real region?",
+     * independent of the postcode-range and timezone tables; used by
+     * {@link #getOwnerSegment() owner segmentation} to decide METRO vs REGIONAL.
+     */
+    public static boolean isKnownRegion(String region) {
+        return !"UNKNOWN".equals(region);
+    }
+
+    /**
      * The canonical region for a city per the fixed city-to-region table
      * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), or
      * {@code "UNKNOWN"} when the city is not in the table. The single source of truth
@@ -586,6 +597,22 @@ public class Owner extends Person {
     @Transient
     public String getTimezone() {
         return REGION_TIMEZONE.get(getLocality());
+    }
+
+    /**
+     * The owner's segment, formatted {@code "<TIER>_<AREA>"} — one of
+     * {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"} or
+     * {@code "STANDARD_REGIONAL"}. TIER is {@code "PREMIUM"} when
+     * {@link #getMembershipLevel() membershipLevel} is 3 or more, otherwise
+     * {@code "STANDARD"}. AREA is {@code "METRO"} when the {@link #getLocality() locality}
+     * is a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. Derived from the
+     * owner's own fields.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = isKnownRegion(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
