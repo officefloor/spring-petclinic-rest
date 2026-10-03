@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 80fc3d640..d94cee0b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -610,6 +610,59 @@ public class Owner extends Person {
+         return hasEmail ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * Base labels of known disposable-email providers, i.e. the registrable name before the
++     * final TLD of each blocked domain ({@code mailinator.com}, {@code tempmail.com},
++     * {@code guerrillamail.com}). Used by {@link #isDisposableAdjacentDomain(String)} to
++     * recognise addresses that are not themselves on the hard blocklist yet sit right next
++     * to it. Kept here as a self-contained entity-level copy — like {@link #soundex(String)}
++     * — because {@link #getRiskFlag() riskFlag} is a derived entity getter and must not
++     * depend on the request-function layer that owns the hard-rejection blocklist; the two
++     * are distinct concerns (a soft risk signal vs. a 400 rejection), not a duplicated list.
++     */
++    private static final Set<String> DISPOSABLE_BASE_LABELS = Set.of(
++        "mailinator", "tempmail", "guerrillamail");
++
++    /**
++     * Whether {@code email}'s domain is "disposable-adjacent": not necessarily on the hard
++     * disposable blocklist (those are rejected with 400 before an owner is ever created),
++     * but close enough to be a risk signal — one of its dot-separated labels is the base
++     * label of a known disposable provider. This flags neighbours of the blocklist such as a
++     * different TLD ({@code mailinator.net}) or a subdomain ({@code x.mailinator.com}). An
++     * absent or domain-less email is not adjacent.
++     */
++    public static boolean isDisposableAdjacentDomain(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_BASE_LABELS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * The owner's risk flag: {@code true} when the owner warrants a closer look — it is a
++     * {@link #getPossibleDuplicate() possible duplicate}, or its email domain is
++     * {@link #isDisposableAdjacentDomain(String) disposable-adjacent}, or its city is over
++     * soft capacity (the approaching-limit {@link #getCapacityWarning() capacityWarning}) —
++     * and {@code false} otherwise. A cleared or absent underlying flag counts as not set.
++     * Derived from the owner's own fields.
++     */
++    @Transient
++    public Boolean getRiskFlag() {
++        return Boolean.TRUE.equals(this.possibleDuplicate)
++            || Boolean.TRUE.equals(this.capacityWarning)
++            || isDisposableAdjacentDomain(this.email);
++    }
++
+     /**
+      * The owner's identity key: the lower-case hex SHA-256 of
+      * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}. The
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7c8c0250b..e862c89fb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2377,6 +2377,17 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a closer look: it is a possible
++                duplicate, or its email domain is disposable-adjacent (a neighbour
++                of the disposable-domain blocklist, such as a different TLD or a
++                subdomain), or its city is over soft capacity (the approaching-limit
++                capacityWarning); otherwise false. Derived from the owner's own fields.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
