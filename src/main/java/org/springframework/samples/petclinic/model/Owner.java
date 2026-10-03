@@ -156,6 +156,23 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    /**
+     * Derive the owner's numeric {@code membershipLevel}, from 1 to 3, assigned at creation: it
+     * starts at 1, gains 1 when an email is present, gains 1 when the owner's name was unique at
+     * creation time ({@code namesakeCount} is 0), and is capped at 3. Level 4 is reserved for tenure.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isBlank()) {
+            level++;
+        }
+        if (Integer.valueOf(0).equals(this.namesakeCount)) {
+            level++;
+        }
+        return Math.min(level, 3);
+    }
+
     public boolean isBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
