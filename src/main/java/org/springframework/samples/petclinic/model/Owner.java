@@ -218,6 +218,18 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current primary identifier. This is the {@link #getCustomerCode()
+     * customerCode} today; when the customerCode is later unified into the memberId,
+     * this becomes the memberId. It is the single source of truth for "the identifier
+     * that identifies this owner", so downstream consumers (such as the audit event)
+     * follow the switch automatically.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
