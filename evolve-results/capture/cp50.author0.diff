@@ -1,0 +1,210 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5dbc718e8..15bc678c8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -124,10 +124,12 @@ public interface OwnerMapper {
+             : OwnerDto.ContactPreferenceEnum.PHONE;
+     }
+ 
++    @Mapping(target = "idempotencyKey", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "idempotencyKey", ignore = true)
+     @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+     @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b881a0b87..7de7e1c43 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -99,6 +99,9 @@ public class Owner extends Person {
+     @Column(name = "deleted")
+     private boolean deleted;
+ 
++    @Column(name = "idempotency_key")
++    private String idempotencyKey;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -441,6 +444,20 @@ public class Owner extends Person {
+         this.deleted = deleted;
+     }
+ 
++    /**
++     * The {@code Idempotency-Key} the owner was first created under, or {@code null} when the create
++     * carried no such header. When a create repeats with an already-seen key, the originally created
++     * owner is returned instead of a duplicate being created, so the key is retained to recognise the
++     * repeat.
++     */
++    public String getIdempotencyKey() {
++        return this.idempotencyKey;
++    }
++
++    public void setIdempotencyKey(String idempotencyKey) {
++        this.idempotencyKey = idempotencyKey;
++    }
++
+     public boolean isSharesHousehold() {
+         return this.sharesHousehold;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index aea801df4..348cd78fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -53,6 +54,9 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /** Request header carrying the client-supplied idempotency key for creates. */
++    static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -61,14 +65,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final HttpServletRequest request;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -99,8 +107,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Idempotent create: when the request repeats an already-seen Idempotency-Key, return the
++        // owner first created under that key with 200 OK instead of creating a duplicate.
++        String idempotencyKey = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            Owner existing = this.clinicService.findOwnerByIdempotencyKey(idempotencyKey);
++            if (existing != null) {
++                return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
++            }
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            owner.setIdempotencyKey(idempotencyKey);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a6fae5bd7..8e298b21e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
++	Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 7c5b43be3..8bb86dedd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -572,6 +572,24 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByLastName(lastName);
+     }
+ 
++    /**
++     * Find the owner originally created under the given {@code Idempotency-Key}, or {@code null} when
++     * the key is blank or no (non-deleted) owner carries it. Used by the create endpoint to recognise
++     * a repeated create and return the first-created owner instead of creating a duplicate.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException {
++        if (idempotencyKey == null || idempotencyKey.isBlank()) {
++            return null;
++        }
++        return ownerRepository.findAll().stream()
++            .filter(existing -> !existing.isDeleted())
++            .filter(existing -> idempotencyKey.equals(existing.getIdempotencyKey()))
++            .findFirst()
++            .orElse(null);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 5fbcd2d60..c8e055725 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_member_count INTEGER,
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN DEFAULT FALSE NOT NULL
++  deleted BOOLEAN DEFAULT FALSE NOT NULL,
++  idempotency_key VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 16325a348..c147de668 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -57,7 +57,8 @@ CREATE TABLE owners (
+   household_member_count INTEGER,
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN DEFAULT FALSE NOT NULL
++  deleted BOOLEAN DEFAULT FALSE NOT NULL,
++  idempotency_key VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 34f745ea9..95411017b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+   possible_duplicate_of INT,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
++  idempotency_key VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 3035e5c99..22f01309c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_member_count INTEGER,
+                                       possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+                                       possible_duplicate_of INTEGER,
+-                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
++                                      deleted BOOLEAN DEFAULT FALSE NOT NULL,
++                                      idempotency_key VARCHAR(255)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
