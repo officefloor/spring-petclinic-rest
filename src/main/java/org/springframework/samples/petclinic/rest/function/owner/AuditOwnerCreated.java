@@ -17,12 +17,12 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Two things are emitted:
  * <ol>
- * <li>a human-readable audit line carrying the id, the customerCode, the
- * registrationDate, the membershipLevel and the membershipNumber; and</li>
+ * <li>a human-readable audit line carrying the id, the memberId, the registrationDate
+ * and the membershipLevel; and</li>
  * <li>an immutable structured {@link OwnerCreatedEvent}, serialised to JSON with the
  * shared Jackson {@link ObjectMapper}, carrying a monotonically increasing
- * {@code seq}, the {@code ownerId}, the owner's current primary identifier and the
- * {@code membershipLevel}.</li>
+ * {@code seq}, the {@code ownerId}, the owner's primary identifier (its memberId) and
+ * the {@code membershipLevel}.</li>
  * </ol>
  */
 public class AuditOwnerCreated {
@@ -33,14 +33,13 @@ public class AuditOwnerCreated {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner, ObjectMapper objectMapper) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
-        // Immutable structured event. The identifier slot carries the owner's current
-        // primary identifier, so it follows the eventual customerCode -> memberId switch.
+        // Immutable structured event carrying the owner's memberId.
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                owner.getPrimaryIdentifier(), owner.getMembershipLevel());
+                owner.getMemberId(), owner.getMembershipLevel());
         AUDIT.info(objectMapper.writeValueAsString(toFields(event)));
     }
 
@@ -49,7 +48,7 @@ public class AuditOwnerCreated {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("seq", event.seq());
         fields.put("ownerId", event.ownerId());
-        fields.put("customerCode", event.customerCode());
+        fields.put("memberId", event.memberId());
         fields.put("membershipLevel", event.membershipLevel());
         fields.put("event", event.event());
         return fields;

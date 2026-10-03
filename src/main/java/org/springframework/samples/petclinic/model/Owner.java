@@ -71,8 +71,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -213,24 +213,50 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, the single unified identifier formatted
+     * {@code <REGION><FY><HASH8><CHK>}: the REGION code derived from the postcode
+     * (NSW/VIC/QLD, or {@code UNKNOWN}), the 2-digit fiscal year FY, the 8 upper-case
+     * hex characters HASH8 of SHA-256 over the normalized telephone concatenated with
+     * the last name, and a single Luhn check digit CHK computed over the digits of
+     * {@code <REGION><FY><HASH8>} (e.g. {@code NSW26A1B2C3D45}). Assigned at creation
+     * time and de-duplicated by appending {@code -<n>} on collision. The single source
+     * of truth for "the identifier that identifies this owner".
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier. This is the {@link #getCustomerCode()
-     * customerCode} today; when the customerCode is later unified into the memberId,
-     * this becomes the memberId. It is the single source of truth for "the identifier
-     * that identifies this owner", so downstream consumers (such as the audit event)
-     * follow the switch automatically.
+     * Fixed widths, in characters, of the trailing segments of the {@link #getMemberId()
+     * memberId} base {@code <REGION><FY><HASH8><CHK>}: a 1-char Luhn CHK, an 8-char HASH8
+     * and a 2-char FY, with the REGION filling the remainder. The single place that
+     * describes the memberId layout for the getters that carve segments back out of it
+     * (the construction counterpart lives in {@code AssignMemberId}).
      */
-    @Transient
-    public String getPrimaryIdentifier() {
-        return this.customerCode;
+    private static final int CHK_WIDTH = 1;
+    private static final int HASH8_WIDTH = 8;
+    private static final int FY_WIDTH = 2;
+
+    /** Combined width of the FY, HASH8 and CHK segments that follow the REGION. */
+    private static final int MEMBER_ID_SUFFIX_WIDTH = FY_WIDTH + HASH8_WIDTH + CHK_WIDTH;
+
+    /**
+     * The {@link #getMemberId() memberId} with any collision-dedup suffix ({@code -<n>})
+     * stripped, i.e. the {@code <REGION><FY><HASH8><CHK>} base whose trailing segments have
+     * the fixed widths {@link #FY_WIDTH}/{@link #HASH8_WIDTH}/{@link #CHK_WIDTH}. Null when
+     * no memberId is set.
+     */
+    private String memberIdBase() {
+        if (this.memberId == null) {
+            return null;
+        }
+        int dash = this.memberId.indexOf('-');
+        return dash >= 0 ? this.memberId.substring(0, dash) : this.memberId;
     }
 
     public String getHouseholdId() {
@@ -335,74 +361,34 @@ public class Owner extends Person {
      * The fiscal year (starting 1 July) that the registration date falls in, as a
      * number: a date on or after 1 July belongs to the fiscal year of its own calendar
      * year, an earlier date belongs to the previous calendar year's fiscal year. Single
-     * source of truth for the fiscal year, so {@link #getFiscalYear()}, the
-     * {@link #getMembershipNumber() membership number} year segment and the tenure count
-     * in {@link #getMembershipPoints()} cannot drift apart.
+     * source of truth for the fiscal year, so {@link #getFiscalYear()}, the FY segment of
+     * the {@link #getMemberId() memberId} and the tenure count in
+     * {@link #getMembershipPoints()} cannot drift apart.
      */
-    private static int fiscalYearOf(LocalDate date) {
+    public static int fiscalYearOf(LocalDate date) {
         int year = date.getYear();
         return date.getMonthValue() >= Month.JULY.getValue() ? year : year - 1;
     }
 
     /**
-     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the last two
-     * digits of the fiscal year (starting 1 July) of the business-day-adjusted
-     * {@link #registrationDate} (e.g. {@code "FY26"} for a date in July 2026 to
-     * June 2027). Derived from the owner's own fields; null when the registration date
-     * is absent.
+     * The owner's fiscal year, formatted {@code "FY<YY>"} where YY is the two-digit FY
+     * segment of the {@link #getMemberId() memberId} (e.g. {@code "FY26"} for a memberId
+     * whose FY segment is {@code 26}). Read off the memberId so it cannot drift from the
+     * identifier; falls back to deriving the fiscal year (starting 1 July) of the
+     * business-day-adjusted {@link #registrationDate} when no memberId is set. Null when
+     * neither a memberId nor a registration date is present.
      */
     @Transient
     public String getFiscalYear() {
+        String base = memberIdBase();
+        if (base != null && base.length() > MEMBER_ID_SUFFIX_WIDTH) {
+            int fyStart = base.length() - CHK_WIDTH - HASH8_WIDTH - FY_WIDTH;
+            return "FY" + base.substring(fyStart, fyStart + FY_WIDTH);
+        }
         if (this.registrationDate == null) {
             return null;
         }
         return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's membership number, formatted {@code "<customerCode>-M<YY>"} where
-     * YY is the last two digits of the registration date's fiscal year (starting
-     * 1 July; e.g. {@code "NSW-A1B2C3D4-M26"} for a date in July 2026 to June 2027).
-     * Derived from the owner's own fields; null when either the customer code or
-     * registration date is absent.
-     */
-    @Transient
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits
-     * contained in the {@code customerCode}, scanning right to left and doubling the
-     * rightmost digit first; non-digit characters are ignored. Derived from the owner's
-     * own fields; null when the customer code is absent.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -501,19 +487,18 @@ public class Owner extends Person {
 
     /**
      * The owner's locality: the REGION component of the owner's region-and-hash identity.
-     * Read off the {@code customerCode} prefix (the part before the first {@code '-'}) when
-     * a customer code is present, otherwise derived straight from the postcode via
-     * {@link #identityRegion(String)}. Either way this yields the region the customer code
-     * was built from — NSW/VIC/QLD, or {@code "UNKNOWN"} when the postcode is absent or in
-     * no known range. Derived from the owner's own fields.
+     * Read off the leading REGION segment of the {@link #getMemberId() memberId} (the part
+     * before the fixed-width FY, HASH8 and CHK segments) when a memberId is present,
+     * otherwise derived straight from the postcode via {@link #identityRegion(String)}.
+     * Either way this yields the region the memberId was built from — NSW/VIC/QLD, or
+     * {@code "UNKNOWN"} when the postcode is absent or in no known range. Derived from the
+     * owner's own fields.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode != null) {
-            int dash = this.customerCode.indexOf('-');
-            if (dash > 0) {
-                return this.customerCode.substring(0, dash);
-            }
+        String base = memberIdBase();
+        if (base != null && base.length() > MEMBER_ID_SUFFIX_WIDTH) {
+            return base.substring(0, base.length() - MEMBER_ID_SUFFIX_WIDTH);
         }
         return identityRegion(this.postcode);
     }
@@ -522,7 +507,7 @@ public class Owner extends Person {
      * The REGION component of an owner's region-and-hash identity: the region derived from
      * the postcode via {@link #regionForPostcode(String)} (NSW/VIC/QLD), or
      * {@code "UNKNOWN"} when the postcode is absent or in no known range. The single source
-     * of truth for the identity's region, so the {@code customerCode} prefix and the
+     * of truth for the identity's region, so the {@code memberId} REGION segment and the
      * {@link #getLocality() locality} cannot drift apart.
      */
     public static String identityRegion(String postcode) {
