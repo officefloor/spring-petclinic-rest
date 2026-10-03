@@ -493,6 +493,27 @@ public class Owner extends Person {
         return cityRegion != null ? cityRegion : "UNKNOWN";
     }
 
+    /**
+     * The fixed identity version tag mixed into the version-2 identifiers (memberId, householdId
+     * and identityKey) so every identifier differs from the value it carried under version 1 and
+     * no version-1 value is ever produced again. The tag lives only <em>inside</em> the
+     * identifiers: the user-facing {@link #getLocality() locality}, {@link #getTimezone()
+     * timezone} and the {@link #getOwnerSegment() owner segment}'s derived region strip it and
+     * remain the plain region code (e.g. {@code 'NSW'}).
+     */
+    public static final String IDENTITY_VERSION = "V2";
+
+    /**
+     * The region code embedded in the version-2 {@link #getMemberId() memberId}: the plain
+     * {@link #regionFor(String, String) region} prefixed with the {@link #IDENTITY_VERSION} tag
+     * (e.g. {@code 'V2NSW'} or {@code 'V2UNKNOWN'}). Prefixing the tag changes every memberId
+     * relative to version 1 while {@link #getLocality() locality} recovers the plain region by
+     * stripping the tag, so the tag never leaks into the user-facing region fields.
+     */
+    public static String identityRegion(String postcode, String city) {
+        return IDENTITY_VERSION + regionFor(postcode, city);
+    }
+
     /** The canonical region for a city by exact name match (Sydney->NSW, Melbourne->VIC,
      * Brisbane->QLD), or {@code null} when the city has no known region. */
     public static String regionForCity(String city) {
@@ -524,10 +545,12 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION prefix of the owner's {@link #getMemberId() memberId}
-     * (everything before the fixed {@code <FY><HASH8><CHK>} tail), which the create pipeline derives
-     * from the postcode-and-city region. {@code 'UNKNOWN'} when no memberId is set. Not persisted —
-     * derived from {@link #getMemberId()}.
+     * The owner's locality: the plain region code of the owner's {@link #getMemberId() memberId},
+     * which the create pipeline derives from the postcode-and-city region. This is the REGION prefix
+     * of the memberId (everything before the fixed {@code <FY><HASH8><CHK>} tail) with the
+     * {@link #IDENTITY_VERSION} tag stripped, so the locality stays the plain region code
+     * (e.g. {@code 'NSW'}) even though the memberId embeds the version tag. {@code 'UNKNOWN'} when no
+     * memberId is set. Not persisted — derived from {@link #getMemberId()}.
      */
     @Transient
     public String getLocality() {
@@ -536,6 +559,9 @@ public class Owner extends Person {
             return "UNKNOWN";
         }
         String region = core.substring(0, core.length() - MEMBER_ID_TAIL);
+        if (region.startsWith(IDENTITY_VERSION)) {
+            region = region.substring(IDENTITY_VERSION.length());
+        }
         return region.isEmpty() ? "UNKNOWN" : region;
     }
 

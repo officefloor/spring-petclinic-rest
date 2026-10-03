@@ -35,9 +35,10 @@ public class AuditOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
                 owner.getMembershipLevel(), owner.getFiscalYear());
 
-        // memberId is the owner's current primary identifier (see OwnerCreatedEvent).
+        // memberId is the owner's current primary identifier (see OwnerCreatedEvent); the owner
+        // segment is recomputed from the version-2 identity (its region strips the version tag).
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                owner.getMemberId(), owner.getMembershipLevel());
+                owner.getMemberId(), owner.getMembershipLevel(), owner.getOwnerSegment());
         AUDIT.info(objectMapper.writeValueAsString(event));
     }
 }

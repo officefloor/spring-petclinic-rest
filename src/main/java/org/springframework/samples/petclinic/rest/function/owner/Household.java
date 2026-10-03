@@ -42,16 +42,18 @@ final class Household {
 
     /**
      * Stable identifier for the request's household: the first 12 upper-case hex characters of
-     * the SHA-256 of {@code normalizedLastName + "|" + postcode}, so every owner with the same
-     * last name and postcode derives the same value regardless of creation order.
-     * {@link Id#ABSENT} when the request carries no postcode (no postcode means no household).
+     * the SHA-256 of {@code normalizedLastName + "|" + postcode + "|" + IDENTITY_VERSION}, so every
+     * owner with the same last name and postcode derives the same value regardless of creation order.
+     * The {@link Owner#IDENTITY_VERSION version-2 tag} is mixed into the seed, so every household id
+     * differs from the value it carried under version 1. {@link Id#ABSENT} when the request carries
+     * no postcode (no postcode means no household).
      */
     static Id idFor(OwnerFieldsDto request) {
         String postcode = normalizePostcode(request.getPostcode());
         if (postcode == null) {
             return Id.ABSENT;
         }
-        String seed = normalizeName(request.getLastName()) + "|" + postcode;
+        String seed = normalizeName(request.getLastName()) + "|" + postcode + "|" + Owner.IDENTITY_VERSION;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));

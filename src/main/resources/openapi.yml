@@ -2108,6 +2108,40 @@ components:
         - lastName
         - city
         - telephone
+    Identity:
+      title: Identity
+      description: >-
+        An owner's grouped version-2 identifiers. The region code embedded in these identifiers,
+        and the identifiers themselves, are derived with a version-2 algorithm that mixes in a fixed
+        'V2' version tag, so every value differs from the value it carried under version 1. The tag
+        appears only inside these identifiers, never in the user-facing locality, timezone or owner
+        segment.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: The owner's member ID, the single identifier unifying the former customerCode and membershipNumber. Formatted '<REGION><FY><HASH8><CHK>' where REGION is the version-2 identity region (the plain region derived from the postcode and city - NSW/VIC/QLD, else UNKNOWN - prefixed with the 'V2' version tag, e.g. V2NSW), FY is the 2-digit fiscal year (the fiscal year starts on 1 July) derived from the business-day-adjusted registrationDate, HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone followed by the lastName, and CHK is a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>'.
+          type: string
+          example: 'V2NSW261A2B3C4D7'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key: the lower-case SHA-256 hex digest of
+            'normalizedTelephone|lowerEmail|soundex(lastName)|V2' (the email segment is empty when
+            absent; the trailing 'V2' is the fixed version tag). Duplicate detection is keyed on this
+            single value, so a create whose identity key matches an existing active owner's is
+            rejected with 409.
+          type: string
+          example: '3a1f9c8b2d4e6f0a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: A stable shared identifier derived from the owner's last name and postcode (the first 12 upper-case hex characters of SHA-256 of normalizedLastName + '|' + postcode + '|' + 'V2', mixing in the fixed version tag), so owners with the same last name and postcode share it. Owners created without a postcode have no household ID.
+          type: string
+          example: 'A1B2C3D4E5F6'
+          readOnly: true
+      readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2122,6 +2156,22 @@ components:
               format: int32
               minimum: 0
               example: 1
+              readOnly: true
+            apiVersion:
+              title: API version
+              description: The version of the owner representation. Always 2 for the version-2 owner identity.
+              type: integer
+              format: int32
+              example: 2
+              readOnly: true
+            identity:
+              title: Identity
+              description: >-
+                The owner's grouped version-2 identifiers (memberId, identityKey and householdId).
+                Each identifier is derived with a version-2 algorithm that mixes in a fixed 'V2'
+                version tag, so every value differs from the value it carried under version 1.
+              allOf:
+                - $ref: '#/components/schemas/Identity'
               readOnly: true
             displayName:
               title: Display name
@@ -2147,33 +2197,11 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: The owner's member ID, the single identifier unifying the former customerCode and membershipNumber. Formatted '<REGION><FY><HASH8><CHK>' where REGION is the region derived from the postcode and city (NSW/VIC/QLD, else UNKNOWN), FY is the 2-digit fiscal year (the fiscal year starts on 1 July) derived from the business-day-adjusted registrationDate, HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone followed by the lastName, and CHK is a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>'.
-              type: string
-              example: 'NSW261A2B3C4D7'
-              readOnly: true
             fiscalYear:
               title: Fiscal year
               description: The owner's fiscal year, formatted 'FY<YY>' where YY is the 2-digit fiscal-year segment of the memberId (the fiscal year starts on 1 July). A registration date in July-December yields the fiscal year starting that year; January-June yields the fiscal year that started the previous year.
               type: string
               example: 'FY26'
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: A stable shared identifier derived from the owner's last name and postcode (the first 12 upper-case hex characters of SHA-256 of normalizedLastName + '|' + postcode), so owners with the same last name and postcode share it. Owners created without a postcode have no household ID.
-              type: string
-              example: 'A1B2C3D4E5F6'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key: the lower-case SHA-256 hex digest of
-                'normalizedTelephone|lowerEmail|soundex(lastName)' (the email segment is empty when
-                absent). Duplicate detection is keyed on this single value, so a create whose
-                identity key matches an existing active owner's is rejected with 409.
-              type: string
-              example: '3a1f9c8b2d4e6f0a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2211,7 +2239,7 @@ components:
               readOnly: true
             locality:
               title: Locality
-              description: The owner's locality, the REGION prefix of the memberId (everything before its fixed <FY><HASH8><CHK> tail), which the create pipeline derives first from the postcode by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to a fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range, or 'UNKNOWN' when neither matches.
+              description: The owner's locality, the plain region code of the memberId (the REGION prefix before its fixed <FY><HASH8><CHK> tail, with the 'V2' identity version tag stripped), which the create pipeline derives first from the postcode by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to a fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range, or 'UNKNOWN' when neither matches. The version tag never appears here.
               type: string
               example: 'NSW'
               readOnly: true

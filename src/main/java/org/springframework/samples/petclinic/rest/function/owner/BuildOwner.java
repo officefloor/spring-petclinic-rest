@@ -37,17 +37,19 @@ public class BuildOwner {
     }
 
     /**
-     * Build the '<REGION><FY><HASH8><CHK>' memberId: REGION is the region derived from the owner's
-     * postcode and city ({@link Owner#regionFor(String, String)}, e.g. 'NSW' or 'UNKNOWN'); FY is the
-     * 2-digit fiscal-year segment of the business-day-adjusted registration date
+     * Build the '<REGION><FY><HASH8><CHK>' memberId: REGION is the version-2 identity region derived
+     * from the owner's postcode and city ({@link Owner#identityRegion(String, String)}, the plain
+     * region prefixed with the {@link Owner#IDENTITY_VERSION} tag, e.g. 'V2NSW' or 'V2UNKNOWN'); FY is
+     * the 2-digit fiscal-year segment of the business-day-adjusted registration date
      * ({@link Owner#fiscalYearSegment(java.time.LocalDate)}, e.g. '26'); HASH8 is the first 8
-     * upper-case hex characters of the SHA-256 of the normalized telephone followed by the last name
-     * (the same HASH8 used by the region-and-hash identity); and CHK is a single Luhn check digit
-     * computed over the digits of '<REGION><FY><HASH8>' (e.g. 'NSW261A2B3C4D7'). There is no sequence
-     * number, so the id is stable for an owner regardless of creation order.
+     * upper-case hex characters of the SHA-256 of the normalized telephone followed by the last name;
+     * and CHK is a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>' (e.g.
+     * 'V2NSW261A2B3C4D7'). There is no sequence number, so the id is stable for an owner regardless of
+     * creation order. The embedded version tag changes every memberId relative to version 1 while the
+     * user-facing {@link Owner#getLocality() locality} recovers the plain region by stripping it.
      */
     private static String memberId(Owner owner) {
-        String region = Owner.regionFor(owner.getPostcode(), owner.getCity());
+        String region = Owner.identityRegion(owner.getPostcode(), owner.getCity());
         String fy = Owner.fiscalYearSegment(owner.getRegistrationDate());
         String normalizedTelephone = OwnerTelephone.normalize(owner.getTelephone());
         String seed = (normalizedTelephone == null ? "" : normalizedTelephone) + owner.getLastName();

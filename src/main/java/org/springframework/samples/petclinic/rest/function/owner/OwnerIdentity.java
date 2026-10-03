@@ -9,7 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Derives an owner's identity key — the single key that both gates duplicate detection and
  * populates the informational {@code identityKey} response field. The key is the lower-case
- * SHA-256 hex digest of {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
+ * SHA-256 hex digest of
+ * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName) + "|" + IDENTITY_VERSION}.
+ * The {@link Owner#IDENTITY_VERSION version-2 tag} is mixed into the seed, so every identity key
+ * differs from the value it carried under version 1 and no version-1 key is produced again.
  *
  * <p>Because the telephone is part of the key, two owners sharing a last name and postcode but
  * carrying different telephones derive different keys: they are no longer a hard duplicate, but a
@@ -27,7 +30,8 @@ public final class OwnerIdentity {
      * segment is rendered as empty; the last name is reduced to its {@link Soundex} code.
      */
     static String key(String normalizedTelephone, String email, String lastName) {
-        String seed = orEmpty(normalizedTelephone) + "|" + orEmpty(email) + "|" + Soundex.encode(lastName);
+        String seed = orEmpty(normalizedTelephone) + "|" + orEmpty(email) + "|" + Soundex.encode(lastName)
+                + "|" + Owner.IDENTITY_VERSION;
         return sha256hex(seed);
     }
 
