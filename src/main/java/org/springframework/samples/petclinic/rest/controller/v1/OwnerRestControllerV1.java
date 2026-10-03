@@ -22,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,6 +30,7 @@ import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -66,6 +68,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import jakarta.transaction.Transactional;
 
 /**
@@ -78,11 +83,19 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
-     * Dedicated audit logger. A successful owner create emits a single line here carrying the new
-     * owner's id, customer code, registration date and membership level, so the create side-effect
-     * can be audited independently of the application log.
+     * Dedicated audit logger. A successful owner create emits here, independently of the application
+     * log: first a human-readable line carrying the new owner's id, customer code, registration date
+     * and membership level, then the immutable structured {@code OWNER_CREATED} event (see
+     * {@link OwnerCreatedEvent}) as a compact JSON object.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Process-wide sequence backing the {@code seq} of the structured {@code OWNER_CREATED} event. It
+     * is incremented once per successful create so each emitted event carries a strictly larger,
+     * monotonically increasing sequence number than the one before it.
+     */
+    private static final AtomicInteger AUDIT_SEQUENCE = new AtomicInteger();
 
     private final ClinicService clinicService;
 
@@ -239,10 +252,77 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the immutable structured {@code OWNER_CREATED} event to the {@link #AUDIT} logger as a
+     * compact JSON object, alongside the human-readable audit line. The event's {@code seq} is drawn
+     * from the process-wide {@link #AUDIT_SEQUENCE}, so it strictly increases across creates, and it
+     * carries both the owner's id and its current primary identifier via
+     * {@link #primaryIdentifier(Owner)}.
+     *
+     * @param owner the owner that was just created and saved
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQUENCE.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
+        AUDIT.info(event.toJson());
+    }
+
+    /**
+     * The owner's current primary identifier, the single value the structured {@code OWNER_CREATED}
+     * event carries to identify the owner. Today that is the owner's {@link Owner#getCustomerCode()
+     * customer code}; when the customer code is later unified into the member id, this becomes the
+     * sole place to switch so the event carries the member id instead.
+     *
+     * @param owner the owner that was just created
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
+    /**
+     * The immutable structured event emitted on a successful owner create. {@code seq} is the
+     * process-wide monotonically increasing sequence across creates; {@code ownerId} is the new
+     * owner's id; {@code customerCode} carries the owner's current primary identifier (today the
+     * customer code, whatever replaces it later); {@code membershipLevel} is the owner's membership
+     * level. It serializes to a compact JSON object whose {@code event} is always
+     * {@value #EVENT_TYPE}.
+     *
+     * @param seq the monotonically increasing create sequence number
+     * @param ownerId the created owner's id
+     * @param customerCode the owner's current primary identifier
+     * @param membershipLevel the owner's membership level
+     */
+    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+
+        /** The fixed {@code event} discriminator carried by every emitted event. */
+        private static final String EVENT_TYPE = "OWNER_CREATED";
+
+        /** Shared, thread-safe mapper used only to serialize the event to its JSON form. */
+        private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+
+        /**
+         * Serializes this event to its compact JSON form
+         * {@code {seq, ownerId, customerCode, membershipLevel, event}}, with the fields in that order.
+         *
+         * @return the event as a JSON object string
+         */
+        private String toJson() {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("seq", this.seq);
+            fields.put("ownerId", this.ownerId);
+            fields.put("customerCode", this.customerCode);
+            fields.put("membershipLevel", this.membershipLevel);
+            fields.put("event", EVENT_TYPE);
+            return MAPPER.writeValueAsString(fields);
+        }
     }
 
     /**
