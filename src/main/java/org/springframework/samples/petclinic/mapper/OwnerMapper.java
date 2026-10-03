@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -50,14 +51,15 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * Normalize a telephone number by removing every non-digit character. Format
-     * validity (exactly 10 digits once stripped) is enforced separately by
-     * {@code TelephoneValidation} on the inbound DTO, so this only performs the
-     * transform the stored value needs.
+     * Normalize a telephone number to canonical E.164 form (a leading {@code '+'}, country
+     * code and national digits) so it is stored and returned in one comparable form and
+     * duplicates can be detected by comparing these values. Format validity is enforced
+     * separately by {@code TelephoneValidation} on the inbound DTO, so this only performs
+     * the transform the stored value needs.
      */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return TelephoneNormalizer.toE164(telephone);
     }
 
     /**
