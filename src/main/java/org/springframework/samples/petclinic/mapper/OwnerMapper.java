@@ -26,7 +26,18 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive the owner's read-only {@code ageBand} enum from its {@code birthDate}, computed against
+     * the owner's {@code registrationDate} (see {@link Owner#getAgeBand()}). Returns {@code null}
+     * when the owner has no {@code birthDate}, so the field is omitted from the response.
+     */
+    default OwnerDto.AgeBandEnum toAgeBand(Owner owner) {
+        String ageBand = owner.getAgeBand();
+        return ageBand == null ? null : OwnerDto.AgeBandEnum.fromValue(ageBand);
+    }
 
     /**
      * Format an owner's stored names as {@code 'LastName, FirstName'} for the
