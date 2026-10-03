@@ -27,6 +27,10 @@ public class RejectDuplicateIdentity {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                // A soft-deleted owner no longer occupies its household.
+                continue;
+            }
             if (household.matches(existing)) {
                 throw new DuplicateIdentityException(
                         "An owner in the same household (last name and postcode) already exists");

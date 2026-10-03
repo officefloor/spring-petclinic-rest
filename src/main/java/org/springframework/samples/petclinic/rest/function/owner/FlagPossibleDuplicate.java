@@ -47,6 +47,10 @@ public class FlagPossibleDuplicate {
             if (existing.getId() == null || existing.getId().equals(owner.getId())) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                // A soft-deleted owner is not a duplicate signal.
+                continue;
+            }
             if (!lastName.equalsIgnoreCase(existing.getLastName())) {
                 continue;
             }

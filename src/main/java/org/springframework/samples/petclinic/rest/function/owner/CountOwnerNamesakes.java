@@ -16,6 +16,7 @@ public class CountOwnerNamesakes {
         String firstName = owner.getFirstName();
         String lastName = owner.getLastName();
         int count = (int) ownerRepository.findAll().stream()
+                .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
                 .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                         && lastName.equalsIgnoreCase(existing.getLastName()))
                 .count();

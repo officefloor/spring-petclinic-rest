@@ -21,6 +21,7 @@ public class CountHouseholdMembers {
         int existing = (int) ownerRepository.findAll().stream()
                 .filter(existingOwner -> existingOwner.getId() == null
                         || !existingOwner.getId().equals(owner.getId()))
+                .filter(existingOwner -> !Boolean.TRUE.equals(existingOwner.getDeleted()))
                 .filter(household::matches)
                 .count();
         owner.setHouseholdSize(existing + 1);
