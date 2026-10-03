@@ -185,6 +185,37 @@ public class Owner extends Person {
     }
 
     /**
+     * Derive the owner's read-only {@code checkDigit}: a single Luhn check digit (0-9) computed
+     * over the digits contained in the owner's {@code customerCode}. Non-digit characters (the
+     * '-' separators and letters) are ignored. Returns {@code null} when no {@code customerCode}
+     * has been assigned yet.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * Derive the owner's {@code identityKey}, the single value used to detect duplicate owners:
      * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. The telephone and
      * email are already stored in their canonical (E.164 / lower-cased) form, so a {@code null} or
