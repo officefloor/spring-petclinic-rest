@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index bae3309fc..28157eda9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -417,6 +417,41 @@ public class Owner extends Person {
+         return (value == null || value.isBlank()) ? "" : value;
+     }
+ 
++    /**
++     * The stored E.164 {@link #telephone} formatted for humans: the country code,
++     * a space, then the national digits grouped in threes (e.g.
++     * {@code "+61 412 345 678"}). The {@code '+'} and country code are taken from the
++     * E.164 value (a {@code '+1'} NANP country code is a single digit, any other is
++     * treated as two digits, matching the recognized {@code '+61'}/{@code '+1'} forms),
++     * and the national digits follow in space-separated groups of three. Returns the raw
++     * value unchanged when it is absent or not a {@code '+'}-prefixed run of digits.
++     * Derived from the owner's own fields; the raw {@link #telephone} stays E.164.
++     */
++    @Transient
++    public String getTelephoneDisplay() {
++        if (this.telephone == null || !this.telephone.startsWith("+")) {
++            return this.telephone;
++        }
++        String digits = this.telephone.substring(1);
++        if (!digits.matches("\\d+")) {
++            return this.telephone;
++        }
++        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
++        if (digits.length() <= countryCodeLength) {
++            return this.telephone;
++        }
++        String countryCode = digits.substring(0, countryCodeLength);
++        String national = digits.substring(countryCodeLength);
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < national.length(); i += 3) {
++            if (grouped.length() > 0) {
++                grouped.append(' ');
++            }
++            grouped.append(national, i, Math.min(i + 3, national.length()));
++        }
++        return "+" + countryCode + " " + grouped;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f39cf848d..8e9400afd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2234,6 +2234,16 @@ components:
+               type: string
+               example: '+61412345678|george.franklin@example.com|A1B2C3D4E5F6'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 telephone formatted for humans: the country code,
++                a space, then the national digits grouped in threes (e.g.
++                '+61 412 345 678'). The raw 'telephone' stays in E.164. Derived from
++                the owner's own fields.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
