@@ -57,6 +57,9 @@ public class ClinicServiceImpl implements ClinicService {
     /** Dedicated audit channel; create side-effects are published here for auditing. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification channel; welcome notifications are enqueued here on successful create. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Monotonically increasing sequence number stamped onto each structured owner-created event. */
     private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong(0);
 
@@ -345,6 +348,8 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.getId(), owner.getMemberId(), owner.getMembershipLevel(),
                 owner.getRegistrationDate());
             AUDIT.info(ownerCreatedEvent(owner));
+            // Enqueue a welcome notification carrying the owner id and the memberId.
+            NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         }
     }
 
