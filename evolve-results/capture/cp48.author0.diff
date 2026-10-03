@@ -1,0 +1,155 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5807d2280..6da030b38 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -27,7 +27,6 @@ import java.security.NoSuchAlgorithmException;
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.time.Period;
+-import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -300,8 +299,9 @@ public class Owner extends Person {
+ 
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where {@code YY} is
+-     * the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Derived
+-     * from the owner's own customer code and registration date; {@code null} when either is absent.
++     * the last two digits of the {@link #getFiscalYear() fiscal year} of the registration date
++     * (e.g. {@code 'NSW-1A2B3C4D-M26'}). Derived from the owner's own customer code and registration
++     * date; {@code null} when either is absent.
+      *
+      * @return the membership number, or {@code null} when it cannot be derived
+      */
+@@ -309,7 +309,37 @@ public class Owner extends Person {
+         if (this.customerCode == null || this.registrationDate == null) {
+             return null;
+         }
+-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
++        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
++    }
++
++    /**
++     * The owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the last two digits of
++     * the fiscal year of the {@link #getRegistrationDate() business-day-adjusted registration date}.
++     * The fiscal year starts on 1 July and is named by the calendar year in which it ends, so a
++     * registration date on or after 1 July belongs to the following calendar year's fiscal year
++     * (e.g. {@code 2026-07-01} is {@code 'FY27'}) while an earlier date stays in the current one
++     * (e.g. {@code 2026-06-15} is {@code 'FY26'}). Returns {@code null} when the registration date is
++     * absent.
++     *
++     * @return the fiscal year, or {@code null} when the registration date is absent
++     */
++    public String getFiscalYear() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
++    }
++
++    /**
++     * The fiscal year a date falls in, as a full calendar year. The fiscal year starts on 1 July and
++     * is named by the calendar year in which it ends: a date in July through December belongs to the
++     * next calendar year's fiscal year, while January through June stays in the current one.
++     *
++     * @param date the date to classify
++     * @return the fiscal year as a four-digit calendar year
++     */
++    private static int fiscalYearOf(LocalDate date) {
++        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+     }
+ 
+     /**
+@@ -347,9 +377,9 @@ public class Owner extends Person {
+      * The owner's membership points, the score the {@link #getMembershipLevel() membership level} is
+      * derived from. The score starts at 0 and gains: 2 when an email address is present, 1 when the
+      * owner has no namesakes ({@code namesakeCount} is 0), 2 for a household of 3 or more members
+-     * ({@code householdSize} is at least 3), and 3 when the owner's tenure exceeds 365 days (see
+-     * {@link #getTenureDays()}). Because a newly created owner has zero tenure, the tenure points are
+-     * never awarded at create time.
++     * ({@code householdSize} is at least 3), and 3 when the owner's tenure spans at least one elapsed
++     * fiscal year (see {@link #getTenureFiscalYears()}). Because a newly created owner has zero
++     * tenure, the tenure points are never awarded at create time.
+      *
+      * @return the membership points, a non-negative integer
+      */
+@@ -366,8 +396,8 @@ public class Owner extends Person {
+         if (this.householdSize != null && this.householdSize >= 3) {
+             points += 2;
+         }
+-        Long tenureDays = getTenureDays();
+-        if (tenureDays != null && tenureDays > 365) {
++        Long tenureFiscalYears = getTenureFiscalYears();
++        if (tenureFiscalYears != null && tenureFiscalYears >= 1) {
+             points += 3;
+         }
+         return points;
+@@ -395,18 +425,20 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's tenure in whole days, the number of days elapsed from the
+-     * {@link #getRegistrationDate() registration date} to the server's current date. A tenure of more
+-     * than 365 days is what raises the {@link #getMembershipLevel() membership level} to 4. Returns
+-     * {@code null} when no registration date has been set yet.
++     * The owner's tenure in elapsed fiscal years, the number of fiscal-year boundaries crossed from
++     * the {@link #getFiscalYear() fiscal year} of the {@link #getRegistrationDate() registration date}
++     * to the fiscal year of the server's current date (the fiscal year starts on 1 July). An owner
++     * registered in the current fiscal year has a tenure of 0; one elapsed fiscal year or more is what
++     * awards the tenure membership points. Returns {@code null} when no registration date has been set
++     * yet.
+      *
+-     * @return the tenure in whole days, or {@code null} when the registration date is absent
++     * @return the tenure in elapsed fiscal years, or {@code null} when the registration date is absent
+      */
+-    public Long getTenureDays() {
++    public Long getTenureFiscalYears() {
+         if (this.registrationDate == null) {
+             return null;
+         }
+-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++        return (long) (fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate));
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e250ba3e4..021a319d8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2191,11 +2191,21 @@ components:
+               title: Membership number
+               description: >-
+                 A generated membership number formatted '<customerCode>-M<YY>',
+-                where YY is the last two digits of the registration date's year
+-                (e.g. 'NSW-1A2B3C4D-M26').
++                where YY is the last two digits of the fiscal year of the
++                registration date (e.g. 'NSW-1A2B3C4D-M26').
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the business-day-adjusted registration date,
++                formatted 'FY<YY>'. The fiscal year starts on 1 July and is named
++                by the calendar year in which it ends, so a registration date on or
++                after 1 July belongs to the following calendar year's fiscal year.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             membershipPoints:
+               title: Membership points
+               description: >-
+@@ -2203,8 +2213,9 @@ components:
+                 derived from. Starts at 0 and gains 2 when an email address is
+                 present, 1 when the owner has no namesakes (namesakeCount is 0), 2
+                 for a household of 3 or more members (householdSize is at least
+-                3), and 3 when the owner's tenure exceeds 365 days. A newly
+-                created owner (zero tenure) is never awarded the tenure points.
++                3), and 3 when the owner's tenure spans at least one elapsed
++                fiscal year (the fiscal year starts on 1 July). A newly created
++                owner (zero tenure) is never awarded the tenure points.
+               type: integer
+               format: int32
+               minimum: 0
