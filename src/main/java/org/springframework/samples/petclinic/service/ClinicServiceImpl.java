@@ -232,6 +232,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
+            throw new DuplicateTelephoneException(owner.getTelephone());
+        }
         ownerRepository.save(owner);
 
     }

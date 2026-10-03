@@ -55,4 +55,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Override
     @Query("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id")
     Owner findById(@Param("id") int id);
+
+    @Override
+    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN TRUE ELSE FALSE END FROM Owner owner WHERE owner.telephone = :telephone")
+    boolean existsByTelephone(@Param("telephone") String telephone);
 }

@@ -111,6 +111,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return new PageImpl<>(owners, pageable, total == null ? 0 : total);
     }
 
+    @Override
+    public boolean existsByTelephone(String telephone) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("telephone", telephone);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE telephone = :telephone",
+            params,
+            Long.class
+        );
+        return count != null && count > 0;
+    }
+
     /**
      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
      * for the corresponding owner, if not already loaded.

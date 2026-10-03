@@ -48,6 +48,14 @@ public interface OwnerRepository {
     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
 
     /**
+     * Report whether any <code>Owner</code> already uses the given (already normalized) telephone number.
+     *
+     * @param telephone the normalized telephone number to check for
+     * @return <code>true</code> if at least one <code>Owner</code> has this telephone, <code>false</code> otherwise
+     */
+    boolean existsByTelephone(String telephone) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for
