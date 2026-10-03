@@ -1,0 +1,423 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+index 1fce7fa84..6ec4d3bbe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+@@ -1,10 +1,10 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown by the create pipeline when a new owner's whole {@code identityKey}
+- * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) equals an
+- * existing owner's. This single key consolidates the former separate telephone, email and
+- * household duplicate checks. Handled globally by {@link DuplicateIdentityExceptionHandler},
++ * Thrown by the create pipeline when a new owner would be a second member of a household that
++ * already exists — a household being keyed on (last name, postcode) via the deterministic
++ * {@code householdId}. Setting {@code sharesHousehold} true bypasses this, creating the owner as
++ * a declared household member instead. Handled globally by {@link DuplicateIdentityExceptionHandler},
+  * which responds 409.
+  */
+ public class DuplicateIdentityException extends Exception {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index eb163a33d..3dc5031cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -1,58 +1,22 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+-
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns a shared {@code householdId} when the request set {@code sharesHousehold} true
+- * (published by {@link BuildOwner}). A household is defined by {@link HouseholdKey}.
+- *
+- * <p>The identifier is derived deterministically from the household key, so every owner in a
+- * household computes the same value and it is stable across requests. It is assigned to this
+- * (new) owner and also back-filled onto the existing same-household owner(s), so all members
+- * return the same {@code householdId}. Runs before {@link RejectDuplicateIdentity} because the
+- * {@code householdId} is part of the owner's {@code identityKey}.
++ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256
++ * over the household key (normalized last name and postcode — see {@link HouseholdKey}). Every
++ * owner is assigned one unconditionally, so owners with the same last name and postcode share the
++ * same id automatically, with no opt-in and no back-filling of other owners.
+  *
+- * <p>Does nothing when {@code sharesHousehold} is not true, leaving {@code householdId} absent.
++ * <p>The {@code sharesHousehold} create-time flag no longer plays any part here; it only tells
++ * {@link RejectDuplicateIdentity} to let a declared household member through the duplicate block.
++ * Runs before {@link RejectDuplicateIdentity} and {@link CountHouseholdMembers}, both of which key
++ * off this id.
+  */
+ public class AssignHousehold {
+ 
+-    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository) {
+-        if (!Boolean.TRUE.equals(sharesHousehold)) {
+-            return;
+-        }
+-        HouseholdKey household = HouseholdKey.of(owner);
+-        String householdId = householdId(household);
+-        owner.setHouseholdId(householdId);
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
+-                continue;
+-            }
+-            if (household.matches(existing) && !householdId.equals(existing.getHouseholdId())) {
+-                existing.setHouseholdId(householdId);
+-                ownerRepository.save(existing);
+-            }
+-        }
+-    }
+-
+-    /** Stable id {@code H-<16 upper-hex>} derived from the household key. */
+-    private static String householdId(HouseholdKey household) {
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256")
+-                    .digest(household.canonical().getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder();
+-            for (int i = 0; i < 8; i++) {
+-                sb.append(String.format("%02X", digest[i]));
+-            }
+-            return "H-" + sb;
+-        }
+-        catch (NoSuchAlgorithmException ex) {
+-            throw new IllegalStateException("SHA-256 not available", ex);
+-        }
++    public void service(@Val Owner owner) {
++        owner.setHouseholdId(HouseholdKey.of(owner).householdId());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+index 0a3f41417..604fd3cd2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+@@ -6,26 +6,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the owner's {@code householdSize} on create: the number of owners sharing the same
+- * {@code householdId} once this owner is counted. Runs after {@link AssignHousehold} (which sets
+- * the {@code householdId} on this owner and back-fills existing household members), so the shared
+- * identifier is in place before the count.
++ * household once this owner is counted. The household is keyed on the deterministic
++ * {@code householdId} (normalized last name and postcode — see {@link HouseholdKey}), so a member
++ * is any other owner that computes the same id.
+  *
+  * <p>The new owner is not yet saved, so it is counted by adding one to the existing same-household
+- * members. An owner with no {@code householdId} (did not opt into a shared household) is a
++ * members. A fully-unique owner (no other owner shares its last name and postcode) is therefore a
+  * household of one.
+  */
+ public class CountHouseholdMembers {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String householdId = owner.getHouseholdId();
+-        if (householdId == null) {
+-            owner.setHouseholdSize(1);
+-            return;
+-        }
++        String householdId = HouseholdKey.of(owner).householdId();
+         int existing = (int) ownerRepository.findAll().stream()
+                 .filter(existingOwner -> existingOwner.getId() == null
+                         || !existingOwner.getId().equals(owner.getId()))
+-                .filter(existingOwner -> householdId.equals(existingOwner.getHouseholdId()))
++                .filter(existingOwner -> householdId.equals(HouseholdKey.of(existingOwner).householdId()))
+                 .count();
+         owner.setHouseholdSize(existing + 1);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+index 0d26f4a18..9edd133a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -16,12 +16,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * set to the matching owner's id (the lowest-id match when several exist). Otherwise
+  * {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
+  *
++ * <p>A declared household member ({@code sharesHousehold} true) is never flagged: it reached this
++ * step only because it deliberately bypassed the duplicate block, so sharing an existing owner's
++ * last name and postcode is expected rather than a suspected duplicate.
++ *
+  * <p>Runs after the telephone and postcode have been normalized/assigned and before
+  * {@link SaveOwner}, so the flags are fixed at creation time and returned on later reads.
+  */
+ public class FlagPossibleDuplicate {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository) {
+         String lastName = owner.getLastName();
+         String postcode = owner.getPostcode();
+         String telephone = normalizedTelephone(owner);
+@@ -29,6 +33,11 @@ public class FlagPossibleDuplicate {
+         owner.setPossibleDuplicate(false);
+         owner.setPossibleDuplicateOf(null);
+ 
++        if (Boolean.TRUE.equals(sharesHousehold)) {
++            // Declared household member: expected to share a household, not a suspected duplicate.
++            return;
++        }
++
+         if (lastName == null || postcode == null) {
+             return;
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
+index 13bb83cc1..fceb1c17a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
+@@ -1,34 +1,38 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Locale;
+ import java.util.Objects;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * The identity of a household: the same last name and the same address. The last name is
+- * compared case-insensitively with whitespace trimmed and collapsed; the address is compared
+- * in its normalized form (see {@link OwnerAddresses#normalize}), so e.g. "7  elm  ave" matches
+- * "7 ELM AVENUE".
++ * The identity of a household: the same last name and the same postcode. The last name is
++ * compared case-insensitively with whitespace trimmed and collapsed; the postcode is compared
++ * as stored. So e.g. "  Smith " at postcode "2000" is the same household as "smith" at "2000".
+  *
+- * <p>Single-sources the "what is a household" definition used by {@link AssignHousehold} to
+- * decide who shares a {@code householdId}; that shared id then feeds the owner's
+- * {@code identityKey} (see {@link OwnerIdentity}), which is what duplicate detection rejects on.
++ * <p>Single-sources the "what is a household" definition. The {@code householdId} is derived
++ * <em>deterministically</em> from this key (see {@link #householdId()}): the first 12 hex
++ * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Every owner computes
++ * the same id for the same household automatically, so two owners share a {@code householdId}
++ * exactly when they share a last name and postcode — no opt-in and no back-filling required.
+  */
+ final class HouseholdKey {
+ 
+     private final String lastName;
+ 
+-    private final String address;
++    private final String postcode;
+ 
+-    private HouseholdKey(String lastName, String address) {
++    private HouseholdKey(String lastName, String postcode) {
+         this.lastName = lastName;
+-        this.address = address;
++        this.postcode = postcode;
+     }
+ 
+     /** The household the given owner belongs to. */
+     static HouseholdKey of(Owner owner) {
+-        return new HouseholdKey(normalize(owner.getLastName()), OwnerAddresses.normalize(owner.getAddress()));
++        return new HouseholdKey(normalize(owner.getLastName()), owner.getPostcode() == null ? "" : owner.getPostcode());
+     }
+ 
+     /** Whether {@code owner} belongs to this household. */
+@@ -38,7 +42,27 @@ final class HouseholdKey {
+ 
+     /** Stable canonical form of the key, suitable for deriving a shared identifier. */
+     String canonical() {
+-        return lastName + "|" + address;
++        return lastName + "|" + postcode;
++    }
++
++    /**
++     * The deterministic {@code householdId} for this household: the first 12 hex characters of
++     * SHA-256 over {@link #canonical()}. Owners with the same last name and postcode compute the
++     * same value, so they share a household automatically.
++     */
++    String householdId() {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(canonical().getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (int i = 0; i < 6; i++) {
++                sb.append(String.format("%02x", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
+     }
+ 
+     @Override
+@@ -49,12 +73,12 @@ final class HouseholdKey {
+         if (!(o instanceof HouseholdKey other)) {
+             return false;
+         }
+-        return lastName.equals(other.lastName) && address.equals(other.address);
++        return lastName.equals(other.lastName) && postcode.equals(other.postcode);
+     }
+ 
+     @Override
+     public int hashCode() {
+-        return Objects.hash(lastName, address);
++        return Objects.hash(lastName, postcode);
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
+index bcdcac5c1..83a641d9a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
+@@ -5,17 +5,16 @@ import java.util.Locale;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Single source of truth for an owner's {@code identityKey} — the one derived value that all
+- * duplicate detection is now expressed through. The key is
+- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, so two owners are
+- * duplicates only when their WHOLE keys match: two members of the same household (same
+- * {@code householdId}) with different telephones have different keys and are both allowed.
++ * Single source of truth for an owner's {@code identityKey} — a derived value returned on the
++ * owner DTO. The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId},
++ * where the {@code householdId} is now deterministic from the owner's household (last name and
++ * postcode — see {@link HouseholdKey}).
+  *
+  * <p>The three parts are normalized the same way they are stored: the telephone to its E.164
+  * form (see {@link OwnerTelephones}, so a stored value that predates the pipeline still
+  * compares correctly), the email trimmed and lower-cased (empty when absent), and the
+- * {@code householdId} as stored (empty when absent). Used by {@link RejectDuplicateIdentity}
+- * to find collisions and by the owner mapper to return the key.
++ * {@code householdId} as stored (empty when absent). Duplicate detection itself is keyed on the
++ * household (see {@link RejectDuplicateIdentity}); this key is exposed by the owner mapper.
+  */
+ public final class OwnerIdentity {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateIdentity.java
+index d974faf5a..62511d9c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateIdentity.java
+@@ -6,28 +6,30 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
+ 
+ /**
+- * The single, consolidated duplicate check. Rejects creating an owner whose whole
+- * {@code identityKey} (see {@link OwnerIdentity}) equals an existing owner's; this replaces the
+- * former separate telephone, email and household checks. Runs after the telephone, email and
+- * household-id have been assigned to the owner (so all three parts of the key are in place) and
+- * before {@link SaveOwner}.
++ * The duplicate block. A household is now keyed on (last name, postcode) and every owner carries a
++ * deterministic {@code householdId} derived from it (see {@link AssignHousehold}), so two owners
++ * are in the same household exactly when they share that id. Creating a second owner in a household
++ * that already has a member is rejected as a 409 via {@link DuplicateIdentityException}.
+  *
+- * <p>Because the telephone is part of the key, two members of the same household (same
+- * {@code householdId}) with different telephones have different keys and are both allowed —
+- * only an exact full-key match escalates as a 409 via {@link DuplicateIdentityException}.
++ * <p>The {@code sharesHousehold} create-time flag bypasses this block: a declared household member
++ * is allowed through and created. Runs after {@link AssignHousehold} and before {@link SaveOwner}.
+  */
+ public class RejectDuplicateIdentity {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository)
+             throws DuplicateIdentityException {
+-        String identityKey = OwnerIdentity.identityKey(owner);
++        if (Boolean.TRUE.equals(sharesHousehold)) {
++            // Declared household member: bypass the duplicate block entirely.
++            return;
++        }
++        String householdId = HouseholdKey.of(owner).householdId();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
+                 continue;
+             }
+-            if (identityKey.equals(OwnerIdentity.identityKey(existing))) {
++            if (householdId.equals(HouseholdKey.of(existing).householdId())) {
+                 throw new DuplicateIdentityException(
+-                        "An owner with the same identity (telephone, email and household) already exists");
++                        "An owner in the same household (last name and postcode) already exists");
+             }
+         }
+     }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 25c00bd18..610a1cf67 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -40,14 +40,15 @@ normalizeRegistrationDate:
+   govern: [ transaction ]
+   next: assignHousehold
+ 
+-# Assign the householdId before the identity check, because it is part of the identityKey.
++# Assign the deterministic householdId (hash of last name + postcode) before the duplicate
++# check and the household-size count, both of which key off it.
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
+   next: rejectDuplicateIdentity
+ 
+-# One consolidated duplicate check: reject only when the WHOLE identityKey
+-# (normalizedTelephone + '|' + email-or-empty + '|' + householdId) matches an existing owner.
++# Household duplicate check: reject (409) when another owner is already in this household
++# (same householdId = same last name + postcode), unless sharesHousehold declares a shared member.
+ rejectDuplicateIdentity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateIdentity
+   govern: [ transaction ]
+@@ -88,8 +89,8 @@ assignMembershipLevel:
+   govern: [ transaction ]
+   next: flagPossibleDuplicate
+ 
+-# Soft duplicate signal: not a hard duplicate (already rejected above) but shares an
+-# existing owner's lastName and postcode with a different telephone. Flags, never rejects.
++# Soft duplicate signal: shares an existing owner's lastName and postcode with a different
++# telephone. Flags, never rejects; skipped for a declared household member (sharesHousehold).
+ flagPossibleDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
+   govern: [ transaction ]
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 546ab3680..d31874c75 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2069,11 +2069,11 @@ components:
+         sharesHousehold:
+           title: Shares household
+           description: >-
+-            Create-time flag. When true, owners with the same last name and address
+-            (the same household, compared case-insensitively with collapsed whitespace)
+-            are given a shared householdId, which becomes part of each owner's
+-            identityKey. Duplicate detection rejects with 409 only when a new owner's
+-            whole identityKey matches an existing owner's. Not persisted.
++            Create-time flag. The householdId is always deterministic from (last name,
++            postcode), so this flag no longer creates the link. It only bypasses the
++            duplicate block: a second owner in an existing household is rejected with 409
++            unless it sets sharesHousehold true, in which case it is created as a declared
++            household member and is not flagged as a possible duplicate. Not persisted.
+           type: boolean
+           example: false
+         birthDate:
+@@ -2155,13 +2155,12 @@ components:
+             householdId:
+               title: Household ID
+               description: >-
+-                A stable identifier shared by owners of the same household (same
+-                last name and address). Assigned on create only when the request
+-                set sharesHousehold true; it is then given to this owner and to
+-                the existing same-household owner(s), so all members of a shared
+-                household return the same value. Otherwise absent.
++                A deterministic identifier shared by owners of the same household:
++                the first 12 hex characters of SHA-256 over the normalized last name
++                and postcode. Assigned to every owner on create, so owners with the
++                same last name and postcode return the same value automatically.
+               type: string
+-              example: 'H-3F9A2C1B8D4E5061'
++              example: '3f9a2c1b8d4e'
+               readOnly: true
+             identityKey:
+               title: Identity key
+@@ -2170,9 +2169,9 @@ components:
+                 '<normalizedTelephone>|<email-or-empty>|<householdId-or-empty>'
+                 where the telephone is the stored E.164 value, the email is the
+                 stored lower-cased address (empty when absent) and the household
+-                id is the stored value (empty when absent). Creating an owner is
+-                rejected with 409 only when this whole key equals an existing
+-                owner's. Derived from the owner's own fields.
++                id is the stored value (empty when absent). A derived field returned
++                on the owner; duplicate detection itself is keyed on the household
++                (last name and postcode). Derived from the owner's own fields.
+               type: string
+               example: '+61412345678||'
+               readOnly: true
