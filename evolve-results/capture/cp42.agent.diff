@@ -1,0 +1,111 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 27d4e1b76..ebdf9f1ab 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.samples.petclinic.util.PostcodeRules;
++import org.springframework.samples.petclinic.util.RegionTimezones;
+ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+@@ -25,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
++    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+@@ -88,6 +90,18 @@ public interface OwnerMapper {
+         return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+     }
+ 
++    /**
++     * Derive the owner's read-only {@code timezone}: the IANA timezone name for the owner's
++     * locality/region, looked up from the fixed region-to-timezone table ({@code NSW->Australia/Sydney,
++     * VIC->Australia/Melbourne, QLD->Australia/Brisbane}). The region is the same value reported as the
++     * owner's {@code locality} (see {@link #toLocality(Owner)}), so timezone and locality stay in
++     * lock-step. Returns {@code null} when the region has no mapped timezone, so the field is omitted
++     * from the response.
++     */
++    default String toTimezone(Owner owner) {
++        return RegionTimezones.timezoneOf(toLocality(owner));
++    }
++
+     /**
+      * Derive the owner's read-only {@code contactPreference}: {@code EMAIL} when the owner has an
+      * email address, otherwise {@code PHONE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegionTimezones.java b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezones.java
+new file mode 100644
+index 000000000..256dd2d2d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezones.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Single source of truth for the fixed region-to-timezone table ({@code NSW->Australia/Sydney,
++ * VIC->Australia/Melbourne, QLD->Australia/Brisbane}). The owner's derived read-only
++ * {@code timezone} ({@code OwnerMapper}) consults this one table, so a region added or renamed
++ * here is reflected everywhere at once.
++ */
++public final class RegionTimezones {
++
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
++    private RegionTimezones() {
++    }
++
++    /**
++     * Return the IANA timezone name for {@code region}, or {@code null} when the region is not in
++     * the fixed table.
++     *
++     * @param region the owner's region/locality (may be {@code null})
++     * @return the IANA timezone (e.g. {@code "Australia/Sydney"}) or {@code null} when the region
++     *         has no mapped timezone
++     */
++    public static String timezoneOf(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 10c9223a5..91f4ed7b9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2152,6 +2152,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                using a fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when
++                the region has no mapped timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
