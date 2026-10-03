@@ -126,6 +126,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "RD", "ROAD",
         "AVE", "AVENUE");
 
+    /**
+     * Inclusive 4-digit postcode range permitted per region, keyed by the region derived from the
+     * owner's city ({@link Owner#getLocality()}): NSW 2000-2099, VIC 3000-3099, QLD 4000-4099. A
+     * region not listed (the {@code 'UNKNOWN'} locality of a city with no known region) accepts any
+     * 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -171,6 +182,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         requireDailyCapacity(registrationDate);
         requireCityHasCapacity(owner.getCity());
+        validatePostcode(owner);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             joinHousehold(owner);
@@ -237,6 +249,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
         if (cityOwnerCount >= MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(city);
+        }
+    }
+
+    /**
+     * Validates a supplied postcode against the owner's region. Postcode is optional: an owner with no
+     * postcode is accepted unchanged. When present it is a 4-digit string (enforced by the request
+     * schema) that must fall within the inclusive range permitted for the region derived from the
+     * owner's city ({@link #REGION_POSTCODE_RANGES}); a city whose region is unknown accepts any 4-digit
+     * postcode. An out-of-range postcode is rejected with a 400 Bad Request.
+     *
+     * @param owner the owner being created, with its city and postcode set
+     * @throws InvalidOwnerFieldsException if a supplied postcode is out of range for the city's region
+     */
+    private void validatePostcode(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(owner.getLocality());
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
         }
     }
 

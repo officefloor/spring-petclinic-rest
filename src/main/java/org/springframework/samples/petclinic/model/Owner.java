@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -223,6 +226,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public Boolean getBulkSignupWarning() {
