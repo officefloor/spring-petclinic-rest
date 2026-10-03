@@ -1,0 +1,71 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+import java.util.Locale;
+import java.util.Objects;
+
+import org.springframework.samples.petclinic.model.Owner;
+
+/**
+ * The identity of a household: the same last name and the same address, compared
+ * case-insensitively with runs of whitespace collapsed to a single space (and trimmed), so
+ * e.g. "110  W.  Liberty St." matches "110 w. liberty st.".
+ *
+ * <p>Single-sources the "what is a household" definition shared by
+ * {@link RejectDuplicateHousehold} (who is rejected) and {@link AssignHousehold} (who shares a
+ * {@code householdId}); the two steps must agree on it, so it lives in exactly one place.
+ */
+final class HouseholdKey {
+
+    private final String lastName;
+
+    private final String address;
+
+    private HouseholdKey(String lastName, String address) {
+        this.lastName = lastName;
+        this.address = address;
+    }
+
+    /** The household the given owner belongs to. */
+    static HouseholdKey of(Owner owner) {
+        return new HouseholdKey(normalize(owner.getLastName()), normalize(owner.getAddress()));
+    }
+
+    /** Whether {@code owner} belongs to this household. */
+    boolean matches(Owner owner) {
+        return equals(of(owner));
+    }
+
+    /** Stable canonical form of the key, suitable for deriving a shared identifier. */
+    String canonical() {
+        return lastName + "|" + address;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof HouseholdKey other)) {
+            return false;
+        }
+        return lastName.equals(other.lastName) && address.equals(other.address);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lastName, address);
+    }
+
+    @Override
+    public String toString() {
+        return canonical();
+    }
+
+    /** Lower-case, trim, and collapse any run of whitespace to a single space. */
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+}
