@@ -27,7 +27,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
@@ -354,18 +353,27 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * The schema version of the structured owner-created audit event. Version 2 carries the
+     * {@code schemaVersion} field itself and the owner's {@code ownerSegment} recomputed from the
+     * version-2 identity, alongside the version-2 {@code memberId}.
+     */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
+
+    /**
      * Build the immutable structured owner-created event emitted alongside the human-readable audit
      * line and serialize it to JSON. {@code seq} is a process-wide monotonically increasing integer
      * stamped once per create, so the ordering of creates is recoverable from the audit stream.
      *
-     * <p>The event carries the owner's <em>primary identifier</em> under the {@code memberId} field
-     * (see {@link #primaryIdentifier(Owner)}), the unified member id that replaced the former
-     * customerCode and membershipNumber.
+     * <p>The schema-version-2 event stamps {@code schemaVersion} of 2 and carries the owner's
+     * {@code ownerSegment} recomputed from the version-2 identity. It carries the owner's
+     * <em>primary identifier</em> under the {@code memberId} field (see {@link #primaryIdentifier(Owner)}),
+     * the unified version-2 member id that replaced the former customerCode and membershipNumber.
      */
     private String ownerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
-            OWNER_CREATED_SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner),
-            owner.getMembershipLevel(), "OWNER_CREATED");
+            AUDIT_SCHEMA_VERSION, OWNER_CREATED_SEQ.incrementAndGet(), owner.getId(),
+            primaryIdentifier(owner), owner.getMembershipLevel(), owner.getOwnerSegment(),
+            "OWNER_CREATED");
         return AUDIT_MAPPER.writeValueAsString(event);
     }
 
@@ -378,12 +386,13 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Immutable structured owner-created audit event. Serialized to the JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}; the
-     * {@code memberId} field carries the owner's primary identifier.
+     * Immutable structured owner-created audit event (schema version 2). Serialized to the JSON object
+     * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}}; the {@code memberId} field carries the owner's version-2 primary
+     * identifier and {@code ownerSegment} the owner segment recomputed from the version-2 identity.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-        Integer membershipLevel, String event) {
+    private record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+        Integer membershipLevel, String ownerSegment, String event) {
     }
 
     /**
@@ -471,15 +480,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Compute an owner's deterministic {@code householdId}: the first 12 lower-case hex characters of
-     * SHA-256 over the UTF-8 bytes of {@code normalizedLastName + '|' + postcode} (see
-     * {@link #householdKey(Owner)}). Owners with the same last name and postcode therefore share the
-     * same {@code householdId} automatically. Returns {@code null} when the owner has no last name or
-     * postcode, so it does not belong to a shared household.
+     * Compute an owner's deterministic version-2 {@code householdId}: the first 12 lower-case hex
+     * characters of SHA-256 over the UTF-8 bytes of {@code 'V2' + '|' + normalizedLastName + '|' +
+     * postcode} (see {@link #householdKey(Owner)}), with the fixed {@link Owner#IDENTITY_VERSION_TAG
+     * 'V2'} tag mixed in so the value never coincides with the version-1 householdId. Owners with the
+     * same last name and postcode therefore share the same {@code householdId} automatically. Returns
+     * {@code null} when the owner has no last name or postcode, so it does not belong to a shared
+     * household.
      */
     private String computeHouseholdId(Owner owner) {
         String key = householdKey(owner);
-        return key == null ? null : Sha256.hexPrefix(key, 6, false);
+        return key == null ? null
+            : Sha256.hexPrefix(Owner.IDENTITY_VERSION_TAG + "|" + key, 6, false);
     }
 
     /**
@@ -508,21 +520,25 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's unified {@code memberId} as {@code '<REGION><FY><HASH8><CHK>'}: REGION the
-     * region code resolved from the owner's postcode (falling back to the owner's city, else
-     * {@code 'UNKNOWN'}); FY the two-digit fiscal year of the owner's business-day-adjusted
-     * {@code registrationDate} (the fiscal year starting 1 July); HASH8 the first 8 upper-case hex
-     * characters of SHA-256 computed over the owner's normalized telephone concatenated with the
-     * owner's last name; and CHK a single Luhn check digit computed over the digits of
-     * {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW271A2B3C4D5'}). The identity is fully derived
-     * from the owner's own attributes.
+     * Build an owner's unified version-2 {@code memberId} as {@code '<REGION><FY><HASH8><CHK>'}:
+     * REGION the version-2 region code — the region resolved from the owner's postcode (falling back
+     * to the owner's city, else {@code 'UNKNOWN'}) with the fixed {@link Owner#IDENTITY_VERSION_TAG
+     * 'V2'} tag mixed in (e.g. {@code 'NSWV2'}); FY the two-digit fiscal year of the owner's
+     * business-day-adjusted {@code registrationDate} (the fiscal year starting 1 July); HASH8 the
+     * first 8 upper-case hex characters of SHA-256 computed over the {@code 'V2'} tag, the owner's
+     * normalized telephone and the owner's last name; and CHK a single Luhn check digit computed over
+     * the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSWV2271A2B3C4D5'}). The {@code 'V2'}
+     * tag mixed into both the region and the hash guarantees the id never coincides with the owner's
+     * version-1 memberId. The identity is fully derived from the owner's own attributes.
      * <p>
      * When the derived id collides with an existing owner's {@code memberId}, a {@code '-<n>'}
      * suffix is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct
      * owners always receive distinct member ids.
      */
     private String generateMemberId(Owner owner) {
-        String region = PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+        // version-2 region code: the owner's plain region (its locality) with the fixed 'V2' tag
+        // mixed in (e.g. 'NSWV2'), used only inside the identifier. The reported locality stays plain.
+        String region = owner.getLocality() + Owner.IDENTITY_VERSION_TAG;
         String fy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String core = region + fy + memberHash(owner);
         return deduplicateMemberId(core + luhnCheckDigit(core));
@@ -549,14 +565,14 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Compute the HASH8 segment of an owner's {@code memberId}: the first 8 upper-case hex
-     * characters of SHA-256 over the UTF-8 bytes of the owner's normalized telephone concatenated
-     * with the owner's last name.
+     * Compute the HASH8 segment of an owner's version-2 {@code memberId}: the first 8 upper-case hex
+     * characters of SHA-256 over the UTF-8 bytes of the fixed {@link Owner#IDENTITY_VERSION_TAG 'V2'}
+     * tag concatenated with the owner's normalized telephone and the owner's last name.
      */
     private String memberHash(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return Sha256.hexPrefix(telephone + lastName, 4, true);
+        return Sha256.hexPrefix(Owner.IDENTITY_VERSION_TAG + telephone + lastName, 4, true);
     }
 
     /**

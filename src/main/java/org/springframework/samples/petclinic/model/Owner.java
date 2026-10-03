@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.DisposableDomains;
+import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
 
@@ -373,26 +374,21 @@ public class Owner extends Person {
     }
 
     /**
-     * Derive the owner's read-only {@code fiscalYear}: {@code 'FY<YY>'} where YY is the two-digit
-     * fiscal-year (FY) segment carried by the owner's {@code memberId}
-     * ({@code '<REGION><FY><HASH8><CHK>'}), so the reported fiscal year and the FY embedded in the
-     * memberId stay in lock-step. Falls back to computing YY from the last two digits of the fiscal
-     * year of the owner's business-day-adjusted {@code registrationDate} (the fiscal year starting on
-     * 1 July, so a registration on or after 1 July belongs to the fiscal year ending the following
-     * 30 June) when the owner has no {@code memberId} yet. Returns {@code null} when the owner has
-     * neither a {@code memberId} nor a {@code registrationDate}, so the field is omitted from the
-     * response.
+     * Derive the owner's read-only {@code fiscalYear}: {@code 'FY<YY>'} where YY is the last two
+     * digits of the fiscal year of the owner's business-day-adjusted {@code registrationDate} (the
+     * fiscal year starting on 1 July, so a registration on or after 1 July belongs to the fiscal year
+     * ending the following 30 June). This is the same fiscal year the FY segment of the owner's
+     * version-2 {@code memberId} is built from, so the two stay in lock-step. Falls back to the FY
+     * segment carried by the {@code memberId} when the owner has no {@code registrationDate}, and
+     * returns {@code null} when the owner has neither, so the field is omitted from the response.
      */
     @Transient
     public String getFiscalYear() {
+        if (this.registrationDate != null) {
+            return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+        }
         String fy = fiscalYearSegment(this.memberId);
-        if (fy != null) {
-            return "FY" + fy;
-        }
-        if (this.registrationDate == null) {
-            return null;
-        }
-        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+        return fy == null ? null : "FY" + fy;
     }
 
     /**
@@ -406,19 +402,57 @@ public class Owner extends Person {
     }
 
     /**
-     * Derive the owner's {@code identityKey}, the single value used to detect duplicate owners: the
-     * full lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' +
-     * soundex(lastName)}. The telephone and email are already stored in their canonical (E.164 /
-     * lower-cased) form, so a {@code null} or blank email contributes an empty middle segment, and
-     * the last name is reduced to its {@link Soundex} code (empty when there is no last name). Two
-     * owners are duplicates only when their whole {@code identityKey} is equal.
+     * The fixed version tag mixed into every version-2 owner identifier. Prefixing the hash inputs,
+     * and the member id's embedded region code, with this tag guarantees every version-2 value
+     * differs from the value the same owner would have produced under version 1, so no version-1
+     * identifier is ever reproduced.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * Derive the owner's version-2 {@code identityKey}, the single value used to detect duplicate
+     * owners: the full lower-case hex SHA-256 of {@code 'V2' + '|' + normalizedTelephone + '|' +
+     * lowerEmail + '|' + soundex(lastName)}. The fixed {@link #IDENTITY_VERSION_TAG 'V2'} tag is
+     * mixed in so this version-2 key never coincides with the version-1 key. The telephone and email
+     * are already stored in their canonical (E.164 / lower-cased) form, so a {@code null} or blank
+     * email contributes an empty segment, and the last name is reduced to its {@link Soundex} code
+     * (empty when there is no last name). Two owners are duplicates only when their whole
+     * {@code identityKey} is equal.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
         String soundexPart = Soundex.encode(getLastName());
-        return Sha256.hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+        return Sha256.hex(IDENTITY_VERSION_TAG + "|" + telephonePart + "|" + emailPart + "|" + soundexPart);
+    }
+
+    /**
+     * Derive the owner's read-only {@code locality}: the plain region code resolved from the owner's
+     * postcode range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), then the canonical
+     * region of the owner's city ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), else
+     * {@code 'UNKNOWN'}. The locality is <em>not</em> an identifier, so it is always the plain region
+     * code and never carries the version-2 {@link #IDENTITY_VERSION_TAG 'V2'} tag embedded inside the
+     * owner's {@code memberId}.
+     */
+    @Transient
+    public String getLocality() {
+        return PostcodeRules.resolveRegion(this.postcode, this.city);
+    }
+
+    /**
+     * Derive the owner's read-only {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code PREMIUM} when the owner's {@code membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the owner's {@link #getLocality() locality} is a
+     * known region, otherwise {@code REGIONAL}. The region used here is the plain locality, so the
+     * version-2 {@code 'V2'} tag embedded inside the owner's identifiers never leaks into the owner
+     * segment.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = "UNKNOWN".equals(getLocality()) ? "REGIONAL" : "METRO";
+        return tier + "_" + area;
     }
 
     public boolean isBulkSignupWarning() {

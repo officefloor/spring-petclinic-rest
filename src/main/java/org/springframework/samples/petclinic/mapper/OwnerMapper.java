@@ -8,9 +8,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
-import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.samples.petclinic.util.RegionTimezones;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
@@ -35,7 +35,23 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
     @Mapping(target = "riskFlag", expression = "java(owner.isRiskFlag())")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Group the owner's version-2 identifiers under the nested {@code identity} object of the owner
+     * response: the unified {@code memberId}, the duplicate-detection {@code identityKey} and the
+     * shared {@code householdId}, each already derived with the version-2 algorithm that mixes in the
+     * fixed {@code 'V2'} version tag.
+     */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     /**
      * Derive the owner's read-only {@code selfLink}: the canonical API path of this owner,
@@ -85,43 +101,36 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's read-only {@code locality}: the REGION segment of the owner's
-     * {@code memberId} ({@code '<REGION><FY><HASH8><CHK>'}), the unified member id the owner is
-     * assigned at creation. Falls back to resolving the region directly from the owner's postcode
-     * range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), then the canonical region
-     * of the owner's city ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), else {@code 'UNKNOWN'},
-     * when the owner has no {@code memberId} yet. Sourcing it from the identity keeps the owner's
-     * reported locality and its {@code memberId} region in lock-step.
+     * Derive the owner's read-only {@code locality}: the plain region code resolved directly from the
+     * owner's postcode range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), then the
+     * canonical region of the owner's city ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), else
+     * {@code 'UNKNOWN'} (see {@link Owner#getLocality()}). The locality is not an identifier, so it is
+     * always the plain region code and never carries the version-2 {@code 'V2'} tag embedded inside
+     * the owner's {@code memberId}.
      */
     default String toLocality(Owner owner) {
-        String region = Owner.regionSegment(owner.getMemberId());
-        if (region != null) {
-            return region;
-        }
-        return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+        return owner.getLocality();
     }
 
     /**
-     * Derive the owner's read-only {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
-     * {@code PREMIUM} when the owner's {@code membershipLevel} is 3 or more, otherwise
-     * {@code STANDARD}. AREA is {@code METRO} when the owner's {@code locality} resolves to a known
-     * region, otherwise {@code REGIONAL}. The known-region test leans on {@link #toLocality(Owner)},
-     * which collapses every city/postcode not in the central region tables to the {@code 'UNKNOWN'}
-     * sentinel, so a region added or renamed in those tables is reflected here in lock-step.
+     * Derive the owner's read-only {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'} (see
+     * {@link Owner#getOwnerSegment()}). TIER is {@code PREMIUM} when the owner's
+     * {@code membershipLevel} is 3 or more, otherwise {@code STANDARD}; AREA is {@code METRO} when the
+     * owner's plain {@link #toLocality(Owner) locality} is a known region, otherwise
+     * {@code REGIONAL}. The region used is the plain locality, so the version-2 {@code 'V2'} tag
+     * embedded inside the owner's identifiers never leaks into the owner segment.
      */
     default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
-        String tier = owner.getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
-        String area = "UNKNOWN".equals(toLocality(owner)) ? "REGIONAL" : "METRO";
-        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+        return OwnerDto.OwnerSegmentEnum.fromValue(owner.getOwnerSegment());
     }
 
     /**
      * Derive the owner's read-only {@code timezone}: the IANA timezone name for the owner's
      * locality/region, looked up from the fixed region-to-timezone table ({@code NSW->Australia/Sydney,
-     * VIC->Australia/Melbourne, QLD->Australia/Brisbane}). The region is the same value reported as the
-     * owner's {@code locality} (see {@link #toLocality(Owner)}), so timezone and locality stay in
-     * lock-step. Returns {@code null} when the region has no mapped timezone, so the field is omitted
-     * from the response.
+     * VIC->Australia/Melbourne, QLD->Australia/Brisbane}). The region is the same plain value reported
+     * as the owner's {@code locality} (see {@link #toLocality(Owner)}), so timezone and locality stay
+     * in lock-step. Returns {@code null} when the region has no mapped timezone, so the field is
+     * omitted from the response.
      */
     default String toTimezone(Owner owner) {
         return RegionTimezones.timezoneOf(toLocality(owner));
