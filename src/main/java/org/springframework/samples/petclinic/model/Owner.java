@@ -24,6 +24,7 @@ import jakarta.validation.constraints.Pattern;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
@@ -631,23 +632,42 @@ public class Owner extends Person {
     /**
      * Resolves the effective registration date and rolls it onto a business day. An absent
      * ({@code null}) value defaults to the server's current date; a supplied value is used as-is.
-     * The resulting date is then rolled forward so it never falls on a weekend: a Saturday or Sunday
-     * becomes the following Monday, while any weekday is returned unchanged.
+     * The resulting date is then rolled forward so it never falls on a weekend or a listed public
+     * holiday: starting from the effective date, the date advances one day at a time while it lands
+     * on a Saturday, a Sunday, or a date in {@link #PUBLIC_HOLIDAYS}, stopping on the first
+     * non-holiday business day. A date already on a business day is returned unchanged.
      *
      * <p>This is the single definition of both the defaulting and the business-day roll, used
      * wherever the effective registration date is needed - by the {@code @PrePersist} hook that
      * stamps the owner and by the create endpoint that counts owners per business day.
      *
      * @param supplied the registration date from the request, or {@code null} when none was supplied
-     * @return the effective registration date, guaranteed to fall on a business day
+     * @return the effective registration date, guaranteed to fall on a non-holiday business day
      */
     public static LocalDate resolveRegistrationDate(LocalDate supplied) {
         LocalDate effective = supplied != null ? supplied : LocalDate.now();
-        return switch (effective.getDayOfWeek()) {
-            case SATURDAY -> effective.plusDays(2);
-            case SUNDAY -> effective.plusDays(1);
-            default -> effective;
-        };
+        while (!isBusinessDay(effective)) {
+            effective = effective.plusDays(1);
+        }
+        return effective;
+    }
+
+    /**
+     * The fixed list of public holidays that the registration date rolls past, alongside weekends.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
+     * A business day is any date that is neither a weekend day nor a listed public holiday.
+     */
+    private static boolean isBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !PUBLIC_HOLIDAYS.contains(date);
     }
 
     protected Set<Pet> getPetsInternal() {
