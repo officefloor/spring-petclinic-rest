@@ -116,7 +116,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where {@code YY} is
-     * the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
+     * the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}). Derived
      * from the owner's own customer code and registration date; {@code null} when either is absent.
      *
      * @return the membership number, or {@code null} when it cannot be derived
