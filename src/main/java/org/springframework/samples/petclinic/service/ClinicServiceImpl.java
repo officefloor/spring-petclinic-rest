@@ -33,11 +33,14 @@ import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import tools.jackson.databind.ObjectMapper;
+
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -53,6 +56,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     /** Dedicated audit channel; create side-effects are published here for auditing. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Monotonically increasing sequence number stamped onto each structured owner-created event. */
+    private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong(0);
+
+    /** Serializes the structured audit events emitted on the {@code AUDIT} channel. */
+    private static final ObjectMapper AUDIT_MAPPER = new ObjectMapper();
 
     /**
      * When more owners than this have already been created on a given day (by {@code
@@ -326,7 +335,43 @@ public class ClinicServiceImpl implements ClinicService {
             AUDIT.info("owner created id={} customerCode={} membershipLevel={} membershipNumber={} registrationDate={}",
                 owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
                 owner.getMembershipNumber(), owner.getRegistrationDate());
+            AUDIT.info(ownerCreatedEvent(owner));
         }
+    }
+
+    /**
+     * Build the immutable structured owner-created event emitted alongside the human-readable audit
+     * line and serialize it to JSON. {@code seq} is a process-wide monotonically increasing integer
+     * stamped once per create, so the ordering of creates is recoverable from the audit stream.
+     *
+     * <p>The event carries the owner's <em>current primary identifier</em> under the
+     * {@code customerCode} field (see {@link #primaryIdentifier(Owner)}); when the customerCode is
+     * later unified into the memberId, that single method changes and the event automatically carries
+     * the memberId instead.
+     */
+    private String ownerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(
+            OWNER_CREATED_SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner),
+            owner.getMembershipLevel(), "OWNER_CREATED");
+        return AUDIT_MAPPER.writeValueAsString(event);
+    }
+
+    /**
+     * The owner's current primary identifier carried by audit events. Today this is the
+     * {@code customerCode}; the single source of truth lives here so that when the customerCode is
+     * unified into the memberId, only this method changes and every emitted event follows.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
+    /**
+     * Immutable structured owner-created audit event. Serialized to the JSON object
+     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}; the
+     * {@code customerCode} field carries the owner's current primary identifier.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+        Integer membershipLevel, String event) {
     }
 
     /**
