@@ -151,7 +151,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code "<customerCode>-M<YY>"} where
      * YY is the last two digits of the registration date's year
-     * (e.g. {@code "SMI-0007-M26"}). Derived from the owner's own fields; null when
+     * (e.g. {@code "TOW-SMI-0007-M26"}). Derived from the owner's own fields; null when
      * either the customer code or registration date is absent.
      */
     @Transient
