@@ -510,6 +510,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, formatted {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. {@code TIER}
+     * is {@code 'PREMIUM'} when the {@link #getMembershipLevel() membership level} is 3 or more,
+     * otherwise {@code 'STANDARD'}. {@code AREA} is {@code 'METRO'} when the {@link #getLocality()
+     * locality} is a known region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
+     *
+     * @return the owner segment string
+     */
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * The region the customer code's {@code <REGION>} component is built from: the postcode looked up
      * by range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the fixed
      * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or
