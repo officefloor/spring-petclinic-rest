@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -10,8 +8,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Rejects creating an owner when another owner already has the same last name and the
- * same address, compared case-insensitively with collapsed whitespace. The request can
- * opt out of the rule by setting {@code sharesHousehold} true.
+ * same address, compared case-insensitively with collapsed whitespace (see
+ * {@link Households}). The request can opt out of the rule by setting
+ * {@code sharesHousehold} true, in which case {@link AssignHousehold} joins the owner to
+ * the shared household instead.
  */
 public class EnsureUniqueHousehold {
 
@@ -20,22 +20,12 @@ public class EnsureUniqueHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String lastName = Households.normalize(request.getLastName());
+        String address = Households.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (Households.matches(existing, lastName, address)) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
-    }
-
-    /** Lower-cases and collapses runs of whitespace to a single space so the comparison
-     *  ignores case and incidental spacing differences. */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
