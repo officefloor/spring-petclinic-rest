@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 615689bfe..41e3f76fa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -117,6 +120,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     public boolean isSharesHousehold() {
+         return this.sharesHousehold;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index a221655a1..e1227881e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Set;
++import java.util.UUID;
+ import java.util.function.Supplier;
+ 
+ /**
+@@ -237,8 +238,14 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
+             throw new DuplicateTelephoneException(owner.getTelephone());
+         }
+-        if (owner.isNew() && !owner.isSharesHousehold() && isDuplicateHousehold(owner)) {
+-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
++        if (owner.isNew()) {
++            List<Owner> householdMembers = findHouseholdMembers(owner);
++            if (!householdMembers.isEmpty()) {
++                if (!owner.isSharesHousehold()) {
++                    throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
++                }
++                owner.setHouseholdId(resolveHouseholdId(householdMembers));
++            }
+         }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+@@ -251,19 +258,42 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Report whether another owner already belongs to the same household as {@code owner}, i.e. has
+-     * the same last name and the same address. Both values are compared case-insensitively with
+-     * collapsed whitespace, so differences in letter case or runs of spaces are ignored.
++     * Find the owners that already belong to the same household as {@code owner}, i.e. have the same
++     * last name and the same address. Both values are compared case-insensitively with collapsed
++     * whitespace, so differences in letter case or runs of spaces are ignored. Returns an empty list
++     * when the owner has no last name or address to match on.
+      */
+-    private boolean isDuplicateHousehold(Owner owner) {
++    private List<Owner> findHouseholdMembers(Owner owner) {
+         String lastName = normalizeHouseholdKey(owner.getLastName());
+         String address = normalizeHouseholdKey(owner.getAddress());
+         if (lastName == null || address == null) {
+-            return false;
++            return List.of();
+         }
+         return ownerRepository.findAll().stream()
+-            .anyMatch(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
+-                && address.equals(normalizeHouseholdKey(existing.getAddress())));
++            .filter(existing -> lastName.equals(normalizeHouseholdKey(existing.getLastName()))
++                && address.equals(normalizeHouseholdKey(existing.getAddress())))
++            .toList();
++    }
++
++    /**
++     * Resolve the stable {@code householdId} shared by a household. If any existing member already
++     * carries one it is reused so the identifier stays stable as further owners join; otherwise a
++     * new one is generated. The resolved value is back-filled onto every member that is missing it
++     * (or has a different one) so all members of the household share the same identifier.
++     */
++    private String resolveHouseholdId(List<Owner> members) {
++        String householdId = members.stream()
++            .map(Owner::getHouseholdId)
++            .filter(id -> id != null && !id.isBlank())
++            .findFirst()
++            .orElseGet(() -> UUID.randomUUID().toString());
++        for (Owner member : members) {
++            if (!householdId.equals(member.getHouseholdId())) {
++                member.setHouseholdId(householdId);
++                ownerRepository.save(member);
++            }
++        }
++        return householdId;
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..a3ba7e5a4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..82270213a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 440dfe066..f11ed8d50 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2117,6 +2117,18 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: >-
++                A stable shared identifier linking owners that belong to the
++                same household (same lastName and address). Assigned when an
++                owner is created with 'sharesHousehold' true and joins an
++                existing household; all members of a household share the same
++                value. Absent for owners that do not belong to a shared
++                household.
++              type: string
++              example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
