@@ -27,6 +27,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "possibleDuplicate",
+        expression = "java(Boolean.TRUE.equals(owner.getPossibleDuplicate()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
