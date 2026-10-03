@@ -16,11 +16,11 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown when an attempt is made to create an {@code Owner} whose derived {@code identityKey}
- * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) exactly equals that of
- * an existing owner. This single key consolidates what used to be the separate telephone, email and
- * household duplicate checks: because the telephone is part of the key, two members of the same
- * household with different telephones have different keys and are both allowed; only an exact
+ * Thrown when an attempt is made to create an {@code Owner} whose derived {@code identityKey} (the
+ * SHA-256 hex of {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)})
+ * exactly equals that of an existing owner. This is the single duplicate check: because the telephone
+ * is part of the key, two members of the same household with different telephones have different keys
+ * and are both allowed (the newcomer is instead soft-flagged a possible duplicate); only an exact
  * whole-key match is a duplicate. Enforcing it in the service layer keeps the invariant in one place
  * regardless of which caller initiates the create; the REST layer maps this to a {@code 409 Conflict}.
  */

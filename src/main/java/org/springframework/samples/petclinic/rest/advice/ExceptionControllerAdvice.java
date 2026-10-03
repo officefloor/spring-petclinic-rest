@@ -91,9 +91,9 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateIdentityException}, raised by the service layer when a new owner's whole
-     * derived {@code identityKey} (normalized telephone, email and householdId) equals an existing
-     * owner's, by returning a 409 Conflict status. This single handler replaces the former separate
-     * telephone, email and household duplicate handlers.
+     * derived {@code identityKey} (the SHA-256 of normalized telephone, email and soundex(lastName))
+     * equals an existing owner's, by returning a 409 Conflict status. This single handler replaces the
+     * former separate telephone, email and household duplicate handlers.
      *
      * @param e The {@link DuplicateIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.

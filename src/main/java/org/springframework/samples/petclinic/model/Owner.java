@@ -16,6 +16,8 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -396,18 +398,19 @@ public class Owner extends Person {
     }
 
     /**
-     * Derive the owner's {@code identityKey}, the single value used to detect duplicate owners:
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. The telephone and
-     * email are already stored in their canonical (E.164 / lower-cased) form, so a {@code null} or
-     * blank email contributes an empty segment and an absent {@code householdId} an empty segment.
-     * Two owners are duplicates only when their whole {@code identityKey} is equal.
+     * Derive the owner's {@code identityKey}, the single value used to detect duplicate owners: the
+     * full lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}. The telephone and email are already stored in their canonical (E.164 /
+     * lower-cased) form, so a {@code null} or blank email contributes an empty middle segment, and
+     * the last name is reduced to its {@link Soundex} code (empty when there is no last name). Two
+     * owners are duplicates only when their whole {@code identityKey} is equal.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        String soundexPart = Soundex.encode(getLastName());
+        return Sha256.hex(telephonePart + "|" + emailPart + "|" + soundexPart);
     }
 
     public boolean isBulkSignupWarning() {
@@ -427,9 +430,9 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner was flagged at creation as a possible (soft) duplicate: it is not a hard
-     * {@code identityKey} duplicate, but shares an existing owner's last name and postcode while
-     * carrying a different telephone. The owner is still created; this flag is advisory.
+     * Whether this owner was flagged at creation as a possible (soft) duplicate: its
+     * {@code identityKey} differs from every existing owner's, but it shares an existing owner's
+     * {@code soundex(lastName)} and postcode. The owner is still created; this flag is advisory.
      */
     public boolean isPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -440,8 +443,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the existing owner this one soft-matched against (same last name and postcode,
-     * different telephone), or {@code null} when {@link #isPossibleDuplicate()} is {@code false}.
+     * The id of the existing owner this one soft-matched against (same {@code soundex(lastName)} and
+     * postcode, different {@code identityKey}), or {@code null} when {@link #isPossibleDuplicate()}
+     * is {@code false}.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;

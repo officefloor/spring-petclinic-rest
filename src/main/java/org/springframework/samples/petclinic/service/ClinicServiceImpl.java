@@ -15,9 +15,6 @@
  */
 package org.springframework.samples.petclinic.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
@@ -31,6 +28,8 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.PostcodeRules;
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -263,27 +262,22 @@ public class ClinicServiceImpl implements ClinicService {
         LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         owner.setRegistrationDate(registrationDate);
-        // Whether this owner is joining an existing household (shares a last name and postcode with
-        // owners already on file). Such a member is a legitimate household join, not a suspected
-        // duplicate, so it is deliberately not soft-flagged below.
-        boolean joiningExistingHousehold = false;
         if (owner.isNew()) {
             // The householdId is deterministic: the first 12 hex characters of SHA-256 over
             // (normalizedLastName | postcode), so owners with the same last name and postcode share
-            // it automatically. It is part of the owner's identityKey, so it is resolved first.
+            // it automatically. It no longer feeds the identityKey, but is still reported and drives
+            // the household member count and level cap below.
             owner.setHouseholdId(computeHouseholdId(owner));
             // The household is keyed on (last name, postcode), so the members are the existing owners
             // sharing both with this owner.
             List<Owner> householdMembers = findHouseholdMembers(owner);
             // Size of the household after this create: the existing members plus this new owner.
             owner.setHouseholdMemberCount(householdMembers.size() + 1);
-            // A new owner joining an existing household is accepted as a household member; it is not a
-            // suspected duplicate. Rather than being rejected, its derived membershipLevel is capped at
-            // one above the current maximum membershipLevel among its household members, so a new member
+            // A new owner joining an existing household has its derived membershipLevel capped at one
+            // above the current maximum membershipLevel among its household members, so a new member
             // can never leap more than one level past the household. With no existing member no cap
             // applies.
             if (!householdMembers.isEmpty()) {
-                joiningExistingHousehold = true;
                 int maxLevel = householdMembers.stream()
                     .mapToInt(Owner::getMembershipLevel)
                     .max()
@@ -291,17 +285,17 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setMembershipLevelCap(maxLevel + 1);
             }
         }
-        // Single consolidated duplicate check: reject only when the new owner's WHOLE identityKey
-        // (normalizedTelephone | email-or-empty | householdId) equals an existing owner's. This
-        // subsumes the former separate telephone, email and household checks.
+        // Single duplicate check: reject only when the new owner's WHOLE identityKey (the SHA-256 of
+        // normalizedTelephone | email-or-empty | soundex(lastName)) equals an existing owner's. This
+        // is the only 409; there is no separate household-duplicate rejection.
         if (owner.isNew() && isIdentityKeyAlreadyUsed(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
-        // Soft-match: not a hard identityKey duplicate, but shares an existing owner's last name and
-        // postcode while carrying a different telephone. Still created, but flagged as a possible
-        // duplicate pointing at the matching owner. An owner joining an existing household is not a
-        // suspected duplicate, so it is never flagged.
-        if (owner.isNew() && !joiningExistingHousehold) {
+        // Soft-match: not a hard identityKey duplicate, but shares an existing owner's
+        // soundex(lastName) and postcode. Still created, but flagged as a possible duplicate pointing
+        // at the matching owner. Because the telephone is part of the identityKey, two owners with the
+        // same last name and postcode but different telephones are flagged here rather than rejected.
+        if (owner.isNew()) {
             Owner softMatch = findPossibleDuplicate(owner);
             if (softMatch != null) {
                 owner.setPossibleDuplicate(true);
@@ -337,9 +331,9 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Report whether {@code owner}'s derived {@code identityKey} is already used by any existing
-     * owner. The key consolidates telephone, email and household into one value, so two owners
-     * collide only when their whole key is equal (see {@link Owner#getIdentityKey()}). By this point
-     * the owner's {@code householdId} has been resolved, so its key is complete.
+     * (non-deleted) owner. The key is the SHA-256 of telephone, email and {@code soundex(lastName)}
+     * combined, so two owners collide only when their whole key is equal (see
+     * {@link Owner#getIdentityKey()}).
      */
     private boolean isIdentityKeyAlreadyUsed(Owner owner) {
         String identityKey = owner.getIdentityKey();
@@ -349,24 +343,38 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find an existing owner this (new) owner soft-matches against: one sharing the same last name
-     * (compared case-insensitively with collapsed whitespace, like household matching) and the same
-     * postcode, but carrying a different telephone. Returns the lowest-id such owner, or {@code null}
-     * when the owner has no last name or postcode to match on, or nothing matches. The caller only
-     * invokes this once the hard {@code identityKey} duplicate check has already passed.
+     * Find an existing owner this (new) owner soft-matches against: one sharing the same
+     * {@code soundex(lastName)} and postcode, but carrying a different {@code identityKey}. Returns
+     * the lowest-id such owner, or {@code null} when the owner has no last name or postcode to match
+     * on, or nothing matches. The caller only invokes this once the hard {@code identityKey}
+     * duplicate check has already passed.
      */
     private Owner findPossibleDuplicate(Owner owner) {
-        String key = householdKey(owner);
+        String key = soundexPostcodeKey(owner);
         if (key == null) {
             return null;
         }
-        String telephone = owner.getTelephone();
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> key.equals(householdKey(existing))
-                && !Objects.equals(telephone, existing.getTelephone()))
+            .filter(existing -> key.equals(soundexPostcodeKey(existing))
+                && !identityKey.equals(existing.getIdentityKey()))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
+    }
+
+    /**
+     * Build the soft-match key, {@code soundex(lastName) + '|' + postcode}: the basis on which a new
+     * owner is flagged a possible duplicate of an existing owner. Returns {@code null} when the owner
+     * has no last name to encode or no postcode to key on.
+     */
+    private String soundexPostcodeKey(Owner owner) {
+        String soundex = Soundex.encode(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (soundex.isEmpty() || postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        return soundex + "|" + postcode;
     }
 
     /**
@@ -414,7 +422,7 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private String computeHouseholdId(Owner owner) {
         String key = householdKey(owner);
-        return key == null ? null : sha256Hex(key, 6, false);
+        return key == null ? null : Sha256.hexPrefix(key, 6, false);
     }
 
     /**
@@ -487,30 +495,7 @@ public class ClinicServiceImpl implements ClinicService {
     private String customerHash(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return sha256Hex(telephone + lastName, 4, true);
-    }
-
-    /**
-     * Compute the leading hex of SHA-256 over the UTF-8 bytes of {@code input}: the first
-     * {@code bytes} bytes of the digest rendered as {@code 2 * bytes} hex characters, upper-case when
-     * {@code upperCase} is {@code true}, otherwise lower-case. Shared by the derived identifiers that
-     * are built from a SHA-256 prefix (e.g. the household id and the customer-code hash), so the
-     * digest handling and the "SHA-256 not available" error live in one place.
-     */
-    private String sha256Hex(String input, int bytes, boolean upperCase) {
-        byte[] digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but not available", e);
-        }
-        String format = upperCase ? "%02X" : "%02x";
-        StringBuilder hex = new StringBuilder(bytes * 2);
-        for (int i = 0; i < bytes; i++) {
-            hex.append(String.format(format, digest[i]));
-        }
-        return hex.toString();
+        return Sha256.hexPrefix(telephone + lastName, 4, true);
     }
 
     /**
