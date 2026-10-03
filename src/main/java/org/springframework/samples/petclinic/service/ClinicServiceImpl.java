@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 
 import org.slf4j.Logger;
@@ -531,19 +532,28 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Roll {@code date} forward to the next business day when it falls on a weekend: a Saturday or
-     * Sunday becomes the following Monday, while a weekday is returned unchanged. Registration dates
-     * are required to fall on a business day.
+     * Fixed public holidays that registration dates must never fall on. Together with weekends these
+     * are the non-business days skipped by {@link #toBusinessDay(LocalDate)}.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"),
+        LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
+    /**
+     * Roll {@code date} forward to the next business day, skipping weekends (Saturday and Sunday) and
+     * the fixed {@link #PUBLIC_HOLIDAYS public holidays}. A date already on a business day is returned
+     * unchanged. Registration dates are required to fall on a business day.
      */
     private LocalDate toBusinessDay(LocalDate date) {
-        switch (date.getDayOfWeek()) {
-            case SATURDAY:
-                return date.plusDays(2);
-            case SUNDAY:
-                return date.plusDays(1);
-            default:
-                return date;
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY
+            || date.getDayOfWeek() == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
         }
+        return date;
     }
 
     /**
