@@ -18,7 +18,7 @@ import java.util.Map;
  * requires exactly 9 national digits and {@code '+1'} exactly 10. A number whose country
  * code is known but whose national length is wrong is rejected (returns {@code null}).
  */
-final class OwnerTelephones {
+public final class OwnerTelephones {
 
     /**
      * Recognised country codes mapped to the exact number of national digits they require.
@@ -70,5 +70,34 @@ final class OwnerTelephones {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Formats a stored E.164 {@code telephone} for humans: the country code (with its
+     * leading {@code '+'}), a space, then the national digits grouped in threes from the
+     * left (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}). The country
+     * code is recognised via {@link #NATIONAL_DIGITS} (longest prefix first). Returns the
+     * input unchanged when it is null, not in E.164 form ({@code '+'} then digits), or
+     * carries no recognised country code.
+     */
+    public static String toDisplay(String telephone) {
+        if (telephone == null || !telephone.matches("\\+\\d+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        for (String code : NATIONAL_DIGITS.keySet()) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                String national = digits.substring(code.length());
+                StringBuilder grouped = new StringBuilder();
+                for (int i = 0; i < national.length(); i++) {
+                    if (i > 0 && i % 3 == 0) {
+                        grouped.append(' ');
+                    }
+                    grouped.append(national.charAt(i));
+                }
+                return "+" + code + " " + grouped;
+            }
+        }
+        return telephone;
     }
 }
