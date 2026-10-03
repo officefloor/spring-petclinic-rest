@@ -25,8 +25,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -205,7 +207,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireNoHouseholdDuplicate(owner, declaredHouseholdMember);
         requireUniqueIdentity(owner);
         flagPossibleDuplicate(owner, declaredHouseholdMember);
-        owner.setCustomerCode(owner.buildCustomerCode());
+        owner.setCustomerCode(deduplicateCustomerCode(owner.buildCustomerCode()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         stampHouseholdSize(owner);
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
@@ -486,6 +488,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateIdentityException(identityKey);
         }
+    }
+
+    /**
+     * De-duplicates a newly computed customer code against the codes already held by existing owners.
+     * When the computed code is unique it is returned unchanged. When it collides with an existing
+     * owner's {@code customerCode}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or more
+     * that makes the result unique (so a second collision yields {@code '-2'}, a third {@code '-3'}, and
+     * so on), and that de-duplicated code is returned.
+     *
+     * @param customerCode the freshly computed customer code to de-duplicate
+     * @return a customer code not held by any existing owner
+     */
+    private String deduplicateCustomerCode(String customerCode) {
+        Set<String> inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!inUse.contains(customerCode)) {
+            return customerCode;
+        }
+        int n = 2;
+        String candidate;
+        do {
+            candidate = customerCode + "-" + n;
+            n++;
+        } while (inUse.contains(candidate));
+        return candidate;
     }
 
     /**
