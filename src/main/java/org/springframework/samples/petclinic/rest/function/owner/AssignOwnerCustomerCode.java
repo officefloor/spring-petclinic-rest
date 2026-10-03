@@ -4,8 +4,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode} on create, formatted {@code <REGION>-<HASH8>}
@@ -14,15 +18,34 @@ import org.springframework.samples.petclinic.model.Owner;
  * SHA-256 over ({@code normalizedTelephone + lastName}) (e.g. {@code NSW-1A2B3C4D}).
  *
  * <p>Runs after the telephone has been normalized to E.164, so the hash is stable over the
- * stored telephone. There are no sequence numbers: the identity is fully determined by the
- * owner's region and the telephone-plus-surname hash.
+ * stored telephone. The base code is fully determined by the owner's region and the
+ * telephone-plus-surname hash; should it collide with an existing owner's
+ * {@code customerCode}, {@code -<n>} is appended with the smallest {@code n} of 2 or more
+ * that makes it unique.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = OwnerRegion.regionOf(owner);
         String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+
+        Set<String> existing = new HashSet<>();
+        for (Owner other : ownerRepository.findAll()) {
+            if (other.getId() != null && other.getId().equals(owner.getId())) {
+                continue;
+            }
+            String code = other.getCustomerCode();
+            if (code != null) {
+                existing.add(code);
+            }
+        }
+
+        String code = base;
+        for (int n = 2; existing.contains(code); n++) {
+            code = base + "-" + n;
+        }
+        owner.setCustomerCode(code);
     }
 
     /** First 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code s}. */
