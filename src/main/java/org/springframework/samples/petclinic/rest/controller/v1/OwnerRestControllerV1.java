@@ -71,8 +71,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. A successful owner create emits a single line here carrying the new
-     * owner's id, customer code and registration date, so the create side-effect can be audited
-     * independently of the application log.
+     * owner's id, customer code, registration date and membership level, so the create side-effect
+     * can be audited independently of the application log.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -178,8 +178,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -449,7 +449,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * <p>Every member of the household - the existing owners and the new one - is also stamped with
      * the household's member count after this create ({@code householdSize}), so the shared size can
-     * be read back from any of them and drives the {@code GOLD} membership tier (3 or more members).
+     * be read back from any of them.
      *
      * @param owner the owner being created, whose {@code householdId} is set when a household is joined
      */
