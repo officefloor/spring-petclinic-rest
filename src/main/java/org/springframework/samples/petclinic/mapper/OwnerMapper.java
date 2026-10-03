@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
     OwnerDto toOwnerDto(Owner owner);
@@ -100,6 +101,20 @@ public interface OwnerMapper {
             }
         }
         return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
+    }
+
+    /**
+     * Derive the owner's read-only {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code PREMIUM} when the owner's {@code membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the owner's {@code locality} resolves to a known
+     * region, otherwise {@code REGIONAL}. The known-region test leans on {@link #toLocality(Owner)},
+     * which collapses every city/postcode not in the central region tables to the {@code 'UNKNOWN'}
+     * sentinel, so a region added or renamed in those tables is reflected here in lock-step.
+     */
+    default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
+        String tier = owner.getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = "UNKNOWN".equals(toLocality(owner)) ? "REGIONAL" : "METRO";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**
