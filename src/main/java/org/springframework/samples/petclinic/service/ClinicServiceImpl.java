@@ -558,10 +558,11 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'NSW-1A2B3C4D-M26'}).
+     * last two digits of the fiscal year of the owner's business-day-adjusted
+     * {@code registrationDate} (the fiscal year starting 1 July), e.g. {@code 'NSW-1A2B3C4D-M27'}.
      */
     private String generateMembershipNumber(Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String yy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         return String.format("%s-M%s", owner.getCustomerCode(), yy);
     }
 

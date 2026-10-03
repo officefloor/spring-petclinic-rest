@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
     OwnerDto toOwnerDto(Owner owner);
 
     /**

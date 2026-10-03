@@ -23,8 +23,8 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -261,7 +261,8 @@ public class Owner extends Person {
      * Derive the owner's {@code membershipPoints}: a score starting at 0 that adds 2 when an email
      * is present, adds 1 when the owner's name was unique at creation time ({@code namesakeCount}
      * is 0), adds 2 when the owner belongs to a household of three or more members, and adds 3 when
-     * the owner's tenure exceeds 365 days (measured from the {@code registrationDate} to today).
+     * the owner's tenure is at least one elapsed fiscal year (measured from the
+     * {@code registrationDate} to today, where the fiscal year starts on 1 July).
      */
     @Transient
     public Integer getMembershipPoints() {
@@ -275,7 +276,7 @@ public class Owner extends Person {
         if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
             points += 2;
         }
-        if (hasTenureOver365Days()) {
+        if (hasTenureOverOneFiscalYear()) {
             points += 3;
         }
         return points;
@@ -302,16 +303,42 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether the owner's tenure, measured as the number of whole days from {@code registrationDate}
-     * to today, exceeds 365 days — worth 3 membership points. A missing {@code registrationDate}
-     * (and therefore zero tenure) never qualifies.
+     * Whether the owner's tenure, measured as the number of elapsed fiscal years from
+     * {@code registrationDate} to today (the fiscal year starting on 1 July), is at least one —
+     * worth 3 membership points. A missing {@code registrationDate} (and therefore zero tenure)
+     * never qualifies.
      */
     @Transient
-    private boolean hasTenureOver365Days() {
+    private boolean hasTenureOverOneFiscalYear() {
         if (this.registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
+        return fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate) >= 1;
+    }
+
+    /**
+     * Derive the owner's read-only {@code fiscalYear}: {@code 'FY<YY>'} where YY is the last two
+     * digits of the fiscal year of the owner's business-day-adjusted {@code registrationDate}. The
+     * fiscal year starts on 1 July, so a registration on or after 1 July belongs to the fiscal year
+     * ending the following 30 June. Returns {@code null} when no {@code registrationDate} has been
+     * assigned yet, so the field is omitted from the response.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+    }
+
+    /**
+     * The fiscal year a {@code date} falls in, identified by its ending calendar year. The fiscal
+     * year starts on 1 July, so dates on or after 1 July belong to the following year's fiscal year
+     * (e.g. 1 July 2026 is fiscal year 2027), while dates from 1 January to 30 June belong to the
+     * current year's fiscal year.
+     */
+    public static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
