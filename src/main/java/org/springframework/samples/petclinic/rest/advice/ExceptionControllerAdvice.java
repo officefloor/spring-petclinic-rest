@@ -235,6 +235,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateEmailException} raised when an owner is created with an email whose
+     * lower-cased form is already used by another owner. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getEmail());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link CityOwnerLimitException} raised when an owner is created in a city that already
      * contains the maximum allowed number of owners (50 or more). Returns a 409 Conflict.
      *
