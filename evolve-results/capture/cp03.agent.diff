@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..257929b3a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by the create pipeline when the normalized telephone of the owner being created
++ * is already used by another (existing) owner. Handled globally by
++ * {@link DuplicateTelephoneExceptionHandler}, which responds 409.
++ */
++public class DuplicateTelephoneException extends Exception {
++
++    public DuplicateTelephoneException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+new file mode 100644
+index 000000000..f68ae6ec3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateTelephoneExceptionHandler {
++
++    public void handle(@Parameter DuplicateTelephoneException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 8117071eb..7e4773d4a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -13,8 +13,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val Owner owner) throws InvalidTelephoneException {
+-        String raw = owner.getTelephone();
+-        String digits = raw == null ? "" : raw.replaceAll("\\D", "");
++        String digits = OwnerTelephones.normalize(owner.getTelephone());
+         if (digits.length() != 10) {
+             throw new InvalidTelephoneException(
+                     "Telephone must be exactly 10 digits after removing non-digit characters");
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+new file mode 100644
+index 000000000..efcc8c337
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Single source of truth for the owner "normalized telephone" rule: strip every non-digit
++ * character. Both {@link NormalizeOwnerTelephone} (which stores the normalized value) and
++ * {@link RejectDuplicateTelephone} (which compares against it) go through here, so the two
++ * can never drift apart.
++ */
++final class OwnerTelephones {
++
++    private OwnerTelephones() {
++    }
++
++    /** Returns {@code telephone} with every non-digit character removed ("" when null). */
++    static String normalize(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java
+new file mode 100644
+index 000000000..5e93bd79f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateTelephone.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
++
++/**
++ * Rejects creating an owner whose normalized telephone is already used by any other owner.
++ * Runs after {@link NormalizeOwnerTelephone} (so the owner's telephone is already the
++ * normalized 10-digit value) and before {@link SaveOwner}. Each stored telephone is
++ * normalized through {@link OwnerTelephones} before comparison, so a stored value in any
++ * format still collides. A match on a different owner escalates as a 409 via
++ * {@link DuplicateTelephoneException}.
++ */
++public class RejectDuplicateTelephone {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws DuplicateTelephoneException {
++        // The incoming owner's telephone is already normalized by NormalizeOwnerTelephone;
++        // only the stored values (which may predate the pipeline) need normalizing to compare.
++        String telephone = owner.getTelephone();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
++                continue;
++            }
++            if (telephone.equals(OwnerTelephones.normalize(existing.getTelephone()))) {
++                throw new DuplicateTelephoneException(
++                        "Telephone is already used by another owner");
++            }
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+new file mode 100644
+index 000000000..08d58bf2d
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 6c4e6658b..8254a3fc5 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ build:
+ normalizeTelephone:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
+   govern: [ transaction ]
++  next: rejectDuplicateTelephone
++
++rejectDuplicateTelephone:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateTelephone
++  govern: [ transaction ]
+   next: save
+ 
+ save:
