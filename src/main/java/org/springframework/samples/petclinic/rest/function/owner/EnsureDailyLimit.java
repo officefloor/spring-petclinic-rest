@@ -22,9 +22,7 @@ public class EnsureDailyLimit {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DailyLimitExceededException {
         LocalDate businessDay = BusinessDays.effectiveRegistrationDate(request.getRegistrationDate());
-        long createdToday = ownerRepository.findAll().stream()
-            .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
-            .count();
+        long createdToday = BusinessDays.countCreatedOn(ownerRepository, businessDay);
         if (createdToday >= DAILY_LIMIT) {
             throw new DailyLimitExceededException(createdToday);
         }
