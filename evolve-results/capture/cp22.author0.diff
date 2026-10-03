@@ -1,0 +1,160 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 67acbf35d..874d9b43f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -177,6 +180,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     /**
+      * Stamps the effective registration date exactly once on insert, so every newly persisted owner
+      * carries a resolved, business-day registration date (see {@link #resolveRegistrationDate}).
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b443f8662..5b4bc3a27 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,6 +103,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int MAX_OWNERS_PER_DAY = 100;
+ 
++    /**
++     * Threshold above which a create is flagged with a bulk-signup warning. When more than this many
++     * owners already carry the new owner's registration date, the created owner is flagged
++     * ({@code bulkSignupWarning} true); otherwise the flag is false.
++     */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     /**
+      * Expansions of the common street-type abbreviations recognised by {@link #normalizeAddress}.
+      * Keys and values are upper-case, matching the casing the address is folded to before expansion.
+@@ -169,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
++        owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+@@ -190,14 +198,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *     registered on that business day
+      */
+     private void requireDailyCapacity(LocalDate registrationDate) {
+-        long dayOwnerCount = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+-            .count();
+-        if (dayOwnerCount >= MAX_OWNERS_PER_DAY) {
++        if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+             throw new DailyOwnerLimitException(registrationDate);
+         }
+     }
+ 
++    /**
++     * Counts the existing owners whose registration date equals the given business-day date. This is
++     * evaluated before the new owner is saved, so it reflects only the owners that existed prior to
++     * this create. It is the single definition of the per-day count shared by the daily-limit rule and
++     * the bulk-signup warning.
++     *
++     * @param registrationDate the effective business-day registration date to count against
++     * @return the number of pre-existing owners registered on that date
++     */
++    private long countOwnersRegisteredOn(LocalDate registrationDate) {
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++    }
++
+     /**
+      * Rejects an owner whose city already contains the maximum allowed number of owners
+      * ({@value #MAX_OWNERS_PER_CITY}). Existing owners are counted by city compared case-insensitively,
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..2fe929134 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..6b29bf040 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..d2af22f89 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  bulk_signup_warning BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..9d354cb21 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6dbfb142f..615f4d410 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2156,6 +2156,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                Whether, at the time this owner was created, more than 80 owners had
++                already been created on the same day (by registration date). True once
++                the day's count exceeds 80, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
