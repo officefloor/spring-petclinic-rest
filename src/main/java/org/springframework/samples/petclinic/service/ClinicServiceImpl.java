@@ -263,10 +263,10 @@ public class ClinicServiceImpl implements ClinicService {
         LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         owner.setRegistrationDate(registrationDate);
-        // Whether this owner was accepted into an existing household because the request declared it
-        // shares one (sharesHousehold). A declared member is deliberately not treated as a suspected
-        // duplicate below.
-        boolean declaredHouseholdMember = false;
+        // Whether this owner is joining an existing household (shares a last name and postcode with
+        // owners already on file). Such a member is a legitimate household join, not a suspected
+        // duplicate, so it is deliberately not soft-flagged below.
+        boolean joiningExistingHousehold = false;
         if (owner.isNew()) {
             // The householdId is deterministic: the first 12 hex characters of SHA-256 over
             // (normalizedLastName | postcode), so owners with the same last name and postcode share
@@ -277,15 +277,18 @@ public class ClinicServiceImpl implements ClinicService {
             List<Owner> householdMembers = findHouseholdMembers(owner);
             // Size of the household after this create: the existing members plus this new owner.
             owner.setHouseholdMemberCount(householdMembers.size() + 1);
-            // A second owner in an existing household is the same household and is rejected as a
-            // household duplicate, UNLESS the request declares (via sharesHousehold) that it genuinely
-            // shares the household. sharesHousehold only bypasses this block; it no longer creates the
-            // link, which is now derived from (last name, postcode).
+            // A new owner joining an existing household is accepted as a household member; it is not a
+            // suspected duplicate. Rather than being rejected, its derived membershipLevel is capped at
+            // one above the current maximum membershipLevel among its household members, so a new member
+            // can never leap more than one level past the household. With no existing member no cap
+            // applies.
             if (!householdMembers.isEmpty()) {
-                if (!owner.isSharesHousehold()) {
-                    throw new HouseholdDuplicateException(owner.getHouseholdId());
-                }
-                declaredHouseholdMember = true;
+                joiningExistingHousehold = true;
+                int maxLevel = householdMembers.stream()
+                    .mapToInt(Owner::getMembershipLevel)
+                    .max()
+                    .getAsInt();
+                owner.setMembershipLevelCap(maxLevel + 1);
             }
         }
         // Single consolidated duplicate check: reject only when the new owner's WHOLE identityKey
@@ -296,9 +299,9 @@ public class ClinicServiceImpl implements ClinicService {
         }
         // Soft-match: not a hard identityKey duplicate, but shares an existing owner's last name and
         // postcode while carrying a different telephone. Still created, but flagged as a possible
-        // duplicate pointing at the matching owner. A declared household member is not a suspected
-        // duplicate, so it is never flagged.
-        if (owner.isNew() && !declaredHouseholdMember) {
+        // duplicate pointing at the matching owner. An owner joining an existing household is not a
+        // suspected duplicate, so it is never flagged.
+        if (owner.isNew() && !joiningExistingHousehold) {
             Owner softMatch = findPossibleDuplicate(owner);
             if (softMatch != null) {
                 owner.setPossibleDuplicate(true);

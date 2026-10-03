@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
 
@@ -104,13 +107,6 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
-
-    /**
-     * Transient, write-only request flag: when {@code true}, creating this owner is allowed even if
-     * another owner already shares the same last name and address. Never persisted or returned.
-     */
-    @Transient
-    private boolean sharesHousehold;
 
     public String getTitle() {
         return this.title;
@@ -288,21 +284,45 @@ public class Owner extends Person {
     /**
      * Derive the owner's numeric {@code membershipLevel}, from 1 to 4, by mapping the owner's
      * {@code membershipPoints}: level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5
-     * points, and level 4 for 6 or more points.
+     * points, and level 4 for 6 or more points. The result is then capped at the owner's
+     * {@code membershipLevelCap} when one has been assigned, so a new household member can never
+     * exceed one above the highest level already present in their household (see
+     * {@link #getMembershipLevelCap()}).
      */
     @Transient
     public Integer getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    /**
+     * The ceiling applied to this owner's derived {@code membershipLevel}: one above the highest
+     * {@code membershipLevel} among the owner's household members (same last name and postcode) at
+     * creation time. {@code null} when the owner had no existing household member, in which case no
+     * cap applies.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     /**
@@ -456,14 +476,6 @@ public class Owner extends Person {
 
     public void setIdempotencyKey(String idempotencyKey) {
         this.idempotencyKey = idempotencyKey;
-    }
-
-    public boolean isSharesHousehold() {
-        return this.sharesHousehold;
-    }
-
-    public void setSharesHousehold(boolean sharesHousehold) {
-        this.sharesHousehold = sharesHousehold;
     }
 
     protected Set<Pet> getPetsInternal() {

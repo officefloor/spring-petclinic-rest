@@ -33,7 +33,6 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.service.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.service.DuplicateIdentityException;
-import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -104,27 +103,6 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
         logger.warn("Duplicate identity at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link HouseholdDuplicateException}, raised by the service layer when a new owner falls
-     * into an existing household (another owner shares its last name and postcode) without declaring,
-     * via {@code sharesHousehold}, that it shares the household, by returning a 409 Conflict status.
-     *
-     * @param e The {@link HouseholdDuplicateException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
-     */
-    @ExceptionHandler(HouseholdDuplicateException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
-        logger.warn("Household duplicate at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
