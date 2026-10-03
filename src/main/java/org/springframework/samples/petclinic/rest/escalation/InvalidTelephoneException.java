@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown by the create pipeline when the supplied telephone, once every non-digit
- * character is stripped, is not exactly 10 digits. Handled globally by
+ * Thrown by the create pipeline when the supplied telephone cannot be formatted as a valid
+ * E.164 number (not 8 to 15 digits after the country code). Handled globally by
  * {@link InvalidTelephoneExceptionHandler}, which responds 400.
  */
 public class InvalidTelephoneException extends Exception {
