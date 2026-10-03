@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -438,9 +439,34 @@ public class ClinicServiceImpl implements ClinicService {
      * the owner's normalized telephone concatenated with the owner's last name (e.g.
      * {@code 'NSW-1A2B3C4D'}). There are no per-city sequence numbers; the identity is fully
      * derived from the owner's own attributes.
+     * <p>
+     * When the derived code collides with an existing owner's {@code customerCode}, a
+     * {@code '-<n>'} suffix is appended with the smallest {@code n} of 2 or more that makes it
+     * unique, so distinct owners always receive distinct customer codes.
      */
     private String generateCustomerCode(Owner owner) {
-        return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity()) + "-" + customerHash(owner);
+        String base = PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity()) + "-" + customerHash(owner);
+        return deduplicateCustomerCode(base);
+    }
+
+    /**
+     * Return {@code base} when no existing owner already uses it as their {@code customerCode};
+     * otherwise append {@code '-<n>'} with the smallest {@code n} of 2 or more that is not already
+     * taken (counting both the bare {@code base} and any earlier {@code '-<n>'} de-duplications).
+     */
+    private String deduplicateCustomerCode(String base) {
+        Set<String> existing = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
