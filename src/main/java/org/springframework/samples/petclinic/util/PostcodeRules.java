@@ -82,4 +82,25 @@ public final class PostcodeRules {
         }
         return null;
     }
+
+    /**
+     * Resolve the region code for an owner located at {@code postcode} in {@code city}: the region
+     * of the postcode range first (see {@link #regionOfPostcode(String)}), falling back to the
+     * canonical region of the city (see {@link CityRegions#regionOf(String)}) when the postcode is
+     * absent or in no known range, or {@code "UNKNOWN"} when neither yields a region. This is the
+     * single composition of the postcode and city lookups used wherever an owner's region is
+     * derived (its {@code customerCode} identity and its reported {@code locality}), so the two stay
+     * in lock-step.
+     *
+     * @param postcode the owner's postcode (may be {@code null})
+     * @param city     the owner's city (may be {@code null})
+     * @return the resolved region (e.g. {@code "NSW"}), or {@code "UNKNOWN"} when neither lookup yields one
+     */
+    public static String resolveRegion(String postcode, String city) {
+        String region = regionOfPostcode(postcode);
+        if (region == null) {
+            region = CityRegions.regionOf(city);
+        }
+        return region != null ? region : "UNKNOWN";
+    }
 }

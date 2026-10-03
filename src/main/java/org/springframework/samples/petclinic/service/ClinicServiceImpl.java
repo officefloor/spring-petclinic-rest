@@ -15,6 +15,9 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 
 import org.slf4j.Logger;
@@ -27,6 +30,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -377,24 +381,37 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build an owner's {@code customerCode} as {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the
-     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three
-     * letters of the owner's last name, and NNNN a per-city 4-digit zero-padded sequence equal
-     * to one more than the number of owners already in that city (e.g. {@code 'LON-SMI-0007'}).
+     * Build an owner's {@code customerCode} as {@code '<REGION>-<HASH8>'}: REGION is the region
+     * code resolved from the owner's postcode (falling back to the owner's city, else
+     * {@code 'UNKNOWN'}), and HASH8 the first 8 upper-case hex characters of SHA-256 computed over
+     * the owner's normalized telephone concatenated with the owner's last name (e.g.
+     * {@code 'NSW-1A2B3C4D'}). There are no per-city sequence numbers; the identity is fully
+     * derived from the owner's own attributes.
      */
     private String generateCustomerCode(Owner owner) {
-        String city3 = upperPrefix3(owner.getCity());
-        String last3 = upperPrefix3(owner.getLastName());
-        long sequence = countOwnersInCity(owner) + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity()) + "-" + customerHash(owner);
     }
 
     /**
-     * Return the upper-cased first three letters of {@code value} (or fewer when it is shorter),
-     * the shared truncate-and-upper idiom used for each {@code customerCode} prefix segment.
+     * Compute the hash segment of an owner's {@code customerCode}: the first 8 upper-case hex
+     * characters of SHA-256 over the UTF-8 bytes of the owner's normalized telephone concatenated
+     * with the owner's last name.
      */
-    private String upperPrefix3(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    private String customerHash(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        byte[] digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256")
+                .digest((telephone + lastName).getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but not available", e);
+        }
+        StringBuilder hex = new StringBuilder(16);
+        for (int i = 0; i < 4; i++) {
+            hex.append(String.format("%02X", digest[i]));
+        }
+        return hex.toString();
     }
 
     /**
@@ -436,7 +453,7 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Build an owner's {@code membershipNumber} as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
+     * last two digits of the owner's {@code registrationDate} year (e.g. {@code 'NSW-1A2B3C4D-M26'}).
      */
     private String generateMembershipNumber(Owner owner) {
         String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);

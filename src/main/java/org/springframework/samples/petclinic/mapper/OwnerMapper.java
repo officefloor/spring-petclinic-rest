@@ -10,7 +10,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
-import org.springframework.samples.petclinic.util.CityRegions;
 import org.springframework.samples.petclinic.util.PostcodeRules;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
@@ -48,19 +47,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's read-only {@code locality}: the region resolved from the owner's postcode
-     * range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), falling back to the
-     * canonical region looked up from the owner's city in the fixed city-to-region table
-     * ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}) when the postcode is absent or in no
-     * known range, or {@code 'UNKNOWN'} when neither yields a region. Preferring the postcode
-     * disambiguates cities that share a name while returning the same region for known cities.
+     * Derive the owner's read-only {@code locality}: the REGION segment of the owner's
+     * {@code customerCode} ({@code '<REGION>-<HASH8>'}), the region-and-hash identity the owner is
+     * assigned at creation. Falls back to resolving the region directly from the owner's postcode
+     * range first ({@code NSW 2000-2099, VIC 3000-3099, QLD 4000-4099}), then the canonical region
+     * of the owner's city ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), else {@code 'UNKNOWN'},
+     * when the owner has no {@code customerCode} yet. Sourcing it from the identity keeps the
+     * owner's reported locality and its {@code customerCode} region in lock-step.
      */
     default String toLocality(Owner owner) {
-        String region = PostcodeRules.regionOfPostcode(owner.getPostcode());
-        if (region == null) {
-            region = CityRegions.regionOf(owner.getCity());
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
         }
-        return region != null ? region : "UNKNOWN";
+        return PostcodeRules.resolveRegion(owner.getPostcode(), owner.getCity());
     }
 
     /**
