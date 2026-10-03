@@ -107,6 +107,16 @@ public class Owner extends Person {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /**
+     * Fixed region-to-timezone table used to derive {@link #getTimezone() timezone} from the owner's
+     * {@link #getLocality() locality}: NSW->Australia/Sydney, VIC->Australia/Melbourne,
+     * QLD->Australia/Brisbane. A locality not listed derives a {@code null} timezone.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     public String getAddress() {
         return this.address;
     }
@@ -366,6 +376,18 @@ public class Owner extends Person {
             return dash >= 0 ? this.customerCode.substring(0, dash) : this.customerCode;
         }
         return deriveRegion();
+    }
+
+    /**
+     * The owner's IANA timezone name, derived from the owner's {@link #getLocality() locality} via the
+     * fixed region-to-timezone table: NSW->Australia/Sydney, VIC->Australia/Melbourne,
+     * QLD->Australia/Brisbane. Returns {@code null} when the locality is not one of these regions (for
+     * example the {@code 'UNKNOWN'} locality of a city with no known region).
+     *
+     * @return the IANA timezone name, or {@code null} when the locality has no mapped timezone
+     */
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
     }
 
     /**
