@@ -9,10 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * owner is assigned one unconditionally, so owners with the same last name and postcode share the
  * same id automatically, with no opt-in and no back-filling of other owners.
  *
- * <p>The {@code sharesHousehold} create-time flag no longer plays any part here; it only tells
- * {@link RejectDuplicateIdentity} to let a declared household member through the duplicate block.
- * The stored id feeds {@link OwnerIdentity} and the owner DTO; the duplicate check and the
- * household-size count derive the household themselves from {@link HouseholdKey}, so they do not
+ * <p>The {@code sharesHousehold} create-time flag plays no part here; it only tells
+ * {@link FlagPossibleDuplicate} not to raise a soft-duplicate signal for a declared household
+ * member. The stored id feeds {@link OwnerIdentity} and the owner DTO; the household-size count
+ * and the level cap derive the household themselves from {@link HouseholdKey}, so they do not
  * depend on this stored value.
  */
 public class AssignHousehold {

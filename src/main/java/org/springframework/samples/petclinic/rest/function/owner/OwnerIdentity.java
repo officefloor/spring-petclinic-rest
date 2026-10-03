@@ -13,8 +13,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>The three parts are normalized the same way they are stored: the telephone to its E.164
  * form (see {@link OwnerTelephones}, so a stored value that predates the pipeline still
  * compares correctly), the email trimmed and lower-cased (empty when absent), and the
- * {@code householdId} as stored (empty when absent). Duplicate detection itself is keyed on the
- * household (see {@link RejectDuplicateIdentity}); this key is exposed by the owner mapper.
+ * {@code householdId} as stored (empty when absent). Soft duplicate detection is keyed on the
+ * household (see {@link FlagPossibleDuplicate}); this key is exposed by the owner mapper.
  */
 public final class OwnerIdentity {
 

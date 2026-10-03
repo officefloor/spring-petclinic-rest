@@ -5,20 +5,19 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Soft duplicate detection on create. The hard duplicate check ({@link RejectDuplicateIdentity})
- * has already rejected any owner whose whole {@code identityKey} matches an existing owner's, so
- * by the time this step runs the new owner is guaranteed not to be a hard duplicate.
+ * Soft duplicate detection on create. Household members are no longer rejected on create — a new
+ * owner sharing an existing owner's household is admitted (its membership level is capped by
+ * {@link CapMembershipLevel}) rather than blocked — so this step only raises a non-rejecting signal.
  *
- * <p>This step flags a weaker, non-rejecting signal: a new owner that is <em>not</em> a hard
- * duplicate but still shares an existing owner's {@code lastName} (case-insensitive) and
+ * <p>This step flags a weaker signal: a new owner that shares an existing owner's
+ * {@code lastName} (case-insensitive) and
  * {@code postcode} while carrying a <em>different</em> telephone. In that case the owner is
  * still created, but {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} is
  * set to the matching owner's id (the lowest-id match when several exist). Otherwise
  * {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
  *
- * <p>A declared household member ({@code sharesHousehold} true) is never flagged: it reached this
- * step only because it deliberately bypassed the duplicate block, so sharing an existing owner's
- * last name and postcode is expected rather than a suspected duplicate.
+ * <p>A declared household member ({@code sharesHousehold} true) is never flagged: sharing an
+ * existing owner's last name and postcode is expected for it rather than a suspected duplicate.
  *
  * <p>Runs after the telephone and postcode have been normalized/assigned and before
  * {@link SaveOwner}, so the flags are fixed at creation time and returned on later reads.
