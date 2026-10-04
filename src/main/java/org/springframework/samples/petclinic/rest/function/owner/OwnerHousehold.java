@@ -12,8 +12,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * pipeline: two owners belong to the same household when they share a last name (compared
  * case-insensitively with collapsed whitespace) and a normalised address (see
  * {@link OwnerAddress#normalize}). Centralised here (rather than inlined in
- * {@link CheckOwnerHouseholdUnique} and {@link AssignHousehold}) so the uniqueness guard and
- * the id assignment cannot silently disagree about who belongs together.
+ * {@link AssignHousehold}) so the normalisation and the id assignment cannot silently disagree
+ * about who belongs together.
  */
 final class OwnerHousehold {
 

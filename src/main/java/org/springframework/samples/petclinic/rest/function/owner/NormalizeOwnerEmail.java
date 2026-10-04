@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * written back onto the body in place (the {@code @Val} object is the same instance
  * {@link BuildOwner} then maps), so the lower-cased form is what gets stored and returned.
  *
- * <p>Runs after {@link NormalizeOwnerTelephone} and before {@link CheckOwnerTelephoneUnique}.
+ * <p>Runs after {@link NormalizeOwnerTelephone} and before {@link CheckOwnerIdentityUnique}.
  */
 public class NormalizeOwnerEmail {
 

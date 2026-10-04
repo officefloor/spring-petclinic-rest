@@ -7,8 +7,9 @@ import java.util.Map;
  * Single source of truth for the owner telephone normalisation rule used across the
  * {@code POST /owners} pipeline: a telephone is canonicalised to E.164 form. Both
  * {@link NormalizeOwnerTelephone} (which stores the canonical value and rejects an input that
- * cannot form one) and {@link CheckOwnerTelephoneUnique} (which compares stored values) must
- * agree on this definition, so it lives here rather than being re-implemented at each site.
+ * cannot form one) and {@link OwnerIdentity} (which folds the canonical value into the identity
+ * key) must agree on this definition, so it lives here rather than being re-implemented at each
+ * site.
  *
  * <p>The rule: strip spaces, dashes and brackets; keep a leading {@code '+'} and country code
  * when present, otherwise assume country code {@code +61} and drop a single leading {@code '0'}
