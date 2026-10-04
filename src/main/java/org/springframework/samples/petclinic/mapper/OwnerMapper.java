@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -131,8 +132,8 @@ public interface OwnerMapper {
      * Derives the owner's membership points: starts at 0, adds 2 when an email is present, adds 1
      * when the owner had no namesakes at creation ({@code namesakeCount == 0}), adds 2 when the
      * owner belongs to a household of 3 or more members ({@code householdSize >= 3}, counted at
-     * creation by {@code AssignHouseholdSize}), and adds 3 when the owner's tenure (days since
-     * {@code registrationDate}) exceeds 365.
+     * creation by {@code AssignHouseholdSize}), and adds 3 when the owner's tenure is at least one
+     * elapsed fiscal year (fiscal years start 1 July) since its {@code registrationDate}.
      */
     default int membershipPoints(Owner owner) {
         int points = 0;
@@ -145,7 +146,7 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -170,17 +171,33 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's tenure in whole days: the number of days from its {@code registrationDate} to
-     * today. Returns 0 when no registration date is stored (or it lies in the future), so an owner
-     * with no recorded tenure never qualifies for the tenure-gated points.
+     * The owner's tenure in whole elapsed fiscal years (fiscal years start 1 July): the number of
+     * 1-July boundaries between its {@code registrationDate} and today, derived via
+     * {@code FiscalYear} so it matches the fiscal year the membership number and {@code fiscalYear}
+     * label use. Returns 0 when no registration date is stored (or it lies in the future), so an
+     * owner with no recorded tenure never qualifies for the tenure-gated points.
      */
-    default long tenureDays(Owner owner) {
+    default long tenureFiscalYears(Owner owner) {
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        long days = java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
-        return Math.max(days, 0);
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+            .elapsed(registrationDate, java.time.LocalDate.now());
+    }
+
+    /**
+     * The owner's {@code fiscalYear} label, {@code FY<YY>} for the fiscal year (starting 1 July)
+     * that contains its business-day-adjusted {@code registrationDate}, derived via
+     * {@code FiscalYear}. Returns {@code null} when no registration date is stored, so the field is
+     * absent for such owners.
+     */
+    default String fiscalYear(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(registrationDate);
     }
 
     /**
