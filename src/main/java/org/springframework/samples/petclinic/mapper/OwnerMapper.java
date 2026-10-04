@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+    @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
@@ -37,6 +38,18 @@ public interface OwnerMapper {
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
         return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Normalize an email address for storage by lower-casing it, so it is persisted and
+     * returned in a canonical form regardless of the casing supplied by the caller.
+     * Syntactic validity is enforced separately by the {@code @Email} constraint on the DTO.
+     * {@code @Named} keeps this out of MapStruct's automatic method selection, so it only
+     * runs where a mapping explicitly references it via {@code qualifiedByName}.
+     */
+    @Named("normalizeEmail")
+    default String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase();
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
