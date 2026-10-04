@@ -36,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(formatCapacityWarning(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
@@ -96,6 +97,18 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Resolve an owner's capacity-warning flag, coalescing a {@code null} stored value
+     * (e.g. for owners created before the flag existed) to {@code false} so the response
+     * always carries an explicit boolean.
+     */
+    default Boolean formatCapacityWarning(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getCapacityWarning());
     }
 
     /**
@@ -341,6 +354,7 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     @Mapping(target = "membershipLevelCap", ignore = true)

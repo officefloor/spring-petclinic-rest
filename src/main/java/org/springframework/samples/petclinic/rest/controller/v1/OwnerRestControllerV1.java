@@ -76,6 +76,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners permitted in a single city; the create is rejected at this count. */
     private static final int CITY_CAPACITY = 50;
 
+    /** Once a city already holds at least this many owners (but fewer than {@link #CITY_CAPACITY}),
+     * a new owner created for that city is flagged with {@code capacityWarning} to signal the city
+     * is approaching its capacity limit. */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be created on a single day (by registrationDate); the
      * create is rejected once this many owners already carry today's registration date. */
     private static final int DAILY_REGISTRATION_LIMIT = 100;
@@ -170,9 +175,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // for its registration date, signalling a bulk-signup surge.
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         // Per-city capacity: a city that already holds the maximum number of owners is full.
-        if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
+        int ownersInCity = this.clinicService.countOwnersInCity(owner.getCity());
+        if (ownersInCity >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Capacity warning: flag this owner when its city already holds between the warning
+        // threshold (40) and the hard limit (49), signalling the city is approaching capacity.
+        owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
         // The household id is derived deterministically on the owner itself (see
         // Owner.getHouseholdId()) from its normalized last name and postcode, so owners sharing a
         // last name and postcode share it automatically — no linking step and no ordering to manage.
