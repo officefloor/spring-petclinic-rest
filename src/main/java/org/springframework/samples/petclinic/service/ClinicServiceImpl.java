@@ -32,8 +32,10 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -250,11 +252,37 @@ public class ClinicServiceImpl implements ClinicService {
      * the first eight upper-case hex characters of the SHA-256 of the owner's normalized telephone
      * concatenated with its last name (e.g. {@code NSW-3F5A9C2E}). The identity carries no sequence
      * number, so it depends only on the owner's own postcode, telephone and last name.
+     *
+     * <p>If the computed code collides with an existing owner's {@code customerCode}, {@code -<n>}
+     * is appended with the smallest {@code n} of 2 or more that makes it unique, and the
+     * de-duplicated code is returned.
      */
     private String generateCustomerCode(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return Regions.forPostcode(owner.getPostcode()) + "-" + hash8(telephone + lastName);
+        String base = Regions.forPostcode(owner.getPostcode()) + "-" + hash8(telephone + lastName);
+        return deduplicateCustomerCode(base, owner);
+    }
+
+    /**
+     * Return {@code base} if no other owner already uses it as a {@code customerCode}; otherwise
+     * append {@code -<n>} with the smallest {@code n >= 2} that is not already taken, so distinct
+     * owners always receive distinct customer codes.
+     */
+    private String deduplicateCustomerCode(String base, Owner owner) {
+        Set<String> existing = ownerRepository.findAll().stream()
+            .filter(other -> other != owner)
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
