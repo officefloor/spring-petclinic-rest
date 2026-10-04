@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -53,6 +54,9 @@ public class Owner extends Person {
     @Column(name = "email")
     @Email
     private String email;
+
+    @Column(name = "registration_date")
+    private LocalDate registrationDate;
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
@@ -87,6 +91,26 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public LocalDate getRegistrationDate() {
+        return this.registrationDate;
+    }
+
+    public void setRegistrationDate(LocalDate registrationDate) {
+        this.registrationDate = registrationDate;
+    }
+
+    /**
+     * When no registration date is supplied, default it to the server's current date.
+     * Running on {@link PrePersist} keeps this invariant true for every create path
+     * (any controller, bulk import or test fixture) rather than a single entry point.
+     */
+    @PrePersist
+    protected void onCreate() {
+        if (this.registrationDate == null) {
+            this.registrationDate = LocalDate.now();
+        }
     }
 
     protected Set<Pet> getPetsInternal() {
@@ -161,6 +185,7 @@ public class Owner extends Person {
             .append("city", this.city)
             .append("telephone", this.telephone)
             .append("email", this.email)
+            .append("registrationDate", this.registrationDate)
             .toString();
     }
 }
