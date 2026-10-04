@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.BusinessDays;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -133,15 +134,15 @@ public class Owner extends Person {
     }
 
     /**
-     * When no registration date is supplied, default it to the server's current date.
-     * Running on {@link PrePersist} keeps this invariant true for every create path
-     * (any controller, bulk import or test fixture) rather than a single entry point.
+     * When no registration date is supplied, default it to the server's current date, then roll
+     * the effective date forward onto a business day: a Saturday or Sunday becomes the following
+     * Monday. Running on {@link PrePersist} keeps both invariants true for every create path
+     * (any controller, bulk import or test fixture) rather than a single entry point. The roll is
+     * idempotent, so a date already adjusted by a caller is left unchanged.
      */
     @PrePersist
     protected void onCreate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+        this.registrationDate = BusinessDays.effectiveRegistrationDate(this.registrationDate);
     }
 
     protected Set<Pet> getPetsInternal() {

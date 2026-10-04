@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.BusinessDays;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -109,9 +110,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // The effective registration date (supplied, or the server date when omitted) must fall on
+        // a business day: a weekend rolls forward to the next Monday. Everything derived from the
+        // registration date — the stored value, the per-day limit below and the membership number —
+        // uses this adjusted date.
+        LocalDate effectiveDate = BusinessDays.effectiveRegistrationDate(owner.getRegistrationDate());
+        owner.setRegistrationDate(effectiveDate);
         // Per-day capacity: once the day has reached its limit of newly created owners, reject
         // further creates for that day with 429 Too Many Requests.
-        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_REGISTRATION_LIMIT) {
+        if (this.clinicService.countOwnersRegisteredOn(effectiveDate) >= DAILY_REGISTRATION_LIMIT) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
