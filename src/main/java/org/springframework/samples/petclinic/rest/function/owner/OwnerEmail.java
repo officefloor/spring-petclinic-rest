@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
  * inlined in {@link NormalizeOwnerEmail}) so the notions of "present", "valid", "disposable" and
  * "normalised" stay defined in one place.
  */
-final class OwnerEmail {
+public final class OwnerEmail {
 
     /**
      * A pragmatic syntactic check: a non-empty local part, a single {@code @}, and a domain with
@@ -22,6 +22,16 @@ final class OwnerEmail {
     /** Disposable-email domains that are not accepted for owner registration. */
     private static final Set<String> DISPOSABLE_DOMAINS =
             Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * Registrable base labels of the {@link #DISPOSABLE_DOMAINS} (the label immediately left of the
+     * final TLD label, e.g. {@code mailinator} from {@code mailinator.com}). A stored email whose
+     * domain shares one of these base labels — a different TLD or a subdomain of a disposable
+     * domain — is "disposable-adjacent".
+     */
+    private static final Set<String> DISPOSABLE_BASE_LABELS = DISPOSABLE_DOMAINS.stream()
+            .map(OwnerEmail::baseLabel)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     private OwnerEmail() {
     }
@@ -38,12 +48,45 @@ final class OwnerEmail {
 
     /** Whether the (valid) value's domain is on the disposable-email blocklist. */
     static boolean isDisposable(String email) {
-        String normalized = normalize(email);
-        int at = normalized.lastIndexOf('@');
-        if (at < 0) {
+        String domain = domainOf(email);
+        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
+    }
+
+    /**
+     * Whether the (stored) email's domain is "disposable-adjacent": it is not itself on the
+     * disposable blocklist (those are rejected at create time and never stored), but it shares its
+     * registrable base label with a known disposable domain — a different TLD (e.g.
+     * {@code mailinator.net}) or a subdomain (e.g. {@code mx.mailinator.com}). A null, blank or
+     * syntactically invalid value is never disposable-adjacent.
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        if (!isPresent(email) || !isValid(email)) {
             return false;
         }
-        return DISPOSABLE_DOMAINS.contains(normalized.substring(at + 1));
+        String domain = domainOf(email);
+        return domain != null && !DISPOSABLE_DOMAINS.contains(domain)
+            && DISPOSABLE_BASE_LABELS.contains(baseLabel(domain));
+    }
+
+    /** The domain of a (normalized) email — the part after the last {@code @} — or {@code null}
+     * when there is no {@code @}. The single definition of "the domain of an email". */
+    private static String domainOf(String email) {
+        String normalized = normalize(email);
+        int at = normalized.lastIndexOf('@');
+        return at < 0 ? null : normalized.substring(at + 1);
+    }
+
+    /**
+     * The registrable base label of a domain: the label immediately left of the final TLD label
+     * ({@code mailinator} for both {@code mailinator.com} and {@code mx.mailinator.net}), or the
+     * whole string when it has no dot.
+     */
+    private static String baseLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return domain;
+        }
+        return labels[labels.length - 2];
     }
 
     /** The stored/returned form: trimmed and lower-cased. */

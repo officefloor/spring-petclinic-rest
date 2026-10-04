@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
@@ -109,6 +110,20 @@ public interface OwnerMapper {
      */
     default boolean capacityWarning(Owner owner) {
         return Boolean.TRUE.equals(owner.getCapacityWarning());
+    }
+
+    /**
+     * Derives the owner's single risk flag at read time: {@code true} when any of the three risk
+     * signals holds — the owner is a possible duplicate ({@code possibleDuplicate}), the owner's
+     * city is over its soft capacity (the {@link #capacityWarning(Owner) capacity warning}), or the
+     * owner's email domain is disposable-adjacent (shares its registrable base label with a known
+     * disposable-email domain) — {@code false} otherwise.
+     */
+    default boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || capacityWarning(owner)
+            || org.springframework.samples.petclinic.rest.function.owner.OwnerEmail
+                .isDisposableAdjacent(owner.getEmail());
     }
 
     /**
