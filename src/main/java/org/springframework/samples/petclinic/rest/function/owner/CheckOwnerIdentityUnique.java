@@ -7,17 +7,15 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Create-time uniqueness guard for {@code POST /owners}. It rejects a request with a 409 via
- * {@link DuplicateIdentityException} in two cases:
+ * {@link DuplicateIdentityException} for an <b>exact identity duplicate</b>: a request whose whole
+ * {@link OwnerIdentity identityKey} (normalised telephone, email and household together) equals an
+ * existing owner's — a genuinely identical owner is always a duplicate.
  *
- * <ul>
- *   <li><b>Household duplicate.</b> A household is keyed on {@code (lastName, postcode)} (see
- *       {@link OwnerHousehold}), so an owner sharing an existing owner's last name and postcode is
- *       the same household and is rejected — <em>unless</em> the request sets {@code sharesHousehold},
- *       which bypasses this block so the owner is created as a declared household member.</li>
- *   <li><b>Exact identity duplicate.</b> A request whose whole {@link OwnerIdentity identityKey}
- *       (normalised telephone, email and household together) equals an existing owner's is rejected
- *       regardless of {@code sharesHousehold} — a genuinely identical owner is always a duplicate.</li>
- * </ul>
+ * <p>Sharing a household is no longer a duplicate on its own: several members may belong to the
+ * same household (same {@code lastName} and {@code postcode}, see {@link OwnerHousehold}) as long
+ * as they differ in telephone or email, so their identity keys differ. A new member's standing is
+ * instead bounded by the household level ceiling applied later in the pipeline (see
+ * {@link CapMembershipLevel}), not by rejecting the create.
  *
  * <p>The household id is derived from {@code (lastName, postcode)} for both the request and each
  * existing owner, so the comparison is independent of any stored id. Runs after
@@ -28,16 +26,11 @@ public class CheckOwnerIdentityUnique {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         String householdId = OwnerHousehold.deriveId(request);
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner is not a duplicate
-            }
-            if (!sharesHousehold && householdId != null
-                    && householdId.equals(OwnerHousehold.deriveId(existing))) {
-                throw new DuplicateIdentityException(identityKey);
             }
             if (identityKey.equals(OwnerIdentity.of(existing))) {
                 throw new DuplicateIdentityException(identityKey);

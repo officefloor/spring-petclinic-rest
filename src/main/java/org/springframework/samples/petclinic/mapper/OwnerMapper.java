@@ -156,9 +156,29 @@ public interface OwnerMapper {
 
     /**
      * Maps the owner's {@link #membershipPoints(Owner) membership points} to a numeric level:
-     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more, then applies the
+     * household level ceiling (see {@link #uncappedMembershipLevel(Owner)}).
+     *
+     * <p>When a {@code membershipLevelCap} was recorded at creation time (by
+     * {@code CapMembershipLevel}, as one above the maximum level among the owner's existing
+     * household members), the level is clamped down to that cap. With no cap stored (no existing
+     * household member when the owner was created) the uncapped level is returned unchanged.
      */
     default int membershipLevel(Owner owner) {
+        int level = uncappedMembershipLevel(owner);
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
+    }
+
+    /**
+     * The owner's membership level derived purely from its {@link #membershipPoints(Owner) points},
+     * before the household level ceiling is applied: level 1 for 0-1 points, 2 for 2-3, 3 for 4-5,
+     * and 4 for 6 or more.
+     */
+    default int uncappedMembershipLevel(Owner owner) {
         int points = membershipPoints(owner);
         if (points <= 1) {
             return 1;

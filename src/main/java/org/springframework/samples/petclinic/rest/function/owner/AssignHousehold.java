@@ -11,9 +11,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * no postcode belong to no household and are left with a null {@code householdId}.
  *
  * <p>Runs within the create transaction (after {@link BuildOwner}/{@link AssignCustomerCode},
- * before {@link SaveOwner}). The duplicate guard ({@link CheckOwnerIdentityUnique}) already decided
- * whether this owner may be created in its household; {@code sharesHousehold} only bypasses that
- * guard, it no longer affects the id assigned here.
+ * before {@link SaveOwner}). Sharing a household is no longer a duplicate: several members may
+ * belong to the same household as long as their identity keys differ (see
+ * {@link CheckOwnerIdentityUnique}). The id assigned here is purely a function of
+ * {@code (lastName, postcode)} and is what {@link CapMembershipLevel} later uses to find the
+ * household's existing members.
  */
 public class AssignHousehold {
 

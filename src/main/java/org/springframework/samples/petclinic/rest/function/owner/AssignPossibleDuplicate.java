@@ -15,8 +15,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  *
  * <p>A <em>declared</em> household member — one created with {@code sharesHousehold} true, which
  * deliberately shares an existing owner's household — is never flagged: a declared member is not a
- * suspected duplicate. (A non-declared owner sharing a household is rejected outright by
- * {@link CheckOwnerIdentityUnique}, so it never reaches this step.)
+ * suspected duplicate. A non-declared owner sharing a household (same {@code lastName} and
+ * {@code postcode}, different telephone) is no longer rejected by {@link CheckOwnerIdentityUnique}
+ * — it reaches this step and is flagged as a possible duplicate of the matching owner.
  *
  * <p>Runs within the create transaction after {@link BuildOwner} (so the built owner's telephone is
  * already in its stored E.164 form) and before {@link SaveOwner} (so {@code findAll} excludes the
