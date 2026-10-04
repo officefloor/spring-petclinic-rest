@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 42f56fd72..d50e4da2d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -138,6 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (this.clinicService.isEmailInUse(owner.getEmail())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         // Per-city capacity: a city that already holds the maximum number of owners is full.
+         if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 92ae10a5b..4754b2499 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -70,6 +70,15 @@ public interface ClinicService {
+ 	 */
+ 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} if any existing owner already uses the given email once it has been
++	 * normalized (lower-cased). Enforces the invariant that no two owners may share a lower-cased
++	 * email, so callers can reject a duplicate create.
++	 *
++	 * @param email the candidate email (normalized before comparison)
++	 */
++	boolean isEmailInUse(String email) throws DataAccessException;
++
+ 	/**
+ 	 * Returns {@code true} if any existing owner already shares a household with the given
+ 	 * candidate, i.e. has the same last name and the same address once both are compared
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 7a176f273..8f7c5562b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -289,6 +289,18 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(normalized::equals);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isEmailInUse(String email) throws DataAccessException {
++        String normalized = ownerMapper.normalizeEmail(email);
++        if (normalized == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .map(existing -> ownerMapper.normalizeEmail(existing.getEmail()))
++            .anyMatch(normalized::equals);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
