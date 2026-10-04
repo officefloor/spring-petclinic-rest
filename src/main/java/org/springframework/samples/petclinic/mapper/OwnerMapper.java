@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
@@ -98,6 +99,16 @@ public interface OwnerMapper {
      */
     default boolean bulkSignupWarning(Owner owner) {
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Reports the owner's capacity warning: {@code true} when this owner's city already held
+     * between 40 and 49 owners (approaching the per-city hard limit of 50) at the time this owner
+     * was created. Treats a missing value (owners created before this rule existed) as
+     * {@code false}.
+     */
+    default boolean capacityWarning(Owner owner) {
+        return Boolean.TRUE.equals(owner.getCapacityWarning());
     }
 
     /**
