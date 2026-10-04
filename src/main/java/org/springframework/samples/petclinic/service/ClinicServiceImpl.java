@@ -26,6 +26,9 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -282,8 +285,7 @@ public class ClinicServiceImpl implements ClinicService {
             return false;
         }
         return ownerRepository.findAll().stream()
-            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdValue(existing.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdValue(existing.getAddress())));
+            .anyMatch(existing -> inHousehold(existing, normalizedLastName, normalizedAddress));
     }
 
     /**
@@ -296,6 +298,59 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Single definition of household membership: an owner belongs to the household identified by
+     * the given already-normalized last name and address when its own normalized last name and
+     * address match. Keeping this in one place means the household-equality rule is changed once.
+     */
+    private boolean inHousehold(Owner existing, String normalizedLastName, String normalizedAddress) {
+        return normalizedLastName.equals(normalizeHouseholdValue(existing.getLastName()))
+            && normalizedAddress.equals(normalizeHouseholdValue(existing.getAddress()));
+    }
+
+    @Override
+    @Transactional
+    public String assignHousehold(Owner owner) throws DataAccessException {
+        String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
+        owner.setHouseholdId(householdId);
+        String normalizedLastName = normalizeHouseholdValue(owner.getLastName());
+        String normalizedAddress = normalizeHouseholdValue(owner.getAddress());
+        if (normalizedLastName != null && normalizedAddress != null) {
+            // Back-fill existing members of the household so the joining owner and the
+            // owner(s) already at the address share the same stable identifier.
+            for (Owner existing : ownerRepository.findAll()) {
+                if (existing.getHouseholdId() == null
+                    && inHousehold(existing, normalizedLastName, normalizedAddress)) {
+                    existing.setHouseholdId(householdId);
+                    ownerRepository.save(existing);
+                }
+            }
+        }
+        return householdId;
+    }
+
+    /**
+     * Derive a stable household identifier from the normalized last name and address, so that
+     * every owner sharing a household (same last name and address, compared case-insensitively
+     * with internal whitespace collapsed) maps to the same value. The identifier is the first
+     * eight upper-case hex characters of the SHA-256 of {@code <lastName>|<address>}, prefixed
+     * with {@code 'H-'} (e.g. {@code H-3F5A9C2E}).
+     */
+    private String generateHouseholdId(String lastName, String address) {
+        String key = normalizeHouseholdValue(lastName) + "|" + normalizeHouseholdValue(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("H-");
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @Override

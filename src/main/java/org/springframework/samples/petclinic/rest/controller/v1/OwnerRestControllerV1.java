@@ -104,9 +104,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress());
+        if (householdInUse) {
+            if (!sharesHousehold) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+            // Joining an existing household: assign the shared, stable household identifier to
+            // the new owner (and back-fill the existing member(s)).
+            this.clinicService.assignHousehold(owner);
         }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

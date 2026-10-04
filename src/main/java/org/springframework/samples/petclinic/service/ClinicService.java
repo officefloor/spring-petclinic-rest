@@ -81,6 +81,20 @@ public interface ClinicService {
 	 */
 	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
 
+	/**
+	 * Places the given owner into the household identified by its last name and address and
+	 * returns the household's stable shared identifier. The identifier is derived
+	 * deterministically from the normalized last name and address, so every owner in the same
+	 * household (same last name and address, compared case-insensitively with internal
+	 * whitespace collapsed) receives the same value. Any already-stored owners in that
+	 * household that lack a household identifier are back-filled with the shared value, so the
+	 * joining owner and the existing owner(s) end up sharing it.
+	 *
+	 * @param owner the owner joining the household; its {@code householdId} is set
+	 * @return the shared household identifier assigned to the owner
+	 */
+	String assignHousehold(Owner owner) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
