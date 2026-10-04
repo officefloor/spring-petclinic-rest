@@ -63,13 +63,36 @@ public interface OwnerMapper {
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * Derive an owner's locality from its city using the fixed {@link #CITY_REGIONS}
-     * city-to-region table, returning the canonical region string or {@code "UNKNOWN"}
-     * when the city is {@code null} or not present in the table.
+     * Canonical region ranges keyed by region, each an inclusive 4-digit postcode range
+     * {@code {low, high}}: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
+     */
+    Map<String, int[]> REGION_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Derive an owner's locality, preferring the postcode: when the owner has a 4-digit
+     * postcode that falls in a known region range ({@link #REGION_RANGES}), that region
+     * is returned. Otherwise (the postcode is absent or in no known range) it falls back
+     * to the fixed {@link #CITY_REGIONS} city-to-region table, returning the canonical
+     * region string or {@code "UNKNOWN"} when the city is {@code null} or not listed.
+     * This returns the same region for known cities but disambiguates cities that share
+     * a name. Returns {@code null} only when the owner itself is {@code null}.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String postcode = owner.getPostcode();
+        if (postcode != null && postcode.matches("[0-9]{4}")) {
+            int value = Integer.parseInt(postcode);
+            for (Map.Entry<String, int[]> entry : REGION_RANGES.entrySet()) {
+                int[] range = entry.getValue();
+                if (value >= range[0] && value <= range[1]) {
+                    return entry.getKey();
+                }
+            }
         }
         return CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
     }
