@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
@@ -115,33 +116,58 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine an owner's membership level, a number from {@code 1} to {@code 4}. It starts at
-     * {@code 1}, gains {@code 1} when an email address is present, and gains {@code 1} when the
-     * owner has no namesakes (its {@code namesakeCount} is {@code 0}). A null or absent namesake
-     * count is treated as not being zero, so it contributes nothing. These pre-tenure factors are
-     * capped at {@code 3}. Level {@code 4} is reserved for tenure: an owner reaches it only once
-     * its tenure (days elapsed since its {@code registrationDate}) exceeds {@code 365}. A newly
-     * created owner has zero tenure, so it never exceeds level {@code 3}.
+     * Compute an owner's membership points. Points start at {@code 0} and gain: {@code 2} when an
+     * email address is present; {@code 1} when the owner has no namesakes (its
+     * {@code namesakeCount} is {@code 0}); {@code 2} for a household of three or more members (the
+     * owner plus its pets); and {@code 3} when the owner's tenure (days elapsed since its
+     * {@code registrationDate}) exceeds {@code 365}. A null or absent namesake count is treated as
+     * not being zero, so it contributes nothing.
+     */
+    default Integer formatMembershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        int points = 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        if (hasEmail) {
+            points += 2;
+        }
+        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (uniqueName) {
+            points += 1;
+        }
+        int householdSize = 1 + (owner.getPets() == null ? 0 : owner.getPets().size());
+        if (householdSize >= 3) {
+            points += 2;
+        }
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Determine an owner's membership level, a number from {@code 1} to {@code 4} derived from its
+     * membership points (see {@link #formatMembershipPoints(Owner)}): level {@code 1} for
+     * {@code 0}-{@code 1} points, {@code 2} for {@code 2}-{@code 3}, {@code 3} for {@code 4}-{@code 5}
+     * and {@code 4} for {@code 6} or more.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        if (hasEmail) {
-            level++;
+        int points = formatMembershipPoints(owner);
+        if (points <= 1) {
+            return 1;
         }
-        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (uniqueName) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate != null && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
