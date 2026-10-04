@@ -124,6 +124,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link OwnerCreationRejectedException} raised when a create is rejected by a business
+     * rule (a capacity limit, a duplicate, or a rate limit). The exception carries the HTTP status
+     * to report (400, 409 or 429) and the problem detail; the HTTP status is left unchanged.
+     *
+     * @param e The {@link OwnerCreationRejectedException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} whose body is an RFC 7807 {@link ProblemDetail}.
+     */
+    @ExceptionHandler(OwnerCreationRejectedException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCreationRejectedException(OwnerCreationRejectedException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.warn("Request rejected with {} at {} {}: {}",
+            status.value(),
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled

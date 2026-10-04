@@ -48,7 +48,7 @@ public final class Postcodes {
         if (postcode == null || !postcode.matches("[0-9]{4}")) {
             return true;
         }
-        String region = CITY_REGIONS.get(city);
+        String region = city == null ? null : CITY_REGIONS.get(city);
         int[] range = region == null ? null : REGION_RANGES.get(region);
         if (range == null) {
             return true;

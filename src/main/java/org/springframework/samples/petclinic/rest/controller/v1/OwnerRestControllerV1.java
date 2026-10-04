@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.OwnerCreationRejectedException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -173,7 +174,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // further creates for that day with 429 Too Many Requests.
         int ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(effectiveDate);
         if (ownersRegisteredToday >= DAILY_REGISTRATION_LIMIT) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new OwnerCreationRejectedException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner registration limit has been reached; please try again later");
         }
         // Bulk-signup warning: flag this owner when more than 80 owners have already been created
         // for its registration date, signalling a bulk-signup surge.
@@ -181,7 +183,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Per-city capacity: a city that already holds the maximum number of owners is full.
         int ownersInCity = this.clinicService.countOwnersInCity(owner.getCity());
         if (ownersInCity >= CITY_CAPACITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new OwnerCreationRejectedException(HttpStatus.CONFLICT,
+                "The city has reached its maximum owner capacity");
         }
         // Capacity warning: flag this owner when its city already holds between the warning
         // threshold (40) and the hard limit (49), signalling the city is approaching capacity.
@@ -195,7 +198,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // equals an existing owner's. A truly identical record is always rejected, independent of
         // sharesHousehold.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new OwnerCreationRejectedException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         // Household membership: another owner may already belong to this (last name, postcode)
         // household. A new member is admitted rather than rejected — its membership level is instead
