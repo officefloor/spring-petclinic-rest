@@ -52,6 +52,19 @@ public final class OwnerCustomerCode {
     }
 
     /**
+     * A de-duplicated variant of {@code base}, formed by appending {@code -<n>} (e.g.
+     * {@code NSW-1A2B3C4D} with {@code n == 2} becomes {@code NSW-1A2B3C4D-2}). Used when the
+     * derived {@code customerCode} collides with an existing owner's: the caller picks the smallest
+     * {@code n} of 2 or more that is free. Keeping the suffix spelling here, next to {@link #of} and
+     * {@link #regionOf}, keeps this class the single authority for the {@code customerCode} format —
+     * the {@code REGION} prefix is unchanged, so {@link #regionOf} still reads the region from the
+     * first {@code '-'}.
+     */
+    public static String withSuffix(String base, int n) {
+        return base + SEPARATOR + n;
+    }
+
+    /**
      * The {@code REGION} half of a {@code customerCode} (the text before the first {@code '-'}), or
      * {@code null} when {@code customerCode} is null or carries no region prefix.
      */
