@@ -11,10 +11,9 @@ import java.util.Map;
  * {@code "  12  main  st "} canonicalises to {@code "12 MAIN STREET"} and {@code "7 elm ave"} to
  * {@code "7 ELM AVENUE"}.
  *
- * <p>Centralised here (rather than inlined) so every site agrees on one definition:
- * {@link ValidateOwnerFields} stores the canonical value and rejects a value that is blank once
- * normalised, while {@link OwnerHousehold} compares the canonical value for duplicate detection
- * and the shared household id.
+ * <p>Centralised here (rather than inlined) so its one consumer has a single definition to agree
+ * on: {@link ValidateOwnerFields} stores the canonical value and rejects a value that is blank
+ * once normalised.
  */
 final class OwnerAddress {
 

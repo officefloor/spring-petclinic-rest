@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Soft-duplicate detection for {@code POST /owners}. A request that cleared the hard-duplicate
@@ -12,6 +13,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * when there is no such match both {@code possibleDuplicate} is {@code false} and
  * {@code possibleDuplicateOf} is {@code null}.
  *
+ * <p>A <em>declared</em> household member — one created with {@code sharesHousehold} true, which
+ * deliberately shares an existing owner's household — is never flagged: a declared member is not a
+ * suspected duplicate. (A non-declared owner sharing a household is rejected outright by
+ * {@link CheckOwnerIdentityUnique}, so it never reaches this step.)
+ *
  * <p>Runs within the create transaction after {@link BuildOwner} (so the built owner's telephone is
  * already in its stored E.164 form) and before {@link SaveOwner} (so {@code findAll} excludes the
  * owner being created). When several existing owners match, the one with the lowest id is recorded
@@ -20,9 +26,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
+
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // a declared household member is not a suspected duplicate
+        }
 
         String postcode = owner.getPostcode();
         if (postcode == null || postcode.isBlank()) {
