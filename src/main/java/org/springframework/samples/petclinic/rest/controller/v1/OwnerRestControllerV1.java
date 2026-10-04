@@ -152,12 +152,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             // the new owner (and back-fill the existing member(s)).
             this.clinicService.assignHousehold(owner);
         }
-        // Record the size of the owner's household after this create: the owners already stored
-        // under the shared household identifier plus this new owner. Owners that do not join a
-        // household have a size of one (just themselves). This drives the GOLD membership tier.
-        int householdSize = owner.getHouseholdId() == null ? 1
-            : this.clinicService.countHouseholdMembers(owner.getHouseholdId()) + 1;
-        owner.setHouseholdSize(householdSize);
         owner.setNamesakeCount(
             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);

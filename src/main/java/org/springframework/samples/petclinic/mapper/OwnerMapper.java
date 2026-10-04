@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -62,23 +62,26 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine an owner's membership tier. {@code "GOLD"} when the owner's household held three
-     * or more members after the owner was created (its {@code householdSize} is {@code 3} or
-     * more); otherwise {@code "SILVER"} when the owner has no namesakes (its {@code namesakeCount}
-     * is {@code 0}) and an email address is present, and {@code "BRONZE"} in every other case. A
-     * null or absent namesake count is treated as not being zero, so the tier only reaches SILVER
-     * for an explicitly unique owner with an email.
+     * Determine an owner's membership level, a number from {@code 1} to {@code 3} assigned on
+     * create. It starts at {@code 1}, gains {@code 1} when an email address is present, and gains
+     * {@code 1} when the owner has no namesakes (its {@code namesakeCount} is {@code 0}), capped at
+     * {@code 3}. A null or absent namesake count is treated as not being zero, so it contributes
+     * nothing. Level {@code 4} is reserved for tenure.
      */
-    default String formatMembershipTier(Owner owner) {
+    default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return "GOLD";
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        if (hasEmail) {
+            level++;
         }
         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
+        if (uniqueName) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
@@ -116,14 +119,12 @@ public interface OwnerMapper {
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
     }
 
-    @Mapping(target = "householdSize", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
-    @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
