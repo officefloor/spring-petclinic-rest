@@ -1,0 +1,240 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index db8e262b6..15265d8e2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -169,22 +169,36 @@ public interface OwnerMapper {
+      * membership points (see {@link #formatMembershipPoints(Owner)}): level {@code 1} for
+      * {@code 0}-{@code 1} points, {@code 2} for {@code 2}-{@code 3}, {@code 3} for {@code 4}-{@code 5}
+      * and {@code 4} for {@code 6} or more.
++     *
++     * <p>The level is then capped by the owner's {@code membershipLevelCap} when one is present (see
++     * {@link Owner#getMembershipLevelCap()}): a new owner's level may not exceed one above the
++     * current maximum level among its existing household members, so the returned value is the
++     * smaller of the points-derived level and the cap. A {@code null} cap means no household ceiling
++     * applies and the points-derived level is returned unchanged.
+      */
+     default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+         int points = formatMembershipPoints(owner);
++        int level;
+         if (points <= 1) {
+-            return 1;
++            level = 1;
+         }
+-        if (points <= 3) {
+-            return 2;
++        else if (points <= 3) {
++            level = 2;
+         }
+-        if (points <= 5) {
+-            return 3;
++        else if (points <= 5) {
++            level = 3;
+         }
+-        return 4;
++        else {
++            level = 4;
++        }
++        Integer cap = owner.getMembershipLevelCap();
++        if (cap != null && cap < level) {
++            return cap;
++        }
++        return level;
+     }
+ 
+     /**
+@@ -329,6 +343,7 @@ public interface OwnerMapper {
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "possibleDuplicate", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
++    @Mapping(target = "membershipLevelCap", ignore = true)
+     @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+     @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 50b3ebf7b..cc62bf476 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -90,6 +90,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "deleted")
+     private boolean deleted;
+ 
+@@ -216,6 +219,21 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * The ceiling applied to this owner's derived membership level, or {@code null} when no cap
++     * applies. Set on create from the owner's household: a new owner's membership level may not
++     * exceed one above the current maximum level among its existing household members, so the cap
++     * is {@code (that maximum) + 1}. With no existing household member the cap is {@code null} and
++     * the level is used uncapped. See {@link org.springframework.samples.petclinic.mapper.OwnerMapper#formatMembershipLevel}.
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public boolean isDeleted() {
+         return this.deleted;
+     }
+@@ -362,6 +380,7 @@ public class Owner extends Person {
+             .append("bulkSignupWarning", this.bulkSignupWarning)
+             .append("possibleDuplicate", this.possibleDuplicate)
+             .append("possibleDuplicateOf", this.possibleDuplicateOf)
++            .append("membershipLevelCap", this.membershipLevelCap)
+             .append("deleted", this.deleted)
+             .toString();
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 887b428be..fa4bcd1e8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -174,13 +174,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isIdentityKeyInUse(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        // Household duplicate: another owner already belongs to this (last name, postcode)
+-        // household. Reject with 409 unless the caller declares the shared household via
+-        // sharesHousehold, which bypasses the block and creates this owner as a declared member.
++        // Household membership: another owner may already belong to this (last name, postcode)
++        // household. A new member is admitted rather than rejected — its membership level is instead
++        // capped relative to the household (see below). An undeclared member (sharesHousehold not
++        // set) that is not an exact-identity duplicate is still allowed through, flagged as a
++        // possible duplicate for review.
+         boolean householdInUse = this.clinicService.isHouseholdInUse(owner);
+-        if (householdInUse && !sharesHousehold) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         // Soft "possible duplicate" detection: an existing owner shares this owner's last name and
+         // postcode with a different telephone. A declared household member (sharesHousehold on an
+         // in-use household) is an intentional share, not a suspected duplicate, so it is not
+@@ -193,6 +192,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         owner.setNamesakeCount(
+             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
++        // Membership-level ceiling: a new owner's membershipLevel may not exceed one above the
++        // current maximum level among its existing household members. Derive the cap from those
++        // members' effective (already-capped) levels; with no existing member the cap stays null
++        // and the owner's level is used uncapped.
++        Collection<Owner> householdMembers = this.clinicService.findHouseholdMembers(owner);
++        if (!householdMembers.isEmpty()) {
++            int maxHouseholdLevel = householdMembers.stream()
++                .mapToInt(member -> ownerMapper.formatMembershipLevel(member))
++                .max()
++                .getAsInt();
++            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
++        }
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 611fa2d4c..c85c08dfc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -74,6 +74,18 @@ public interface ClinicService {
+ 	 */
+ 	boolean isHouseholdInUse(Owner owner) throws DataAccessException;
+ 
++	/**
++	 * Returns the existing (non-deleted, persisted) owners that belong to the given candidate's
++	 * household, i.e. carry the same {@code householdId} (see {@link Owner#getHouseholdId()}). The
++	 * candidate itself is not included, since it has not been persisted yet. Used to derive the
++	 * candidate's membership-level ceiling: a new owner's level may not exceed one above the current
++	 * maximum level among these members. An empty collection means the candidate is the first member
++	 * of its household, so no cap applies.
++	 *
++	 * @param owner the candidate owner, whose {@code householdId} is derived from its own fields
++	 */
++	Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException;
++
+ 	/**
+ 	 * Returns {@code true} if any existing owner already has the same identity key as the given
+ 	 * candidate, where the identity key is the owner's normalized telephone, (lower-cased) email
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 606e9b105..d31666d99 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -315,14 +315,21 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional(readOnly = true)
+     public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
++        return !findHouseholdMembers(owner).isEmpty();
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException {
+         String householdId = owner.getHouseholdId();
+         if (householdId == null) {
+-            return false;
++            return List.of();
+         }
+         return ownerRepository.findAll().stream()
+             .filter(existing -> existing.getId() != null)
+             .filter(existing -> !existing.isDeleted())
+-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .collect(Collectors.toList());
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0884364b0..a0d71368d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   possible_duplicate BOOLEAN DEFAULT FALSE,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d573d0652..1309ce8f6 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,6 +55,7 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   possible_duplicate BOOLEAN DEFAULT FALSE,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 657e0a877..fcd312ed4 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   possible_duplicate BOOLEAN DEFAULT FALSE,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 62f7f3b11..2702aafe1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN DEFAULT FALSE,
+                                       possible_duplicate BOOLEAN DEFAULT FALSE,
+                                       possible_duplicate_of INTEGER,
++                                      membership_level_cap INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
