@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -39,6 +40,30 @@ public interface OwnerMapper {
     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
         return hasEmail(owner) ? OwnerDto.ContactPreferenceEnum.EMAIL
             : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Derives the owner's age band at read time from {@code birthDate}, computed against
+     * {@code registrationDate} (falling back to the current date when none is stored):
+     * {@code MINOR} when under 18, {@code ADULT} when 18-64, {@code SENIOR} when 65 or older.
+     * Returns {@code null} when no birth date was supplied, so the field is absent for owners
+     * created without one.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        java.time.LocalDate asOf = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        int age = java.time.Period.between(birthDate, asOf).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
     }
 
     /** Whether the owner has a non-blank email address. */
