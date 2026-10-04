@@ -20,17 +20,25 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Immutable structured audit event emitted on a successful owner create, alongside the human-readable
- * audit line. Serialized to JSON as {@code {seq, ownerId, memberId, membershipLevel, event}}.
+ * audit line. This is the schema-version-2 event, serialized to JSON as
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment, event}}.
  *
- * <p>{@code seq} is a monotonically increasing sequence number across creates. The
- * {@code primaryIdentifier} component carries the owner's <em>current primary identifier</em> (see
+ * <p>{@code schemaVersion} is the fixed audit schema version, {@value #SCHEMA_VERSION}. {@code seq}
+ * is a monotonically increasing sequence number across creates. The {@code primaryIdentifier}
+ * component carries the owner's <em>current primary identifier</em> (see
  * {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}), the unified
- * {@code memberId}. The component is named for what it holds, while its JSON key is {@code memberId}.
+ * {@code memberId} rederived with the version-2 identity algorithm. The component is named for what
+ * it holds, while its JSON key is {@code memberId}. {@code ownerSegment} is the owner's marketing
+ * segment, recomputed from the version-2 identity (see
+ * {@link org.springframework.samples.petclinic.mapper.OwnerMapper#formatOwnerSegment}).
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId,
+public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId,
                                 @JsonProperty("memberId") String primaryIdentifier,
-                                int membershipLevel, String event) {
+                                int membershipLevel, String ownerSegment, String event) {
 
     /** The fixed {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
+
+    /** The fixed audit schema version carried by every version-2 owner-created event. */
+    public static final int SCHEMA_VERSION = 2;
 }

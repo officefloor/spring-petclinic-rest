@@ -252,14 +252,16 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a unified {@code memberId} of the form {@code <REGION><FY><HASH8><CHK>}: the region code
-     * derived from the owner's postcode (see {@link Regions#forPostcode}), the 2-digit fiscal year of
-     * the owner's (business-day-adjusted) registration date, {@code HASH8} — the first eight
-     * upper-case hex characters of the SHA-256 of the owner's normalized telephone concatenated with
-     * its last name — and {@code CHK}, a single Luhn check digit over the digits of
-     * {@code <REGION><FY><HASH8>} (e.g. {@code NSW263F5A9C2E4}). Aside from the fiscal year the
-     * identity carries no sequence number, so it depends only on the owner's own postcode, telephone,
-     * last name and registration date.
+     * Build a unified {@code memberId} of the form {@code <REGION><FY><HASH8><CHK>}: the version-2
+     * region code derived from the owner's postcode (see {@link Regions#forPostcodeV2}, the plain
+     * region code with the fixed {@code V2} version tag mixed in, e.g. {@code NSWV2}), the 2-digit
+     * fiscal year of the owner's (business-day-adjusted) registration date, {@code HASH8} — the
+     * first eight upper-case hex characters of the SHA-256 of the owner's normalized telephone
+     * concatenated with its last name — and {@code CHK}, a single Luhn check digit over the digits
+     * of {@code <REGION><FY><HASH8>} (e.g. {@code NSWV2263F5A9C2E4}). Mixing the version tag into the
+     * region segment means no {@code memberId} the version-1 algorithm produced is produced again.
+     * Aside from the fiscal year the identity carries no sequence number, so it depends only on the
+     * owner's own postcode, telephone, last name and registration date.
      *
      * <p>If the computed id collides with an existing owner's {@code memberId}, {@code -<n>} is
      * appended with the smallest {@code n} of 2 or more that makes it unique, and the de-duplicated
@@ -268,7 +270,7 @@ public class ClinicServiceImpl implements ClinicService {
     private String generateMemberId(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String region = Regions.forPostcode(owner.getPostcode());
+        String region = Regions.forPostcodeV2(owner.getPostcode());
         LocalDate registrationDate = BusinessDays.effectiveRegistrationDate(owner.getRegistrationDate());
         int fiscalYear = BusinessDays.fiscalYearEndYear(registrationDate) % 100;
         String prefix = String.format("%s%02d%s", region, fiscalYear, hash8(telephone + lastName));

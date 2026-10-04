@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.BusinessDays;
+import org.springframework.samples.petclinic.util.Regions;
 import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
@@ -278,37 +279,55 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived key behind all duplicate detection: the lower-case hex SHA-256 (64 hex
-     * characters) of {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}, where the
-     * telephone is the stored (normalized) value or an empty string when absent, the email is
-     * lower-cased or an empty string when absent, and the surname component is the standard Soundex
-     * code of the last name (see {@link org.springframework.samples.petclinic.util.Soundex}).
-     * Because the telephone is part of the key, two owners are duplicates only when their WHOLE
-     * identity keys are equal; two owners sharing a surname (hence Soundex) and postcode but with
-     * different telephones have different identity keys and are therefore both allowed, surfacing
-     * instead as a soft possible-duplicate match.
+     * The fixed version tag mixed into every version-2 owner identifier, the single source of
+     * truth for which is {@link Regions#VERSION_TAG}. It is prepended to the hashed input of the
+     * derived {@link #getIdentityKey() identityKey} and {@link #getHouseholdId() householdId}, and
+     * (via {@link Regions#forPostcodeV2}) into the region segment of the {@code memberId}, so all
+     * three derivations provably share one tag value and every version-2 identifier differs from
+     * the value the version-1 algorithm produced. The tag is confined to the identifiers: the
+     * user-facing {@code locality}, {@code timezone} and owner-segment region remain the plain
+     * region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = Regions.VERSION_TAG;
+
+    /**
+     * The single derived key behind all duplicate detection, rederived with the version-2
+     * algorithm: the lower-case hex SHA-256 (64 hex characters) of
+     * {@code V2|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}, where the fixed
+     * {@value #IDENTITY_VERSION_TAG} version tag is mixed in first, the telephone is the stored
+     * (normalized) value or an empty string when absent, the email is lower-cased or an empty
+     * string when absent, and the surname component is the standard Soundex code of the last name
+     * (see {@link org.springframework.samples.petclinic.util.Soundex}). Mixing in the version tag
+     * means no value the version-1 algorithm produced is produced again. Because the telephone is
+     * part of the key, two owners are duplicates only when their WHOLE identity keys are equal; two
+     * owners sharing a surname (hence Soundex) and postcode but with different telephones have
+     * different identity keys and are therefore both allowed, surfacing instead as a soft
+     * possible-duplicate match.
      */
     @Transient
     public String getIdentityKey() {
         String telephone = this.telephone == null ? "" : this.telephone;
         String email = this.email == null ? "" : this.email.toLowerCase();
-        String key = telephone + "|" + email + "|" + Soundex.encode(getLastName());
+        String key = IDENTITY_VERSION_TAG + "|" + telephone + "|" + email + "|" + Soundex.encode(getLastName());
         return sha256Hex(key, 32);
     }
 
     /**
-     * The deterministic household identifier derived from the owner's own fields, mirroring
-     * {@link #getIdentityKey()}: the first twelve lower-case hex characters (the first six bytes)
-     * of the SHA-256 of {@code <normalizedLastName>|<postcode>}, where the last name is normalized
-     * by trimming, collapsing internal whitespace and lower-casing, and an absent postcode counts
-     * as empty. Because it is a pure function of the stored last name and postcode, every owner
-     * sharing both automatically carries the same value, with no linking step or stored column.
+     * The deterministic household identifier derived from the owner's own fields, rederived with
+     * the version-2 algorithm and mirroring {@link #getIdentityKey()}: the first twelve lower-case
+     * hex characters (the first six bytes) of the SHA-256 of
+     * {@code V2|<normalizedLastName>|<postcode>}, where the fixed {@value #IDENTITY_VERSION_TAG}
+     * version tag is mixed in first, the last name is normalized by trimming, collapsing internal
+     * whitespace and lower-casing, and an absent postcode counts as empty. Mixing in the version
+     * tag means no value the version-1 algorithm produced is produced again. Because it is a pure
+     * function of the stored last name and postcode, every owner sharing both automatically carries
+     * the same value, with no linking step or stored column.
      */
     @Transient
     public String getHouseholdId() {
         String lastName = getLastName() == null ? ""
             : getLastName().trim().replaceAll("\\s+", " ").toLowerCase();
-        String key = lastName + "|" + (this.postcode == null ? "" : this.postcode);
+        String key = IDENTITY_VERSION_TAG + "|" + lastName + "|" + (this.postcode == null ? "" : this.postcode);
         return sha256Hex(key, 6);
     }
 

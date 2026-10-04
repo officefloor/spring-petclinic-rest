@@ -42,6 +42,17 @@ public final class Regions {
      */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * The fixed version tag mixed into every version-2 owner identifier, and the single source of
+     * truth for that tag (referenced by
+     * {@code org.springframework.samples.petclinic.model.Owner#IDENTITY_VERSION_TAG}). It is
+     * appended to the plain region code (see {@link #forPostcodeV2(String)}), so the
+     * {@code memberId}'s region segment carries it, and is also mixed into the {@code identityKey}
+     * and {@code householdId} derivations; the user-facing locality, timezone and owner-segment
+     * region keep the plain region code.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private Regions() {
     }
 
@@ -62,6 +73,18 @@ public final class Regions {
             }
         }
         return UNKNOWN;
+    }
+
+    /**
+     * The version-2 region code used inside the identifiers for the given postcode: the plain
+     * region code (see {@link #forPostcode(String)}) with the fixed {@link #VERSION_TAG} appended,
+     * e.g. {@code "NSWV2"} or {@code "UNKNOWNV2"}. Mixing in the version tag means the
+     * {@code memberId} it forms the region segment of differs from the value the version-1
+     * algorithm produced. This is used only inside the identifiers; the user-facing locality,
+     * timezone and owner-segment region use the plain {@link #forPostcode(String)} region code.
+     */
+    public static String forPostcodeV2(String postcode) {
+        return forPostcode(postcode) + VERSION_TAG;
     }
 
     /**

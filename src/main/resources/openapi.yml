@@ -2141,6 +2141,60 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 identity: the group of derived identifiers that
+        reference the owner. Each is rederived with the version-2 algorithm,
+        which mixes in a fixed 'V2' version tag, so every identifier differs from
+        the value the version-1 algorithm produced. The user-facing 'locality',
+        'timezone' and owner-segment region remain the plain region code and
+        never carry the 'V2' tag.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member identifier, formatted
+            '<REGION><FY><HASH8><CHK>', where REGION is the version-2 identity
+            region code (the postcode-derived region code with the fixed 'V2'
+            version tag mixed in, e.g. 'NSWV2'), FY the 2-digit fiscal year,
+            HASH8 the 8-character upper-hex hash and CHK a single Luhn check
+            digit computed over the digits of '<REGION><FY><HASH8>'. If the
+            identifier collides with an existing owner's, '-<n>' is appended with
+            the smallest n of 2 or more that makes it unique.
+          type: string
+          example: 'NSWV2263F5A9C2E4'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable identifier shared by owners who belong to the same
+            household. It is derived deterministically with the version-2
+            algorithm as the first 12 hex characters of the SHA-256 of the fixed
+            'V2' version tag, the owner's normalized last name and postcode, so
+            every owner with the same last name and postcode carries the same
+            value automatically.
+          type: string
+          example: '3f5a9c2e1b7d'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The derived key used for duplicate detection: the lower-case hex
+            SHA-256, derived with the version-2 algorithm, of the fixed 'V2'
+            version tag, the normalized telephone, the lower-cased email (or an
+            empty string when absent) and the Soundex code of the last name,
+            joined with '|'. Two owners are duplicates only when their whole
+            identity keys are equal, so e.g. two owners sharing a surname and
+            postcode but with different telephones remain distinct.
+          type: string
+          example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+          readOnly: true
+      required:
+        - memberId
+        - householdId
+        - identityKey
     Owner:
       title: Owner
       description: A pet owner.
@@ -2196,21 +2250,19 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The owner's unified member identifier, formatted
-                '<REGION><FY><HASH8><CHK>': the region code derived from the
-                postcode, the 2-digit fiscal year, the 8-character upper-hex HASH8
-                (the first eight hex characters of the SHA-256 of the owner's
-                normalized telephone concatenated with its last name, the same
-                HASH8 used by the region-and-hash identity), and a single Luhn
-                check digit computed over the digits of '<REGION><FY><HASH8>'. If
-                the identifier collides with an existing owner's, '-<n>' is
-                appended with the smallest n of 2 or more that makes it unique.
-              type: string
-              example: 'NSW263F5A9C2E4'
+                The version of the owner identity contract carried by this
+                response. Always 2 for the version-2 identity: the memberId,
+                identityKey and householdId are grouped under the nested
+                'identity' object and are derived with the version-2 algorithm.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             fiscalYear:
               title: Fiscal year
               description: >-
@@ -2221,17 +2273,6 @@ components:
                 date of 2026-07-01 is 'FY27' while 2026-06-30 is 'FY26'.
               type: string
               example: 'FY26'
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A stable identifier shared by owners who belong to the same
-                household. It is derived deterministically as the first 12 hex
-                characters of the SHA-256 of the owner's normalized last name
-                and postcode, so every owner with the same last name and
-                postcode carries the same value automatically.
-              type: string
-              example: '3f5a9c2e1b7d'
               readOnly: true
             membershipPoints:
               title: Membership points
@@ -2374,18 +2415,6 @@ components:
               type: boolean
               example: false
               readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The derived key used for duplicate detection: the lower-case hex
-                SHA-256 of the normalized telephone, the lower-cased email (or an
-                empty string when absent) and the Soundex code of the last name,
-                joined with '|'. Two owners are duplicates only when their whole
-                identity keys are equal, so e.g. two owners sharing a surname and
-                postcode but with different telephones remain distinct.
-              type: string
-              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
-              readOnly: true
             deleted:
               title: Deleted
               description: >-
@@ -2406,6 +2435,8 @@ components:
           required:
             - pets
             - deleted
+            - apiVersion
+            - identity
     OwnerPage:
       title: Owner page
       description: A page of pet owners.

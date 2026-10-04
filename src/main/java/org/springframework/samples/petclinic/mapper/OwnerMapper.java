@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
@@ -42,7 +43,32 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(formatRiskFlag(owner))")
+    @Mapping(target = "apiVersion", expression = "java(formatApiVersion())")
+    @Mapping(target = "identity", expression = "java(formatIdentity(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner identity contract version carried by every owner response: always {@code 2}. */
+    default Integer formatApiVersion() {
+        return 2;
+    }
+
+    /**
+     * Group the owner's version-2 identifiers into the nested {@code identity} object of the
+     * response: the {@code memberId}, {@code householdId} and {@code identityKey}, each rederived
+     * with the version-2 algorithm (see {@link Owner#getIdentityKey()},
+     * {@link Owner#getHouseholdId()} and the {@code memberId} region derived via
+     * {@link Regions#forPostcodeV2}). Returns {@code null} only when the owner is {@code null}.
+     */
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
 
     /**
      * Derive an owner's risk flag, {@code true} when the owner warrants review because any of
@@ -150,40 +176,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's locality from its {@code memberId}: the leading {@code <REGION>} segment
-     * (the run of letters before the 2-digit fiscal year), which is the region code derived from
-     * the owner's postcode. For an owner that has not yet been assigned a member id, the region is
-     * derived directly from the postcode (see {@link Regions#forPostcode}), yielding the same value
-     * the id would carry. Returns {@code null} only when the owner itself is {@code null}.
+     * Derive an owner's locality as the plain region code derived from its postcode (see
+     * {@link Regions#forPostcode}), e.g. {@code "NSW"} or {@code "UNKNOWN"}. The locality is a
+     * user-facing field, not an identifier, so it always carries the plain region code and never
+     * the version-2 identity tag mixed into the {@code memberId}'s region segment (see
+     * {@link Regions#forPostcodeV2}). Returns {@code null} only when the owner itself is
+     * {@code null}.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String region = memberIdRegion(owner.getMemberId());
-        if (region != null) {
-            return region;
-        }
         return Regions.forPostcode(owner.getPostcode());
-    }
-
-    /**
-     * The leading {@code <REGION>} segment of a {@code memberId}: its maximal prefix of letters,
-     * which precedes the 2-digit fiscal year. Returns {@code null} when the member id is
-     * {@code null} (so callers can fall back to deriving the region from the postcode).
-     *
-     * <p>Declared {@code private} so MapStruct does not pick it up as an automatic {@code String ->
-     * String} conversion and apply it to every string property.
-     */
-    private String memberIdRegion(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return memberId.substring(0, i);
     }
 
     /**
@@ -272,27 +276,16 @@ public interface OwnerMapper {
 
     /**
      * Format an owner's fiscal year as {@code "FY<YY>"}, where {@code YY} is the 2-digit fiscal
-     * year. The value is read from the {@code <FY>} segment of the owner's {@code memberId} (the
-     * two digits immediately after the leading region segment), which is the fiscal year the
-     * owner's (business-day-adjusted) {@code registrationDate} falls in. The fiscal year starts on
-     * 1 July and is named by the calendar year in which it ends, so a registration date of
-     * {@code 2026-07-01} is {@code "FY27"} while {@code 2026-06-30} is {@code "FY26"}. For an owner
-     * with no member id yet, it falls back to deriving the fiscal year directly from the
-     * registration date. Returns {@code null} when the owner, or both its member id and
-     * registration date, are absent.
+     * year the owner's (business-day-adjusted) {@code registrationDate} falls in. The fiscal year
+     * starts on 1 July and is named by the calendar year in which it ends, so a registration date
+     * of {@code 2026-07-01} is {@code "FY27"} while {@code 2026-06-30} is {@code "FY26"}. This is
+     * the same fiscal year the {@code memberId}'s {@code <FY>} segment carries, derived directly
+     * from the registration date so it is independent of the version-2 tag mixed into the
+     * {@code memberId}'s region segment. Returns {@code null} when the owner or its registration
+     * date is absent.
      */
     default String formatFiscalYear(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int start = memberIdRegion(memberId).length();
-            if (start + 2 <= memberId.length()) {
-                return "FY" + memberId.substring(start, start + 2);
-            }
-        }
-        if (owner.getRegistrationDate() == null) {
+        if (owner == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("FY%02d", BusinessDays.fiscalYearEndYear(owner.getRegistrationDate()) % 100);

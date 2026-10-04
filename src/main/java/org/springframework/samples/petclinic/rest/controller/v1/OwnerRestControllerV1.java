@@ -239,11 +239,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         // In addition to the human-readable audit line above, emit an immutable structured event.
-        // The event carries the owner's current primary identifier (the memberId) via
-        // Owner.getPrimaryIdentifier(), and a sequence number that strictly increases across creates.
+        // This is the schema-version-2 event: it carries schemaVersion=2, the owner's current
+        // primary identifier (the version-2 memberId) via Owner.getPrimaryIdentifier(), the owner
+        // segment recomputed from the version-2 identity, and a sequence number that strictly
+        // increases across creates.
         OwnerCreatedEvent event = new OwnerCreatedEvent(
-            AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(), owner.getPrimaryIdentifier(),
-            membershipLevel, OwnerCreatedEvent.EVENT_TYPE);
+            OwnerCreatedEvent.SCHEMA_VERSION, AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(),
+            owner.getPrimaryIdentifier(), membershipLevel, ownerMapper.formatOwnerSegment(owner),
+            OwnerCreatedEvent.EVENT_TYPE);
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
         // Enqueue a welcome notification for the newly created owner, recording the owner id and
         // memberId so the notification pipeline can address the member.
