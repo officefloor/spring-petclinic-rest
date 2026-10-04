@@ -48,6 +48,7 @@ CREATE TABLE owners (
   membership_number VARCHAR(32),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  household_size INTEGER,
   bulk_signup_warning BOOLEAN
 );
 CREATE INDEX owners_last_name ON owners (last_name);

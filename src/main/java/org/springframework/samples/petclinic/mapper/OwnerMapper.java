@@ -38,10 +38,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no
-     * namesakes at creation and has an email on file, otherwise {@code BRONZE}.
+     * Derives the owner's membership tier at read time from fields captured at creation:
+     * {@code GOLD} when the owner's household (owners sharing the same {@code householdId}) had 3
+     * or more members after this owner was created; otherwise {@code SILVER} when the owner had no
+     * namesakes at creation and has an email on file, else {@code BRONZE}.
      */
     default String membershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
+        }
         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
             && owner.getEmail() != null && !owner.getEmail().isBlank();
         return silver ? "SILVER" : "BRONZE";
