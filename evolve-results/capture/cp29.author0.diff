@@ -1,0 +1,225 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1ab316f62..d6acf1017 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
+@@ -105,6 +108,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidPostcodeExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidPostcodeExceptionHandler.java
+new file mode 100644
+index 000000000..72ecc9efe
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidPostcodeExceptionHandler.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.function.owner.InvalidPostcodeException;
++
++/**
++ * Responds 400 when an owner create request's supplied {@code postcode} is not four digits or is
++ * out of range for the city's region. Mirrors the create endpoint's {@code errors} array contract
++ * ({@link OwnerFieldErrors}) used for missing/blank and other invalid fields, naming
++ * {@code postcode}.
++ */
++public class InvalidPostcodeExceptionHandler {
++
++    public void handle(@Parameter InvalidPostcodeException ex,
++            ObjectResponse<ResponseEntity<OwnerFieldErrors>> response) {
++        response.send(ResponseEntity.badRequest().body(new OwnerFieldErrors(List.of("postcode"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidPostcodeException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidPostcodeException.java
+new file mode 100644
+index 000000000..b1a38205b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidPostcodeException.java
+@@ -0,0 +1,15 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Thrown by {@link ValidateOwnerPostcode} when an owner create request carries a {@code postcode}
++ * that is present but invalid: either not four digits, or outside the inclusive range for the
++ * city's known region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known region
++ * accepts any 4-digit postcode. Checked so it appears in the {@code throws} clause and is routed
++ * to its escalation handler, which responds 400.
++ */
++public class InvalidPostcodeException extends Exception {
++
++    public InvalidPostcodeException(String postcode) {
++        super("Postcode is not valid for the owner's city: " + postcode);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerPostcode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerPostcode.java
+new file mode 100644
+index 000000000..47fed1842
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerPostcode.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Create-time guard for {@code POST /owners}: validates {@code postcode} <em>only when present</em>.
++ * A supplied postcode must be exactly four digits and, when the city maps to a known region, fall
++ * within that region's inclusive range; otherwise the request is rejected with 400 via
++ * {@link InvalidPostcodeException}. A city with no known region accepts any 4-digit postcode, and
++ * an absent (null/blank) postcode is accepted unchanged — so the request contract stays
++ * backward-compatible.
++ *
++ * <p>The city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD) mirrors
++ * {@code OwnerMapper.locality}, the read-time derivation returned on the owner.
++ */
++public class ValidateOwnerPostcode {
++
++    /** City -> canonical region. Anything not listed has no known region. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++            "NSW", new int[] {2000, 2099},
++            "VIC", new int[] {3000, 3099},
++            "QLD", new int[] {4000, 4099});
++
++    public void service(@Val OwnerFieldsDto request) throws InvalidPostcodeException {
++        String postcode = request.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return; // optional when absent
++        }
++        if (!postcode.matches("[0-9]{4}")) {
++            throw new InvalidPostcodeException(postcode);
++        }
++        String region = CITY_REGION.get(request.getCity());
++        int[] range = region == null ? null : REGION_POSTCODES.get(region);
++        if (range != null) {
++            int value = Integer.parseInt(postcode);
++            if (value < range[0] || value > range[1]) {
++                throw new InvalidPostcodeException(postcode);
++            }
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 4cb726f6d..e7dc38c31 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(32),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index b8a97234e..0468f2db5 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(32),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1fde77ebe..ee2e857b2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(32),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 540ab182d..a9626db05 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.InvalidPostcodeException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.InvalidPostcodeException.yml
+new file mode 100644
+index 000000000..037aea4e4
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.InvalidPostcodeException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index dcc48fac1..dd4df41e4 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -3,6 +3,10 @@ composition:
+ 
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
++  next: validatePostcode
++
++validatePostcode:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerPostcode
+   next: normalize
+ 
+ normalize:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c46baab63..4b17973ea 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2040,6 +2040,17 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: george.franklin@example.com
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when supplied it must be four digits
++            and, when the city maps to a known region (Sydney->NSW, Melbourne->VIC,
++            Brisbane->QLD), fall within that region's range (NSW 2000-2099, VIC 3000-3099,
++            QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
++            Stored and returned when given.
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: >-
