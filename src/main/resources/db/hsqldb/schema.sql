@@ -50,6 +50,7 @@ CREATE TABLE owners (
   membership_number VARCHAR(32),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  household_size INTEGER,
   bulk_signup_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER
