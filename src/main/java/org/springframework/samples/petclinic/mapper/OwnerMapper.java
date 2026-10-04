@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.BusinessDays;
+import org.springframework.samples.petclinic.util.DisposableDomains;
 import org.springframework.samples.petclinic.util.Regions;
 
 import java.time.LocalDate;
@@ -40,7 +41,25 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(formatRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's risk flag, {@code true} when the owner warrants review because any of
+     * these hold: the owner is a possible duplicate (see {@link #formatPossibleDuplicate(Owner)}),
+     * its email domain is disposable-adjacent (see
+     * {@link DisposableDomains#isDisposableAdjacentEmail(String)}), or its city is over its soft
+     * capacity (its capacity warning is set, see {@link #formatCapacityWarning(Owner)}); otherwise
+     * {@code false}. Returns {@code null} only when the owner is {@code null}.
+     */
+    default Boolean formatRiskFlag(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return formatPossibleDuplicate(owner)
+            || formatCapacityWarning(owner)
+            || DisposableDomains.isDisposableAdjacentEmail(owner.getEmail());
+    }
 
     /**
      * Derive an owner's marketing segment, formatted {@code "<TIER>_<AREA>"}. The tier is

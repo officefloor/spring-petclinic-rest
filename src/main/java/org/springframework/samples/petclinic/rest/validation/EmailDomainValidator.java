@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.rest.validation;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-import java.util.Set;
+import org.springframework.samples.petclinic.util.DisposableDomains;
 
 /**
  * Rejects an owner's email address when its domain is on the disposable-domain blocklist.
@@ -13,19 +13,11 @@ import java.util.Set;
  */
 public class EmailDomainValidator implements ConstraintValidator<EmailDomainValidation, String> {
 
-    private static final Set<String> DISPOSABLE_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
-
     @Override
     public boolean isValid(String email, ConstraintValidatorContext context) {
-        if (email == null) {
-            return true; // optional; presence/syntax handled by other constraints
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0 || at == email.length() - 1) {
-            return true; // no domain part; leave to the @Email constraint
-        }
-        String domain = email.substring(at + 1).toLowerCase();
-        return !DISPOSABLE_DOMAINS.contains(domain);
+        // A null (optional) email and a value with no domain part are both accepted here; their
+        // presence/syntax is enforced by other constraints. isDisposableEmail treats both as not
+        // disposable, so only a genuine blocklisted domain is rejected.
+        return !DisposableDomains.isDisposableEmail(email);
     }
 }
