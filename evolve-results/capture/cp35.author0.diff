@@ -1,0 +1,250 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cf26780f1..74256cef5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,10 +29,23 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
++    @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Resolve an owner's possible-duplicate flag, coalescing a {@code null} stored value
++     * (e.g. for owners created before the flag existed) to {@code false} so the response
++     * always carries an explicit boolean.
++     */
++    default Boolean formatPossibleDuplicate(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate());
++    }
++
+     /**
+      * Derive an owner's age band from its {@code birthDate}, measured as the owner's age in whole
+      * years on its {@code registrationDate}: {@code "MINOR"} when under 18, {@code "ADULT"} from 18
+@@ -194,6 +207,8 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "possibleDuplicate", ignore = true)
++    @Mapping(target = "possibleDuplicateOf", ignore = true)
+     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 53bc54e02..1e406f4a3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,12 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -166,6 +172,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * When no registration date is supplied, default it to the server's current date, then roll
+      * the effective date forward onto a business day: a Saturday or Sunday becomes the following
+@@ -273,6 +295,8 @@ public class Owner extends Person {
+             .append("householdId", this.householdId)
+             .append("namesakeCount", this.namesakeCount)
+             .append("bulkSignupWarning", this.bulkSignupWarning)
++            .append("possibleDuplicate", this.possibleDuplicate)
++            .append("possibleDuplicateOf", this.possibleDuplicateOf)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 35b434092..0ba369903 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -155,6 +155,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isIdentityKeyInUse(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Soft "possible duplicate" detection: not a hard duplicate, but an existing owner shares
++        // this owner's last name and postcode with a different telephone. The create still proceeds,
++        // flagged with possibleDuplicate=true and possibleDuplicateOf set to the matching owner id.
++        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
++        owner.setPossibleDuplicate(possibleDuplicateOf != null);
++        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         owner.setNamesakeCount(
+             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 28dec979c..9d79828de 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -85,6 +85,19 @@ public interface ClinicService {
+ 	 */
+ 	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
+ 
++	/**
++	 * Returns the id of an existing owner that is a soft "possible duplicate" of the given
++	 * candidate — one that shares the candidate's last name (compared case-insensitively) and
++	 * postcode but carries a different telephone — or {@code null} when none exists. Unlike
++	 * {@link #isIdentityKeyInUse(Owner)}, which detects a hard duplicate that blocks the create,
++	 * this flags a near-match that is still allowed to be created. When several owners match, the
++	 * one with the lowest id is returned so the result is deterministic.
++	 *
++	 * @param owner the candidate owner, with its last name, postcode and telephone already set
++	 * @return the matching owner's id, or {@code null} when none exists
++	 */
++	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
++
+ 	/**
+ 	 * Places the given owner into the household identified by its last name and address and
+ 	 * returns the household's stable shared identifier. The identifier is derived
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 62d319128..9656dd0e3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -324,6 +324,27 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
++        String normalizedLastName = normalizeForComparison(owner.getLastName());
++        String postcode = owner.getPostcode();
++        if (normalizedLastName == null || postcode == null) {
++            return null;
++        }
++        String telephone = owner.getTelephone();
++        return ownerRepository.findAll().stream()
++            .filter(existing -> existing.getId() != null)
++            .filter(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName())))
++            .filter(existing -> postcode.equals(existing.getPostcode()))
++            .filter(existing -> telephone == null
++                ? existing.getTelephone() != null
++                : !telephone.equals(existing.getTelephone()))
++            .map(Owner::getId)
++            .min(Integer::compareTo)
++            .orElse(null);
++    }
++
+     @Override
+     @Transactional
+     public String assignHousehold(Owner owner) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index eee799dca..189947379 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN DEFAULT FALSE
++  bulk_signup_warning BOOLEAN DEFAULT FALSE,
++  possible_duplicate BOOLEAN DEFAULT FALSE,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 1d59dab4d..1289ea453 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,9 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN DEFAULT FALSE
++  bulk_signup_warning BOOLEAN DEFAULT FALSE,
++  possible_duplicate BOOLEAN DEFAULT FALSE,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index b2fa2c984..238b38868 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
++  possible_duplicate BOOLEAN DEFAULT FALSE,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6df07cf12..895d36aa9 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      bulk_signup_warning BOOLEAN DEFAULT FALSE
++                                      bulk_signup_warning BOOLEAN DEFAULT FALSE,
++                                      possible_duplicate BOOLEAN DEFAULT FALSE,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c349e5274..0d038193e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2213,6 +2213,28 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when, at create time, the owner was not a hard (identity-key)
++                duplicate but shared an existing owner's last name and postcode
++                while carrying a different telephone, flagging it as a possible
++                duplicate; otherwise false. Assigned on create and never changed
++                afterwards.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner was flagged as a possible
++                duplicate of, set only when 'possibleDuplicate' is true; otherwise
++                absent. Assigned on create and never changed afterwards.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 7
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
