@@ -27,6 +27,12 @@ public final class OwnerLocality {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. Anything not listed has no known timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     private OwnerLocality() {
     }
 
@@ -59,6 +65,14 @@ public final class OwnerLocality {
     /** The region's inclusive 4-digit postcode range {low, high}, or {@code null} when none. */
     public static int[] postcodeRange(String region) {
         return region == null ? null : REGION_POSTCODES.get(region);
+    }
+
+    /**
+     * The region's IANA timezone name (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane), or {@code null} when the region is null or has no known timezone.
+     */
+    public static String timezoneForRegion(String region) {
+        return region == null ? null : REGION_TIMEZONE.get(region);
     }
 
     /**
