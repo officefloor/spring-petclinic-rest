@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index de71d082b..84b9e45ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 783d29fe9..7d016fb0b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -69,6 +69,18 @@ public interface ClinicService {
+ 	 */
+ 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} if any existing owner already shares a household with the given
++	 * candidate, i.e. has the same last name and the same address once both are compared
++	 * case-insensitively with internal whitespace collapsed. Enforces the invariant that two
++	 * owners may not be created at the same address under the same last name, so callers can
++	 * reject a duplicate create unless the household is shared intentionally.
++	 *
++	 * @param lastName the candidate owner's last name
++	 * @param address  the candidate owner's address
++	 */
++	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
++
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+ 	Collection<PetType> findPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 6878418ab..8c80549a1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -273,6 +273,31 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(normalized::equals);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
++        String normalizedLastName = normalizeHouseholdValue(lastName);
++        String normalizedAddress = normalizeHouseholdValue(address);
++        if (normalizedLastName == null || normalizedAddress == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdValue(existing.getLastName()))
++                && normalizedAddress.equals(normalizeHouseholdValue(existing.getAddress())));
++    }
++
++    /**
++     * Canonicalize a last name or address for household comparison: trim, collapse every run of
++     * whitespace to a single space and lower-case the result, so values that differ only in
++     * letter case or incidental whitespace are treated as equal.
++     */
++    private String normalizeHouseholdValue(String value) {
++        if (value == null) {
++            return null;
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 89032d48b..44a8b1076 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2059,6 +2059,18 @@ components:
+           type: string
+           format: date
+           example: '2024-01-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Write-only flag used on create. When an existing owner already has
++            the same last name and the same address (compared case-insensitively
++            with collapsed whitespace), the create is rejected with 409 unless
++            this flag is set to true, which acknowledges the two owners share a
++            household and allows the create to proceed.
++          type: boolean
++          writeOnly: true
++          default: false
++          example: false
+       required:
+         - firstName
+         - lastName
