@@ -7,7 +7,11 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Single source of truth for an owner's {@code identityKey} — a derived value returned on the
  * owner DTO and used for duplicate detection. The key is the lower-case hex SHA-256 (see
- * {@link Hashing}) of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+ * {@link Hashing}) of
+ * {@code identityRegion + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+ * where {@code identityRegion} is the version-2 identity region code (e.g. {@code V2NSW} — see
+ * {@link OwnerRegion#identityRegionOf}). Mixing the fixed {@code V2} tag in means no identityKey
+ * matches a value the same owner produced under version 1.
  *
  * <p>The inputs are normalized the same way for every owner so stored owners and the owner being
  * created compare consistently: the telephone to its E.164 form (see {@link OwnerTelephones}, so a
@@ -26,9 +30,11 @@ public final class OwnerIdentity {
     private OwnerIdentity() {
     }
 
-    /** The owner's duplicate-detection identity key: SHA-256 hex over the normalized inputs. */
+    /** The owner's duplicate-detection identity key: SHA-256 hex over the normalized inputs,
+     *  with the version-2 identity region tag mixed in. */
     public static String identityKey(Owner owner) {
-        String canonical = normalizedTelephone(owner) + "|" + lowerEmail(owner) + "|" + Soundex.of(owner.getLastName());
+        String canonical = OwnerRegion.identityRegionOf(owner) + "|" + normalizedTelephone(owner) + "|"
+                + lowerEmail(owner) + "|" + Soundex.of(owner.getLastName());
         return Hashing.sha256Hex(canonical);
     }
 

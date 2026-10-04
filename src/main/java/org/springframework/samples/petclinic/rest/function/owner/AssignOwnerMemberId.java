@@ -13,12 +13,15 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's unified {@code memberId} on create, formatted
- * {@code <REGION><FY><HASH8><CHK>} where {@code REGION} is the region code derived from
- * the postcode (see {@link OwnerRegion}), {@code FY} is the two-digit fiscal year of the
- * (business-day-adjusted) registration date (see {@link OwnerFiscalYear}), {@code HASH8}
- * is the first 8 upper-case hex characters of SHA-256 over
- * ({@code normalizedTelephone + lastName}) and {@code CHK} is a single Luhn check digit
- * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D7}).
+ * {@code <IDREGION><FY><HASH8><CHK>} where {@code IDREGION} is the version-2 identity
+ * region code (the postcode-derived region prefixed with the fixed {@code V2} version
+ * tag, e.g. {@code V2NSW} — see {@link OwnerRegion#identityRegionOf}), {@code FY} is the
+ * two-digit fiscal year of the (business-day-adjusted) registration date (see
+ * {@link OwnerFiscalYear}), {@code HASH8} is the first 8 upper-case hex characters of
+ * SHA-256 over ({@code normalizedTelephone + lastName}) and {@code CHK} is a single Luhn
+ * check digit computed over the digits of {@code <IDREGION><FY><HASH8>} (e.g.
+ * {@code V2NSW261A2B3C4D7}). The {@code V2} tag means no memberId matches a value the
+ * same owner produced under version 1.
  *
  * <p>Runs after the telephone has been normalized to E.164 and the registration date has
  * been rolled to a business day, so both the hash and the fiscal year are stable over the
@@ -29,7 +32,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignOwnerMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = OwnerRegion.regionOf(owner);
+        String region = OwnerRegion.identityRegionOf(owner);
         String fy = String.format("%02d",
                 OwnerFiscalYear.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());

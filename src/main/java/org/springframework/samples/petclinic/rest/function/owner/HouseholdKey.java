@@ -12,9 +12,13 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Single-sources the "what is a household" definition. The {@code householdId} is derived
  * <em>deterministically</em> from this key (see {@link #householdId()}): the first 12 hex
- * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Every owner computes
- * the same id for the same household automatically, so two owners share a {@code householdId}
- * exactly when they share a last name and postcode — no opt-in and no back-filling required.
+ * characters of SHA-256 over {@code identityRegion + '|' + normalizedLastName + '|' + postcode},
+ * where {@code identityRegion} is the version-2 identity region code (e.g. {@code V2NSW} — see
+ * {@link OwnerRegion#identityRegionOf}). Mixing the {@code V2} tag in means no householdId
+ * matches a value the same household produced under version 1. Two owners of the same last name
+ * and postcode derive the same region and so still compute the same id automatically — no opt-in
+ * and no back-filling required. Household membership itself (see {@link #matches}) is keyed on
+ * the last name and postcode only; the region does not widen or narrow a household.
  */
 final class HouseholdKey {
 
@@ -22,14 +26,19 @@ final class HouseholdKey {
 
     private final String postcode;
 
-    private HouseholdKey(String lastName, String postcode) {
+    private final String identityRegion;
+
+    private HouseholdKey(String lastName, String postcode, String identityRegion) {
         this.lastName = lastName;
         this.postcode = postcode;
+        this.identityRegion = identityRegion;
     }
 
     /** The household the given owner belongs to. */
     static HouseholdKey of(Owner owner) {
-        return new HouseholdKey(normalize(owner.getLastName()), owner.getPostcode() == null ? "" : owner.getPostcode());
+        return new HouseholdKey(normalize(owner.getLastName()),
+                owner.getPostcode() == null ? "" : owner.getPostcode(),
+                OwnerRegion.identityRegionOf(owner));
     }
 
     /** Whether {@code owner} belongs to this household. */
@@ -37,9 +46,10 @@ final class HouseholdKey {
         return equals(of(owner));
     }
 
-    /** Stable canonical form of the key, suitable for deriving a shared identifier. */
+    /** Stable canonical form of the key, suitable for deriving a shared identifier. Carries the
+     *  version-2 identity region tag so the derived id is distinct from any version-1 value. */
     private String canonical() {
-        return lastName + "|" + postcode;
+        return identityRegion + "|" + lastName + "|" + postcode;
     }
 
     /**

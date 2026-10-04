@@ -9,19 +9,25 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * unified member id resolved by {@link AuditOwnerCreated#primaryIdentifier} — and the
  * JSON field is named to match.
  *
- * <p>The {@code event} discriminator is intrinsic to this type: callers use the
- * four-argument constructor and the record fills {@code event} itself, so the event
- * can never be constructed with an inconsistent marker. Being a record, every field is
- * final and set once at construction — the event cannot be mutated after it is published.
+ * <p>The {@code event} discriminator and the {@code schemaVersion} are intrinsic to this
+ * type: callers use the four-argument constructor and the record fills {@code event} and
+ * {@code schemaVersion} itself, so the event can never be constructed with an inconsistent
+ * marker or an out-of-date schema version. The event is at schema version 2, so
+ * {@code schemaVersion} is always {@code 2}. Being a record, every field is final and set
+ * once at construction — the event cannot be mutated after it is published.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+public record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
 
     /** The fixed event marker for an owner create. */
     private static final String OWNER_CREATED = "OWNER_CREATED";
 
-    /** Builds an owner-create event, stamping the fixed {@code OWNER_CREATED} marker. */
+    /** The current audit-event schema version. */
+    private static final int SCHEMA_VERSION = 2;
+
+    /** Builds an owner-create event, stamping the fixed {@code OWNER_CREATED} marker and the
+     *  current {@code schemaVersion} of 2. */
     public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
-        this(seq, ownerId, memberId, membershipLevel, OWNER_CREATED);
+        this(seq, SCHEMA_VERSION, ownerId, memberId, membershipLevel, OWNER_CREATED);
     }
 }

@@ -37,11 +37,28 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones.toDisplay(owner.getTelephone()))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identifiers into the nested {@code identity} object:
+     * the stored {@code memberId} and {@code householdId}, and the derived
+     * {@code identityKey} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity}).
+     * Each is derived with the version-2 algorithm that mixes in the fixed {@code V2} tag.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity
+            .identityKey(owner));
+        return identity;
+    }
 
     /**
      * Derives the owner's segment, formatted {@code <TIER>_<AREA>}. TIER is
