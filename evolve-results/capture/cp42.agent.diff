@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 83d187c23..4570b736a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
++    @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+@@ -115,6 +116,19 @@ public interface OwnerMapper {
+         return Regions.forPostcode(owner.getPostcode());
+     }
+ 
++    /**
++     * Derive an owner's timezone as the IANA name mapped from its locality/region via a fixed
++     * region-to-timezone table (see {@link Regions#timezoneForRegion}): NSW -> Australia/Sydney,
++     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane. Returns {@code null} when the owner
++     * is {@code null} or its region is not in the table.
++     */
++    default String formatTimezone(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Regions.timezoneForRegion(formatLocality(owner));
++    }
++
+     /**
+      * Compute an owner's membership points. Points start at {@code 0} and gain: {@code 2} when an
+      * email address is present; {@code 1} when the owner has no namesakes (its
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Regions.java b/src/main/java/org/springframework/samples/petclinic/util/Regions.java
+index 9853cc833..530483bd1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Regions.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Regions.java
+@@ -28,6 +28,14 @@ public final class Regions {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /**
++     * Region to its IANA timezone name, via a fixed region-to-timezone table.
++     */
++    private static final Map<String, String> REGION_TIMEZONES = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     /**
+      * The region code a {@code "UNKNOWN"} postcode (absent, non-4-digit, or in no known range)
+      * derives to.
+@@ -55,4 +63,13 @@ public final class Regions {
+         }
+         return UNKNOWN;
+     }
++
++    /**
++     * The IANA timezone name for the given region code, via a fixed region-to-timezone table
++     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
++     * {@code null} when the region is {@code null} or not in the table (e.g. {@link #UNKNOWN}).
++     */
++    public static String timezoneForRegion(String region) {
++        return region == null ? null : REGION_TIMEZONES.get(region);
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index be35d352d..b6cba2c5f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2217,6 +2217,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                using a fixed region-to-timezone table (NSW -> Australia/Sydney,
++                VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or absent
++                when the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: >-
