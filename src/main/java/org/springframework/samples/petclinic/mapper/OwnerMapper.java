@@ -25,7 +25,17 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Reports the owner's bulk-signup warning: {@code true} when more than 80 owners had already
+     * been created on this owner's registration business day at the time it was created. Treats a
+     * missing value (owners created before this rule existed) as {@code false}.
+     */
+    default boolean bulkSignupWarning(Owner owner) {
+        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
 
     /**
      * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no

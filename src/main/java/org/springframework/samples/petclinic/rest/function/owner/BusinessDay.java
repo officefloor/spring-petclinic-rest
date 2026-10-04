@@ -3,6 +3,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
+
 /**
  * Single source of truth for the business-day rule on an owner's registration date: the
  * effective registration date must fall on a business day, so a Saturday or Sunday rolls
@@ -28,5 +31,18 @@ final class BusinessDay {
             rolled = rolled.plusDays(1);
         }
         return rolled;
+    }
+
+    /**
+     * Counts existing owners whose stored {@code registrationDate} equals {@code businessDay} — the
+     * single definition of "owners created on this business day" shared by the create-time rules
+     * ({@link CheckDailyOwnerLimit}'s hard cap and {@link AssignBulkSignupWarning}'s flag), so they
+     * can never drift apart. Both call this and compare the result against their own threshold.
+     */
+    static long countOwnersOn(LocalDate businessDay, OwnerRepository ownerRepository) {
+        return ownerRepository.findAll().stream()
+            .map(Owner::getRegistrationDate)
+            .filter(businessDay::equals)
+            .count();
     }
 }
