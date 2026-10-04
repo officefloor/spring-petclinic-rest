@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.E164Telephone;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -51,9 +52,22 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "householdId", ignore = true)
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Normalize a postal address for storage into its canonical form (see
+     * {@link AddressNormalizer}), so it is persisted and returned the same way regardless of
+     * the formatting supplied by the caller. {@code @Named} keeps this out of MapStruct's
+     * automatic method selection, so it only runs where a mapping explicitly references it via
+     * {@code qualifiedByName}.
+     */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        return AddressNormalizer.normalize(address);
+    }
 
     /**
      * Normalize a telephone number for storage into E.164 form (see {@link E164Telephone}).
