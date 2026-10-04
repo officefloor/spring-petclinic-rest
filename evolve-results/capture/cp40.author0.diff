@@ -1,0 +1,250 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c7d96b6b7..9704ca247 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -16,7 +18,14 @@ import java.util.List;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    /**
++     * Used to count the members of an owner's household when deriving membership points. Injected
++     * into the MapStruct-generated subclass by Spring.
++     */
++    @Autowired
++    protected OwnerRepository ownerRepository;
+ 
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+@@ -24,6 +33,7 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+@@ -33,13 +43,13 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone.toDisplay(owner.getTelephone()))")
+-    OwnerDto toOwnerDto(Owner owner);
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Derives the owner's preferred contact channel at read time: {@code EMAIL} when an email is
+      * present, otherwise {@code PHONE}.
+      */
+-    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
++    public OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+         return hasEmail(owner) ? OwnerDto.ContactPreferenceEnum.EMAIL
+             : OwnerDto.ContactPreferenceEnum.PHONE;
+     }
+@@ -51,7 +61,7 @@ public interface OwnerMapper {
+      * Returns {@code null} when no birth date was supplied, so the field is absent for owners
+      * created without one.
+      */
+-    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
++    public OwnerDto.AgeBandEnum ageBand(Owner owner) {
+         java.time.LocalDate birthDate = owner.getBirthDate();
+         if (birthDate == null) {
+             return null;
+@@ -69,7 +79,7 @@ public interface OwnerMapper {
+     }
+ 
+     /** Whether the owner has a non-blank email address. */
+-    default boolean hasEmail(Owner owner) {
++    public boolean hasEmail(Owner owner) {
+         return owner.getEmail() != null && !owner.getEmail().isBlank();
+     }
+ 
+@@ -78,7 +88,7 @@ public interface OwnerMapper {
+      * been created on this owner's registration business day at the time it was created. Treats a
+      * missing value (owners created before this rule existed) as {@code false}.
+      */
+-    default boolean bulkSignupWarning(Owner owner) {
++    public boolean bulkSignupWarning(Owner owner) {
+         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+     }
+ 
+@@ -87,7 +97,7 @@ public interface OwnerMapper {
+      * in {@code customerCode}, derived at read time. Returns {@code null} when no customer code has
+      * been assigned.
+      */
+-    default Integer checkDigit(Owner owner) {
++    public Integer checkDigit(Owner owner) {
+         String customerCode = owner.getCustomerCode();
+         if (customerCode == null) {
+             return null;
+@@ -113,28 +123,63 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's numeric membership level: starts at 1, adds 1 when an email is present,
+-     * adds 1 when the owner had no namesakes at creation ({@code namesakeCount == 0}), and adds 1
+-     * when the owner belongs to a household (has a {@code householdId}).
+-     *
+-     * <p>Level 4 requires tenure of more than 365 days: the level is capped at 3 unless the owner's
+-     * tenure (days since {@code registrationDate}) exceeds 365, in which case it may reach 4. Because
+-     * a newly created owner has zero tenure, a new owner never exceeds level 3 — even one with an
+-     * email, a {@code namesakeCount} of 0 and a household (which otherwise sum to 4) lands at 3.
++     * Derives the owner's membership points at read time: starts at 0, adds 2 when an email is
++     * present, adds 1 when the owner had no namesakes at creation ({@code namesakeCount == 0}),
++     * adds 2 when the owner belongs to a household of 3 or more members, and adds 3 when the
++     * owner's tenure (days since {@code registrationDate}) exceeds 365.
+      */
+-    default int membershipLevel(Owner owner) {
+-        int level = 1;
++    public int membershipPoints(Owner owner) {
++        int points = 0;
+         if (hasEmail(owner)) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (householdSize(owner) >= 3) {
++            points += 2;
++        }
++        if (tenureDays(owner) > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Maps the owner's {@link #membershipPoints(Owner) membership points} to a numeric level:
++     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++     */
++    public int membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points <= 1) {
++            return 1;
+         }
+-        if (owner.getHouseholdId() != null && !owner.getHouseholdId().isBlank()) {
+-            level++;
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
++    }
++
++    /**
++     * The number of owners that belong to this owner's household, counted at read time by its
++     * {@code householdId}. Returns 0 when the owner belongs to no household (no {@code householdId}),
++     * so such an owner never earns the household points.
++     */
++    public long householdSize(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            return 0;
++        }
++        long count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                count++;
++            }
+         }
+-        int cap = tenureDays(owner) > 365 ? 4 : 3;
+-        return Math.min(level, cap);
++        return count;
+     }
+ 
+     /**
+@@ -142,7 +187,7 @@ public interface OwnerMapper {
+      * today. Returns 0 when no registration date is stored (or it lies in the future), so an owner
+      * with no recorded tenure never qualifies for the tenure-gated level 4.
+      */
+-    default long tenureDays(Owner owner) {
++    public long tenureDays(Owner owner) {
+         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+         if (registrationDate == null) {
+             return 0;
+@@ -158,7 +203,7 @@ public interface OwnerMapper {
+      * with no {@code customerCode} fall back to resolving the region directly. Both the parse and
+      * the fallback (including the {@code UNKNOWN} sentinel) live in {@code OwnerCustomerCode}.
+      */
+-    default String locality(Owner owner) {
++    public String locality(Owner owner) {
+         String region = org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+             .regionOf(owner.getCustomerCode());
+         return region != null ? region
+@@ -166,17 +211,17 @@ public interface OwnerMapper {
+                 .regionFor(owner);
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0510a8d75..3238e93f2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2193,17 +2193,28 @@ components:
+               type: string
+               example: 'SYD-SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, derived at read time: starts at 0,
++                +2 when an email is present, +1 when namesakeCount is 0, +2 for a
++                household of 3 or more members, and +3 for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned at creation: starts at 1,
+-                +1 when an email is present, +1 when namesakeCount is 0, capped at 3
+-                (level 4 is reserved for tenure).
++                The owner's numeric membership level, derived at read time from
++                membershipPoints: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6
++                or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
