@@ -9,10 +9,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Create-time uniqueness guard for {@code POST /owners}: rejects a request whose telephone is
  * already used by an existing owner, with a 409 via {@link DuplicateTelephoneException}.
  *
- * <p>Runs after {@link NormalizeOwnerTelephone} so the request telephone is the stored 10-digit
- * form, and compares against each existing owner's telephone normalised the same way (strip every
- * non-digit) so the check is independent of how existing values happen to be formatted. Runs
- * before {@link BuildOwner}.
+ * <p>Runs after {@link NormalizeOwnerTelephone} so the request telephone is the stored E.164
+ * form, and compares against each existing owner's telephone canonicalised the same way
+ * ({@link OwnerTelephone#toE164(String)}) so the check is independent of how existing values
+ * happen to be formatted. Runs before {@link BuildOwner}.
  */
 public class CheckOwnerTelephoneUnique {
 
@@ -20,7 +20,7 @@ public class CheckOwnerTelephoneUnique {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner existing : ownerRepository.findAll()) {
-            if (OwnerTelephone.normalize(existing.getTelephone()).equals(telephone)) {
+            if (telephone.equals(OwnerTelephone.toE164(existing.getTelephone()))) {
                 throw new DuplicateTelephoneException(telephone);
             }
         }
