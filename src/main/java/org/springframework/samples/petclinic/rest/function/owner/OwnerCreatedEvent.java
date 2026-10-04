@@ -1,0 +1,64 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+/**
+ * Immutable structured event emitted to the {@code AUDIT} logger when a new owner is created,
+ * alongside the human-readable audit line (see {@link AuditOwnerCreated}). Serialised as the JSON
+ * object {@code {seq, ownerId, customerCode, membershipLevel, event}} with
+ * {@code event == }{@value #EVENT}.
+ *
+ * <p>{@code seq} is a monotonically increasing sequence across creates (assigned by
+ * {@link AuditOwnerCreated}), so consumers can order and de-duplicate events independently of log
+ * timestamps.
+ *
+ * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em>. Today
+ * that is the region-and-hash {@code customerCode} ({@link OwnerCustomerCode}); when the identity is
+ * later unified into a {@code memberId}, this single field is what switches to carry the
+ * {@code memberId} instead — the record is the one place that definition lives.
+ *
+ * <p>Being a record, the event is deeply immutable once constructed.
+ */
+public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel) {
+
+    /** The {@code event} discriminator carried by every owner-created event. */
+    public static final String EVENT = "OWNER_CREATED";
+
+    /**
+     * The canonical JSON form {@code {seq, ownerId, customerCode, membershipLevel, event}}. Built
+     * directly rather than via a mapper so the audit side-effect carries no dependency on the HTTP
+     * response serialisation.
+     */
+    public String toJson() {
+        return "{\"seq\":" + this.seq
+                + ",\"ownerId\":" + this.ownerId
+                + ",\"customerCode\":" + quote(this.customerCode)
+                + ",\"membershipLevel\":" + this.membershipLevel
+                + ",\"event\":\"" + EVENT + "\"}";
+    }
+
+    /** A JSON string literal for {@code value}, escaping the characters JSON requires, or {@code null}. */
+    private static String quote(String value) {
+        if (value == null) {
+            return "null";
+        }
+        StringBuilder sb = new StringBuilder(value.length() + 2).append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    }
+                    else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.append('"').toString();
+    }
+}
