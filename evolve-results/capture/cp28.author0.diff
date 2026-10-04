@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3ece12f35..64559b91f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -156,6 +156,22 @@ public class Owner extends Person {
+         this.registrationDate = BusinessDays.effectiveRegistrationDate(this.registrationDate);
+     }
+ 
++    /**
++     * The single derived key behind all duplicate detection: the normalized telephone, the
++     * (lower-cased) email or an empty string when absent, and the household id or an empty string
++     * when absent, joined with {@code '|'} (e.g. {@code +61412345678||H-3F5A9C2E}). Because the
++     * telephone is part of the key, two owners are duplicates only when their WHOLE identity keys
++     * are equal; two members of the same household (same {@code householdId}) with different
++     * telephones have different identity keys and are therefore both allowed. The telephone and
++     * email are already stored in their normalized forms on create, so this composes them directly.
++     */
++    @Transient
++    public String getIdentityKey() {
++        return (this.telephone == null ? "" : this.telephone) + "|"
++            + (this.email == null ? "" : this.email) + "|"
++            + (this.householdId == null ? "" : this.householdId);
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d50e4da2d..e7251c245 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -135,26 +135,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Bulk-signup warning: flag this owner when more than 80 owners have already been created
+         // for its registration date, signalling a bulk-signup surge.
+         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+-        if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (this.clinicService.isEmailInUse(owner.getEmail())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         // Per-city capacity: a city that already holds the maximum number of owners is full.
+         if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // When the owner acknowledges sharing a household with an existing owner (same last name
++        // and address), assign the shared, stable household identifier (back-filling the existing
++        // member(s)) before the identity key is computed, so household members carry the same
++        // householdId component.
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress());
+-        if (householdInUse) {
+-            if (!sharesHousehold) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+-            }
+-            // Joining an existing household: assign the shared, stable household identifier to
+-            // the new owner (and back-fill the existing member(s)).
++        if (sharesHousehold
++            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
+             this.clinicService.assignHousehold(owner);
+         }
++        // Consolidated duplicate detection: the former separate telephone, email and household
++        // checks are now expressed through a single derived identityKey. Reject with 409 only when
++        // the new owner's WHOLE identityKey (normalized telephone | email-or-empty | householdId)
++        // equals an existing owner's; an exact full-key match is the only duplicate.
++        if (this.clinicService.isIdentityKeyInUse(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.setNamesakeCount(
+             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 4754b2499..3fb5b4f08 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -91,6 +91,18 @@ public interface ClinicService {
+ 	 */
+ 	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
+ 
++	/**
++	 * Returns {@code true} if any existing owner already has the same identity key as the given
++	 * candidate, where the identity key is the owner's normalized telephone, (lower-cased) email
++	 * or empty string, and household id or empty string, joined with {@code '|'}. This is the
++	 * single consolidated duplicate check: a create is a duplicate only when the candidate's WHOLE
++	 * identity key matches an existing owner's, so two household members with different telephones
++	 * (hence different keys) are both allowed.
++	 *
++	 * @param owner the candidate owner, with its telephone, email and household id already set
++	 */
++	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
++
+ 	/**
+ 	 * Places the given owner into the household identified by its last name and address and
+ 	 * returns the household's stable shared identifier. The identifier is derived
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 8f7c5562b..d2bc4a489 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -336,6 +336,14 @@ public class ClinicServiceImpl implements ClinicService {
+             && normalizedAddress.equals(normalizeForComparison(existing.getAddress()));
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isIdentityKeyInUse(Owner owner) throws DataAccessException {
++        String identityKey = owner.getIdentityKey();
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
++    }
++
+     @Override
+     @Transactional
+     public String assignHousehold(Owner owner) throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f2f26ab62..396b582c6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2188,6 +2188,18 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The derived key used for duplicate detection, formed by joining
++                the normalized telephone, the lower-cased email (or an empty
++                string when absent) and the household id (or an empty string when
++                absent) with '|'. Two owners are duplicates only when their whole
++                identity keys are equal, so e.g. two members of the same household
++                with different telephones remain distinct.
++              type: string
++              example: '+61412345678||H-3F5A9C2E'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
