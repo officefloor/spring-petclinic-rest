@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4d36b411b..4fd75b0f4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,9 +40,25 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones.toDisplay(owner.getTelephone()))")
+     @Mapping(target = "identityKey",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives the owner's segment, formatted {@code <TIER>_<AREA>}. TIER is
++     * {@code PREMIUM} when the membershipLevel is 3 or more, otherwise
++     * {@code STANDARD}. AREA is {@code METRO} when the owner's locality is a known
++     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        Integer level = owner.getMembershipLevel();
++        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
++        boolean metro = org.springframework.samples.petclinic.rest.function.owner.OwnerRegion
++            .timezoneOfRegion(locality(owner)) != null;
++        String area = metro ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
++    }
++
+     /**
+      * The canonical API path to this owner, formatted {@code /api/owners/<id>}. Null
+      * until the owner has been assigned an id.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b43646719..5e34fc2ec 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2374,6 +2374,22 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM'
++                when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD),
++                otherwise 'REGIONAL'. One of 'PREMIUM_METRO', 'PREMIUM_REGIONAL',
++                'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             selfLink:
+               title: Self link
+               description: >-
