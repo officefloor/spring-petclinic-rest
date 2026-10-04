@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1a9b03a8c..6d7963f0e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+@@ -54,6 +55,36 @@ public interface OwnerMapper {
+         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+     }
+ 
++    /**
++     * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits contained
++     * in {@code customerCode}, derived at read time. Returns {@code null} when no customer code has
++     * been assigned.
++     */
++    default Integer checkDigit(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Derives the owner's numeric membership level from fields captured at creation: starts at 1,
+      * adds 1 when an email is present, adds 1 when the owner had no namesakes at creation
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4b17973ea..8c2d84dbd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,17 @@ components:
+               type: string
+               example: 'SYD-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained
++                in customerCode, derived at read time.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 7
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
