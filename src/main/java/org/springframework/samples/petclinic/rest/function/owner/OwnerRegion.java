@@ -35,6 +35,11 @@ public final class OwnerRegion {
             "VIC", "Australia/Melbourne",
             "QLD", "Australia/Brisbane");
 
+    /** Whether the region code is one of the known regions (NSW, VIC, QLD). */
+    public static boolean isKnownRegion(String region) {
+        return region != null && REGION_POSTCODES.containsKey(region);
+    }
+
     /** The IANA timezone name for a region code, or {@code null} when the region has no mapping. */
     public static String timezoneOfRegion(String region) {
         return region == null ? null : REGION_TIMEZONE.get(region);

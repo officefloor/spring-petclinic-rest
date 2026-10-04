@@ -40,8 +40,24 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones.toDisplay(owner.getTelephone()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's segment, formatted {@code <TIER>_<AREA>}. TIER is
+     * {@code PREMIUM} when the membershipLevel is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the owner's locality is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        Integer level = owner.getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        boolean metro = org.springframework.samples.petclinic.rest.function.owner.OwnerRegion
+            .isKnownRegion(locality(owner));
+        String area = metro ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+    }
 
     /**
      * The canonical API path to this owner, formatted {@code /api/owners/<id>}. Null
