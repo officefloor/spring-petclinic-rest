@@ -147,7 +147,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        // Soft delete: the owner's row is retained and flagged deleted rather than removed, so it
+        // can still be read back while being excluded from the create-time duplicate/identity checks.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -318,6 +321,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return ownerRepository.findAll().stream()
             .filter(existing -> existing.getId() != null)
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
@@ -339,6 +343,7 @@ public class ClinicServiceImpl implements ClinicService {
     public boolean isIdentityKeyInUse(Owner owner) throws DataAccessException {
         String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
@@ -353,6 +358,7 @@ public class ClinicServiceImpl implements ClinicService {
         String telephone = owner.getTelephone();
         return ownerRepository.findAll().stream()
             .filter(existing -> existing.getId() != null)
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> telephone == null
