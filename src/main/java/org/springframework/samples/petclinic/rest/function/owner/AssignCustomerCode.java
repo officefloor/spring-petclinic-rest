@@ -5,21 +5,27 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>} where
- * {@code LAST3} is the upper-cased first three letters of {@code lastName} and
- * {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than the
- * current number of owners (e.g. {@code SMI-0007}).
+ * Assigns the owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where
+ * {@code CITY3} is the upper-cased first three letters of {@code city}, {@code LAST3} the
+ * upper-cased first three letters of {@code lastName} and {@code NNNN} a per-city 4-digit
+ * zero-padded sequence equal to one more than the number of owners already in that city
+ * (e.g. {@code SYD-SMI-0007}).
  *
- * <p>Runs after {@link BuildOwner} and before {@link SaveOwner}, so the count reflects
- * the owners that already exist and excludes the owner being created.
+ * <p>Runs after {@link BuildOwner} and before {@link SaveOwner}, so the per-city count
+ * reflects the owners that already exist and excludes the owner being created.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String lastName = owner.getLastName();
-        int length = Math.min(3, lastName.length());
-        String prefix = lastName.substring(0, length).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+        String city = owner.getCity();
+        int sequence = (int) ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count() + 1;
+        owner.setCustomerCode(String.format("%s-%s-%04d", prefix3(city), prefix3(owner.getLastName()), sequence));
+    }
+
+    /** The upper-cased first three letters of {@code value} (or fewer if it is shorter). */
+    private static String prefix3(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }
