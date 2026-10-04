@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7389c6be4..07a3a129b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,8 +40,28 @@ public interface OwnerMapper {
+     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derive an owner's marketing segment, formatted {@code "<TIER>_<AREA>"}. The tier is
++     * {@code "PREMIUM"} when the owner's {@code membershipLevel} (see
++     * {@link #formatMembershipLevel(Owner)}) is {@code 3} or more, otherwise {@code "STANDARD"}.
++     * The area is {@code "METRO"} when the owner's locality (see {@link #formatLocality(Owner)}) is
++     * a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. Returns one of
++     * {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"} or
++     * {@code "STANDARD_REGIONAL"}; {@code null} only when the owner is {@code null}.
++     */
++    default String formatOwnerSegment(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        Integer level = formatMembershipLevel(owner);
++        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
++        String area = Regions.isKnownRegion(formatLocality(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Resolve an owner's possible-duplicate flag, coalescing a {@code null} stored value
+      * (e.g. for owners created before the flag existed) to {@code false} so the response
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Regions.java b/src/main/java/org/springframework/samples/petclinic/util/Regions.java
+index 530483bd1..731ea888c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Regions.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Regions.java
+@@ -64,6 +64,15 @@ public final class Regions {
+         return UNKNOWN;
+     }
+ 
++    /**
++     * Whether the given region code is a known region, i.e. one of the regions in the
++     * region-to-range table (NSW, VIC or QLD). {@code null} and {@link #UNKNOWN}, along with any
++     * other value, are not known regions.
++     */
++    public static boolean isKnownRegion(String region) {
++        return region != null && REGION_RANGES.containsKey(region);
++    }
++
+     /**
+      * The IANA timezone name for the given region code, via a fixed region-to-timezone table
+      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6f36733de..85437900d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2367,6 +2367,17 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>':
++                'PREMIUM' when 'membershipLevel' is 3 or more else 'STANDARD',
++                joined with 'METRO' when the owner's locality is a known region
++                (NSW, VIC or QLD) else 'REGIONAL'. One of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
