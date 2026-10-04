@@ -60,6 +60,15 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
+	/**
+	 * Returns {@code true} if any existing owner already uses the given telephone once it has
+	 * been normalized. Enforces the invariant that no two owners may share a normalized
+	 * telephone, so callers can reject a duplicate create.
+	 *
+	 * @param telephone the candidate telephone (normalized before comparison)
+	 */
+	boolean isTelephoneInUse(String telephone) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
