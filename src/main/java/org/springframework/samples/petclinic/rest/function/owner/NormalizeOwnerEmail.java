@@ -1,6 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Val;
@@ -21,13 +20,6 @@ public class NormalizeOwnerEmail {
      */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
-    /**
-     * Disposable email domains that are rejected outright (400). A throwaway address on
-     * one of these providers is not acceptable contact detail for an owner.
-     */
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-            "mailinator.com", "tempmail.com", "guerrillamail.com");
-
     public void service(@Val Owner owner) throws InvalidEmailException {
         String email = owner.getEmail();
         if (email == null || email.isBlank()) {
@@ -38,8 +30,8 @@ public class NormalizeOwnerEmail {
             throw new InvalidEmailException("Email must be a syntactically valid address");
         }
         String lowered = trimmed.toLowerCase();
-        String domain = lowered.substring(lowered.indexOf('@') + 1);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        String domain = OwnerEmails.domainOf(lowered);
+        if (OwnerEmails.isDisposable(domain)) {
             throw new InvalidEmailException("Email domain is not allowed: " + domain);
         }
         owner.setEmail(lowered);
