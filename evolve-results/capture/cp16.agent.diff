@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7235efd11..001f6909d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,7 +44,7 @@ public interface OwnerMapper {
+ 
+     /**
+      * Format an owner's membership number as {@code "<customerCode>-M<YY>"}, where {@code YY}
+-     * is the last two digits of the registration date year (e.g. {@code "SMI-0007-M26"}).
++     * is the last two digits of the registration date year (e.g. {@code "TOW-SMI-0007-M26"}).
+      * Returns {@code null} when either the customer code or registration date is absent, since
+      * the number cannot be derived without both.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bf8e9a860..13839827c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -247,15 +247,27 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Build a {@code customerCode} of the form {@code <LAST3>-<NNNN>}: the upper-cased first
+-     * three letters of the owner's last name, a hyphen, and a global 4-digit zero-padded
+-     * sequence equal to one more than the current number of owners (e.g. {@code SMI-0007}).
++     * Build a {@code customerCode} of the form {@code <CITY3>-<LAST3>-<NNNN>}: the upper-cased
++     * first three letters of the owner's city, a hyphen, the upper-cased first three letters of
++     * the owner's last name, a hyphen, and a per-city 4-digit zero-padded sequence equal to one
++     * more than the number of owners already registered in that city (e.g. {@code TOW-SMI-0007}).
+      */
+     private String generateCustomerCode(Owner owner) {
+-        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        return String.format("%s-%04d", last3, sequence);
++        String city = owner.getCity() == null ? "" : owner.getCity();
++        int sequence = (int) ownerRepository.findAll().stream()
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count() + 1;
++        return String.format("%s-%s-%04d", prefix3(city), prefix3(owner.getLastName()), sequence);
++    }
++
++    /**
++     * The upper-cased first three letters of {@code value} (fewer if it is shorter), treating a
++     * {@code null} value as empty. This is the shared rule behind both the CITY3 and LAST3
++     * segments of a {@code customerCode}.
++     */
++    private static String prefix3(String value) {
++        String s = value == null ? "" : value;
++        return s.substring(0, Math.min(3, s.length())).toUpperCase();
+     }
+ 
+     @Override
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index da15f1a91..5cdb8e05e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2109,11 +2109,13 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3
+-                is the upper-cased first three letters of the last name and NNNN is
+-                a global 4-digit zero-padded sequence assigned on create.
++                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where
++                CITY3 is the upper-cased first three letters of the city, LAST3 is the
++                upper-cased first three letters of the last name and NNNN is a per-city
++                4-digit zero-padded sequence (one more than the owners already in that
++                city) assigned on create.
+               type: string
+-              example: 'SMI-0007'
++              example: 'TOW-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+@@ -2121,7 +2123,7 @@ components:
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+                 where YY is the last two digits of the registration date year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'TOW-SMI-0007-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
