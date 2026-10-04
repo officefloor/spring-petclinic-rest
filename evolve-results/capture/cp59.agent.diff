@@ -1,0 +1,133 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index d67e2c4a9..9eb83b34e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -123,6 +123,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link OwnerCreationRejectedException} raised when a create is rejected by a business
++     * rule (a capacity limit, a duplicate, or a rate limit). The exception carries the HTTP status
++     * to report (400, 409 or 429) and the problem detail; the HTTP status is left unchanged.
++     *
++     * @param e The {@link OwnerCreationRejectedException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} whose body is an RFC 7807 {@link ProblemDetail}.
++     */
++    @ExceptionHandler(OwnerCreationRejectedException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleOwnerCreationRejectedException(OwnerCreationRejectedException e, HttpServletRequest request) {
++        HttpStatus status = e.getStatus();
++        logger.warn("Request rejected with {} at {} {}: {}",
++            status.value(),
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreationRejectedException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreationRejectedException.java
+new file mode 100644
+index 000000000..93d541d13
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreationRejectedException.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Signals that a create request was rejected by a business rule (for example a capacity, duplicate
++ * or rate limit). It carries the HTTP status to report so that {@link ExceptionControllerAdvice}
++ * can render a matching RFC&nbsp;7807 {@code application/problem+json} response; the exception
++ * message becomes the problem detail.
++ */
++public class OwnerCreationRejectedException extends RuntimeException {
++
++    private final HttpStatus status;
++
++    public OwnerCreationRejectedException(HttpStatus status, String detail) {
++        super(detail);
++        this.status = status;
++    }
++
++    public HttpStatus getStatus() {
++        return this.status;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c7ff57a5f..69b78605b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.OwnerCreationRejectedException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -173,7 +174,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // further creates for that day with 429 Too Many Requests.
+         int ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(effectiveDate);
+         if (ownersRegisteredToday >= DAILY_REGISTRATION_LIMIT) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new OwnerCreationRejectedException(HttpStatus.TOO_MANY_REQUESTS,
++                "The daily owner registration limit has been reached; please try again later");
+         }
+         // Bulk-signup warning: flag this owner when more than 80 owners have already been created
+         // for its registration date, signalling a bulk-signup surge.
+@@ -181,7 +183,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Per-city capacity: a city that already holds the maximum number of owners is full.
+         int ownersInCity = this.clinicService.countOwnersInCity(owner.getCity());
+         if (ownersInCity >= CITY_CAPACITY) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new OwnerCreationRejectedException(HttpStatus.CONFLICT,
++                "The city has reached its maximum owner capacity");
+         }
+         // Capacity warning: flag this owner when its city already holds between the warning
+         // threshold (40) and the hard limit (49), signalling the city is approaching capacity.
+@@ -195,7 +198,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // equals an existing owner's. A truly identical record is always rejected, independent of
+         // sharesHousehold.
+         if (this.clinicService.isIdentityKeyInUse(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new OwnerCreationRejectedException(HttpStatus.CONFLICT,
++                "An owner with the same identity already exists");
+         }
+         // Household membership: another owner may already belong to this (last name, postcode)
+         // household. A new member is admitted rather than rejected — its membership level is instead
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java b/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
+index 12c245605..e7eb3ebac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
+@@ -48,7 +48,7 @@ public final class Postcodes {
+         if (postcode == null || !postcode.matches("[0-9]{4}")) {
+             return true;
+         }
+-        String region = CITY_REGIONS.get(city);
++        String region = city == null ? null : CITY_REGIONS.get(city);
+         int[] range = region == null ? null : REGION_RANGES.get(region);
+         if (range == null) {
+             return true;
