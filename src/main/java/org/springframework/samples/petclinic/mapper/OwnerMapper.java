@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.AddressNormalizer;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -25,7 +26,27 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Known city-to-region mappings. Keyed by the exact city name, the canonical region
+     * string is returned for a listed city and {@code "UNKNOWN"} for anything else.
+     */
+    Map<String, String> CITY_REGIONS = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derive an owner's locality from its city using the fixed {@link #CITY_REGIONS}
+     * city-to-region table, returning the canonical region string or {@code "UNKNOWN"}
+     * when the city is {@code null} or not present in the table.
+     */
+    default String formatLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
 
     /**
      * Determine an owner's membership tier: {@code "SILVER"} when the owner has no namesakes
