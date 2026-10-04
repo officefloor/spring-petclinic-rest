@@ -39,15 +39,17 @@ final class OwnerHousehold {
 
     /**
      * The household id for the given last name and postcode: the first 12 hex characters
-     * (upper-cased) of SHA-256 over {@code normalizedLastName + '|' + postcode}. Deterministic, so
-     * every member of the same household derives the same id. Returns {@code null} when the
-     * postcode is absent or blank.
+     * (upper-cased) of SHA-256 over {@code 'V2' + '|' + normalizedLastName + '|' + postcode}. The
+     * fixed {@link OwnerMemberId#VERSION_TAG version-2 tag} is folded into the hashed input so the
+     * id is rederived and shares no value with a version-1 household id, while staying
+     * deterministic — every member of the same household still derives the same id. Returns
+     * {@code null} when the postcode is absent or blank.
      */
     static String idFor(String lastName, String postcode) {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String key = normalize(lastName) + "|" + postcode;
+        String key = OwnerMemberId.VERSION_TAG + "|" + normalize(lastName) + "|" + postcode;
         return Sha256.hex(key).substring(0, 12).toUpperCase();
     }
 

@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * what used to be several separate guards (telephone, email and household) into a single key, so a
  * request is a duplicate only when its <em>whole</em> key equals an existing owner's.
  *
- * <p>The key is the lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' +
- * soundex(lastName)}:
+ * <p>The key is the lower-case hex SHA-256 of {@code 'V2' + '|' + normalizedTelephone + '|' +
+ * lowerEmail + '|' + soundex(lastName)} (the fixed version-2 tag is folded in so the key is
+ * rederived and shares no value with a version-1 key):
  * <ul>
  *   <li>telephone is canonicalised to E.164 ({@link OwnerTelephone#toE164OrRaw(String)}) so the
  *       comparison is independent of how a value happens to be formatted;</li>
@@ -39,11 +40,14 @@ public final class OwnerIdentity {
 
     /**
      * The identity key for the given parts: the lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The
+     * fixed {@link OwnerMemberId#VERSION_TAG version-2 tag} is folded into the hashed input so the
+     * key is rederived and shares no value with a version-1 identity key; duplicate detection is
+     * unchanged (both sides derive the key the same way, so only an exact whole-key match counts).
      */
     public static String key(String telephone, String email, String lastName) {
-        String raw = OwnerTelephone.toE164OrRaw(telephone) + "|" + normalizeEmail(email) + "|"
-                + OwnerSoundex.of(lastName);
+        String raw = OwnerMemberId.VERSION_TAG + "|" + OwnerTelephone.toE164OrRaw(telephone) + "|"
+                + normalizeEmail(email) + "|" + OwnerSoundex.of(lastName);
         return Sha256.hex(raw);
     }
 

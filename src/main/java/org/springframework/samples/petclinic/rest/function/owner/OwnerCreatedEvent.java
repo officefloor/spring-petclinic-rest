@@ -3,8 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 /**
  * Immutable structured event emitted to the {@code AUDIT} logger when a new owner is created,
  * alongside the human-readable audit line (see {@link AuditOwnerCreated}). Serialised as the JSON
- * object {@code {seq, ownerId, memberId, membershipLevel, event}} with
- * {@code event == }{@value #EVENT}.
+ * object {@code {seq, ownerId, memberId, membershipLevel, event, schemaVersion}} with
+ * {@code event == }{@value #EVENT} and {@code schemaVersion == }{@value #SCHEMA_VERSION}.
  *
  * <p>{@code seq} is a monotonically increasing sequence across creates (assigned by
  * {@link AuditOwnerCreated}), so consumers can order and de-duplicate events independently of log
@@ -20,17 +20,21 @@ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int memb
     /** The {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT = "OWNER_CREATED";
 
+    /** The audit schema version carried by every owner-created event. */
+    public static final int SCHEMA_VERSION = 2;
+
     /**
-     * The canonical JSON form {@code {seq, ownerId, memberId, membershipLevel, event}}. Built
-     * directly rather than via a mapper so the audit side-effect carries no dependency on the HTTP
-     * response serialisation.
+     * The canonical JSON form {@code {seq, ownerId, memberId, membershipLevel, event,
+     * schemaVersion}}. Built directly rather than via a mapper so the audit side-effect carries no
+     * dependency on the HTTP response serialisation.
      */
     public String toJson() {
         return "{\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
                 + ",\"memberId\":" + quote(this.memberId)
                 + ",\"membershipLevel\":" + this.membershipLevel
-                + ",\"event\":\"" + EVENT + "\"}";
+                + ",\"event\":\"" + EVENT + "\""
+                + ",\"schemaVersion\":" + SCHEMA_VERSION + "}";
     }
 
     /** A JSON string literal for {@code value}, escaping the characters JSON requires, or {@code null}. */

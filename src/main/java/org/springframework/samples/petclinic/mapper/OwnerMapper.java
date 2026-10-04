@@ -37,11 +37,36 @@ public interface OwnerMapper {
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone.toDisplay(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The version of the owner representation. Always 2: the identifiers are grouped under the
+     * nested {@code identity} object and derived with the version-2 algorithm.
+     */
+    default int apiVersion() {
+        return 2;
+    }
+
+    /**
+     * Groups the owner's three version-2 identifiers under the nested {@code identity} object: the
+     * unified {@code memberId} and deterministic {@code householdId} (both stored at creation), and
+     * the {@code identityKey} derived at read time via
+     * {@code OwnerIdentity.of}. The version-2 tag lives inside these values only; the user-facing
+     * {@code locality}, {@code timezone} and {@code ownerSegment} carry the plain region.
+     */
+    default org.springframework.samples.petclinic.rest.dto.IdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.IdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner));
+        return identity;
+    }
 
     /**
      * Derives the owner's salutation at read time: the stored {@code title} followed by a single
@@ -220,11 +245,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) at read time from the unified {@code memberId}: its
-     * {@code REGION} prefix (e.g. {@code NSW} for {@code NSW271A2B3C4D5}), so the region cannot
-     * drift from the identity every other derived value flows through. Owners with no
-     * {@code memberId} fall back to resolving the region directly. Both the parse and the fallback
-     * (including the {@code UNKNOWN} sentinel) live in {@code OwnerMemberId}.
+     * Derives the owner's plain locality (region) at read time from the unified {@code memberId}:
+     * its {@code REGION} with the version-2 tag stripped (e.g. {@code NSW} for
+     * {@code V2NSW271A2B3C4D5}), so the region cannot drift from the identity every other derived
+     * value flows through while the user-facing value never carries the {@code V2} tag. Owners with
+     * no {@code memberId} fall back to resolving the region directly. Both the parse (tag stripping
+     * included) and the fallback (including the {@code UNKNOWN} sentinel) live in
+     * {@code OwnerMemberId}.
      */
     default String locality(Owner owner) {
         String region = org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
