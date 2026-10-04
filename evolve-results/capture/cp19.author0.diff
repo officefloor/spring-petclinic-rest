@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c408021b8..61726d756 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -56,6 +57,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners permitted in a single city; the create is rejected at this count. */
+     private static final int CITY_CAPACITY = 50;
+ 
++    /** Maximum number of owners that may be created on a single day (by registrationDate); the
++     * create is rejected once this many owners already carry today's registration date. */
++    private static final int DAILY_REGISTRATION_LIMIT = 100;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -104,6 +109,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        // Per-day capacity: once the day has reached its limit of newly created owners, reject
++        // further creates for that day with 429 Too Many Requests.
++        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_REGISTRATION_LIMIT) {
++            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++        }
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 2d649283d..0b9a4b631 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -116,6 +116,16 @@ public interface ClinicService {
+ 	 */
+ 	int countOwnersInCity(String city) throws DataAccessException;
+ 
++	/**
++	 * Returns the number of existing owners whose {@code registrationDate} equals the given date.
++	 * Used on create to enforce the per-day registration cap, so that once a day has reached its
++	 * limit of newly created owners further creates on that day are rejected.
++	 *
++	 * @param date the registration date to match
++	 * @return the count of existing owners registered on the given date
++	 */
++	int countOwnersRegisteredOn(java.time.LocalDate date) throws DataAccessException;
++
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+ 	Collection<PetType> findPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 117578d9b..4d4e0b521 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -390,6 +390,17 @@ public class ClinicServiceImpl implements ClinicService {
+             .count();
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public int countOwnersRegisteredOn(java.time.LocalDate date) throws DataAccessException {
++        if (date == null) {
++            return 0;
++        }
++        return (int) ownerRepository.findAll().stream()
++            .filter(existing -> date.equals(existing.getRegistrationDate()))
++            .count();
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
