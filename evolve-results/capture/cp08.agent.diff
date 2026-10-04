@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 38739c464..73f6137ce 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.validation.E164Telephone;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -54,14 +55,16 @@ public interface OwnerMapper {
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /**
+-     * Normalize a telephone number for storage by removing every non-digit character.
+-     * The "exactly 10 digits" requirement is enforced separately by {@code TelephoneValidation}.
++     * Normalize a telephone number for storage into E.164 form (see {@link E164Telephone}).
++     * The requirement that a valid E.164 number can be formed is enforced separately by
++     * {@code TelephoneValidation}, so for already-validated input this returns the E.164
++     * string; it is idempotent, so re-normalizing a stored value yields the same value.
+      * {@code @Named} keeps this out of MapStruct's automatic method selection, so it only
+      * runs where a mapping explicitly references it via {@code qualifiedByName}.
+      */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        return E164Telephone.normalize(telephone);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0d0b053c8..fadb9701b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+@@ -47,8 +46,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 983aa302b..de71d082b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -122,7 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(ownerMapper.normalizeTelephone(ownerFieldsDto.getTelephone()));
+         currentOwner.setEmail(ownerMapper.normalizeEmail(ownerFieldsDto.getEmail()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164Telephone.java
+new file mode 100644
+index 000000000..20096c982
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164Telephone.java
+@@ -0,0 +1,57 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Converts a raw, user-supplied telephone number into E.164 form.
++ *
++ * <p>The rules are:
++ * <ul>
++ *     <li>spaces, dashes and brackets are stripped;</li>
++ *     <li>a leading {@code '+'} and country code are kept when present;</li>
++ *     <li>otherwise country code {@code '+61'} is assumed and a single leading
++ *         {@code '0'} is dropped from the national digits;</li>
++ *     <li>the result must carry 8 to 15 digits after the {@code '+'}.</li>
++ * </ul>
++ *
++ * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and
++ * {@code "+64 21 123 456"} becomes {@code "+6421123456"}. The normalization is
++ * idempotent: feeding it an already-E.164 value returns that same value.
++ */
++public final class E164Telephone {
++
++    private static final String DEFAULT_COUNTRY_CODE = "61";
++
++    private E164Telephone() {
++    }
++
++    /**
++     * Normalize a raw telephone number to E.164 form, or return {@code null} when the
++     * input is {@code null} or cannot form a valid E.164 number.
++     */
++    public static String normalize(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        // strip spaces, dashes and brackets
++        String cleaned = raw.replaceAll("[\\s\\-()]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        } else {
++            if (cleaned.startsWith("0")) {
++                cleaned = cleaned.substring(1);
++            }
++            digits = DEFAULT_COUNTRY_CODE + cleaned;
++        }
++        if (!digits.matches("\\d{8,15}")) {
++            return null;
++        }
++        return "+" + digits;
++    }
++
++    /**
++     * Whether the raw value can be converted to a valid E.164 number.
++     */
++    public static boolean isValid(String raw) {
++        return normalize(raw) != null;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+index fd0f6fc82..8d9861e02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+@@ -10,7 +10,7 @@ import java.lang.annotation.*;
+ @Documented
+ public @interface TelephoneValidation {
+ 
+-    String message() default "Telephone must contain exactly 10 digits";
++    String message() default "Telephone must be convertible to E.164 form (8 to 15 digits)";
+ 
+     Class<?>[] groups() default {};
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+index fc574e4bd..56a7a818e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+@@ -4,10 +4,10 @@ import jakarta.validation.ConstraintValidator;
+ import jakarta.validation.ConstraintValidatorContext;
+ 
+ /**
+- * Validates that a telephone number contains exactly 10 digits once every
+- * non-digit character has been stripped. This mirrors the normalization the
+- * {@code OwnerMapper} performs on create: the validator does not mutate the
+- * value, it only checks that the normalized form is exactly 10 digits.
++ * Validates that a telephone number can be converted to E.164 form, mirroring the
++ * normalization the {@code OwnerMapper} performs on create. The validator does not
++ * mutate the value, it only checks that a valid E.164 number can be formed from it
++ * (see {@link E164Telephone}).
+  */
+ public class TelephoneValidator implements ConstraintValidator<TelephoneValidation, String> {
+ 
+@@ -16,6 +16,6 @@ public class TelephoneValidator implements ConstraintValidator<TelephoneValidati
+         if (telephone == null) {
+             return true; // null is handled by the field's @NotNull constraint
+         }
+-        return telephone.replaceAll("\\D", "").length() == 10;
++        return E164Telephone.isValid(telephone);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4b0146427..77531d533 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2028,13 +2028,17 @@ components:
+         telephone:
+           title: Telephone number
+           description: >-
+-            The telephone number of the pet owner. On create it is normalized by
+-            removing every non-digit character and must contain exactly 10 digits
+-            afterwards; the stored and returned value is those 10 digits.
++            The telephone number of the pet owner. On create it is normalized to
++            E.164 form: spaces, dashes and brackets are stripped; a leading '+' and
++            country code are kept when present, otherwise country code '+61' is
++            assumed and a single leading '0' is dropped from the national digits;
++            the result must carry 8 to 15 digits after the '+'. The stored and
++            returned value is that E.164 string, e.g. '0412 345 678' becomes
++            '+61412345678'.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+           x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.TelephoneValidation"
+         email:
+           title: Email address
