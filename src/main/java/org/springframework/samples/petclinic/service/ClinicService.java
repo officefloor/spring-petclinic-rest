@@ -71,6 +71,15 @@ public interface ClinicService {
 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
 
 	/**
+	 * Returns {@code true} if any existing owner already uses the given email once it has been
+	 * normalized (lower-cased). Enforces the invariant that no two owners may share a lower-cased
+	 * email, so callers can reject a duplicate create.
+	 *
+	 * @param email the candidate email (normalized before comparison)
+	 */
+	boolean isEmailInUse(String email) throws DataAccessException;
+
+	/**
 	 * Returns {@code true} if any existing owner already shares a household with the given
 	 * candidate, i.e. has the same last name and the same address once both are compared
 	 * case-insensitively with internal whitespace collapsed. Enforces the invariant that two

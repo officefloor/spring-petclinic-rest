@@ -291,6 +291,18 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isEmailInUse(String email) throws DataAccessException {
+        String normalized = ownerMapper.normalizeEmail(email);
+        if (normalized == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .map(existing -> ownerMapper.normalizeEmail(existing.getEmail()))
+            .anyMatch(normalized::equals);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
         String normalizedLastName = normalizeForComparison(lastName);
         String normalizedAddress = normalizeForComparison(address);
