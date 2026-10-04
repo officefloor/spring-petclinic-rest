@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9d1f1e56a..a71919f6a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -51,10 +51,47 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
++    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Known street-type abbreviations expanded during address normalization. Keyed by the
++     * upper-cased token, so the lookup runs after the address has been upper-cased.
++     */
++    java.util.Map<String, String> STREET_ABBREVIATIONS = java.util.Map.of(
++        "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    /**
++     * Normalize a postal address for storage so it is persisted and returned in a canonical
++     * form regardless of incidental formatting: the value is trimmed, every run of whitespace
++     * is collapsed to a single space, the result is upper-cased and common street-type
++     * abbreviations ({@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}) are expanded.
++     * It is idempotent, so re-normalizing a stored value yields the same value. {@code @Named}
++     * keeps this out of MapStruct's automatic method selection, so it only runs where a mapping
++     * explicitly references it via {@code qualifiedByName}.
++     */
++    @Named("normalizeAddress")
++    default String normalizeAddress(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(STREET_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Normalize a telephone number for storage into E.164 form (see {@link E164Telephone}).
+      * The requirement that a valid E.164 number can be formed is enforced separately by
