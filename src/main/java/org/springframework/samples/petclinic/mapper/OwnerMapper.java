@@ -169,22 +169,36 @@ public interface OwnerMapper {
      * membership points (see {@link #formatMembershipPoints(Owner)}): level {@code 1} for
      * {@code 0}-{@code 1} points, {@code 2} for {@code 2}-{@code 3}, {@code 3} for {@code 4}-{@code 5}
      * and {@code 4} for {@code 6} or more.
+     *
+     * <p>The level is then capped by the owner's {@code membershipLevelCap} when one is present (see
+     * {@link Owner#getMembershipLevelCap()}): a new owner's level may not exceed one above the
+     * current maximum level among its existing household members, so the returned value is the
+     * smaller of the points-derived level and the cap. A {@code null} cap means no household ceiling
+     * applies and the points-derived level is returned unchanged.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
         int points = formatMembershipPoints(owner);
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && cap < level) {
+            return cap;
+        }
+        return level;
     }
 
     /**
@@ -329,6 +343,7 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
+    @Mapping(target = "membershipLevelCap", ignore = true)
     @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
     @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
     @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")

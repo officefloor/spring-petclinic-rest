@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted")
     private boolean deleted;
 
@@ -214,6 +217,21 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * The ceiling applied to this owner's derived membership level, or {@code null} when no cap
+     * applies. Set on create from the owner's household: a new owner's membership level may not
+     * exceed one above the current maximum level among its existing household members, so the cap
+     * is {@code (that maximum) + 1}. With no existing household member the cap is {@code null} and
+     * the level is used uncapped. See {@link org.springframework.samples.petclinic.mapper.OwnerMapper#formatMembershipLevel}.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public boolean isDeleted() {
@@ -362,6 +380,7 @@ public class Owner extends Person {
             .append("bulkSignupWarning", this.bulkSignupWarning)
             .append("possibleDuplicate", this.possibleDuplicate)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
+            .append("membershipLevelCap", this.membershipLevelCap)
             .append("deleted", this.deleted)
             .toString();
     }

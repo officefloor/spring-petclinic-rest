@@ -315,14 +315,21 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
+        return !findHouseholdMembers(owner).isEmpty();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException {
         String householdId = owner.getHouseholdId();
         if (householdId == null) {
-            return false;
+            return List.of();
         }
         return ownerRepository.findAll().stream()
             .filter(existing -> existing.getId() != null)
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .collect(Collectors.toList());
     }
 
     /**

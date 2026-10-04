@@ -174,13 +174,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Household duplicate: another owner already belongs to this (last name, postcode)
-        // household. Reject with 409 unless the caller declares the shared household via
-        // sharesHousehold, which bypasses the block and creates this owner as a declared member.
+        // Household membership: another owner may already belong to this (last name, postcode)
+        // household. A new member is admitted rather than rejected — its membership level is instead
+        // capped relative to the household (see below). An undeclared member (sharesHousehold not
+        // set) that is not an exact-identity duplicate is still allowed through, flagged as a
+        // possible duplicate for review.
         boolean householdInUse = this.clinicService.isHouseholdInUse(owner);
-        if (householdInUse && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         // Soft "possible duplicate" detection: an existing owner shares this owner's last name and
         // postcode with a different telephone. A declared household member (sharesHousehold on an
         // in-use household) is an intentional share, not a suspected duplicate, so it is not
@@ -193,6 +192,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(
             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+        // Membership-level ceiling: a new owner's membershipLevel may not exceed one above the
+        // current maximum level among its existing household members. Derive the cap from those
+        // members' effective (already-capped) levels; with no existing member the cap stays null
+        // and the owner's level is used uncapped.
+        Collection<Owner> householdMembers = this.clinicService.findHouseholdMembers(owner);
+        if (!householdMembers.isEmpty()) {
+            int maxHouseholdLevel = householdMembers.stream()
+                .mapToInt(member -> ownerMapper.formatMembershipLevel(member))
+                .max()
+                .getAsInt();
+            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
+        }
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),

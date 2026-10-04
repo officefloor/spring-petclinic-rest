@@ -75,6 +75,18 @@ public interface ClinicService {
 	boolean isHouseholdInUse(Owner owner) throws DataAccessException;
 
 	/**
+	 * Returns the existing (non-deleted, persisted) owners that belong to the given candidate's
+	 * household, i.e. carry the same {@code householdId} (see {@link Owner#getHouseholdId()}). The
+	 * candidate itself is not included, since it has not been persisted yet. Used to derive the
+	 * candidate's membership-level ceiling: a new owner's level may not exceed one above the current
+	 * maximum level among these members. An empty collection means the candidate is the first member
+	 * of its household, so no cap applies.
+	 *
+	 * @param owner the candidate owner, whose {@code householdId} is derived from its own fields
+	 */
+	Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException;
+
+	/**
 	 * Returns {@code true} if any existing owner already has the same identity key as the given
 	 * candidate, where the identity key is the owner's normalized telephone, (lower-cased) email
 	 * or empty string, and household id or empty string, joined with {@code '|'}. This is the
