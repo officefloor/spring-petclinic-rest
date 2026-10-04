@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
@@ -113,6 +114,19 @@ public interface OwnerMapper {
             return hyphen >= 0 ? code.substring(0, hyphen) : code;
         }
         return Regions.forPostcode(owner.getPostcode());
+    }
+
+    /**
+     * Derive an owner's timezone as the IANA name mapped from its locality/region via a fixed
+     * region-to-timezone table (see {@link Regions#timezoneForRegion}): NSW -> Australia/Sydney,
+     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane. Returns {@code null} when the owner
+     * is {@code null} or its region is not in the table.
+     */
+    default String formatTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Regions.timezoneForRegion(formatLocality(owner));
     }
 
     /**

@@ -29,6 +29,14 @@ public final class Regions {
         "QLD", new int[] {4000, 4099});
 
     /**
+     * Region to its IANA timezone name, via a fixed region-to-timezone table.
+     */
+    private static final Map<String, String> REGION_TIMEZONES = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
      * The region code a {@code "UNKNOWN"} postcode (absent, non-4-digit, or in no known range)
      * derives to.
      */
@@ -54,5 +62,14 @@ public final class Regions {
             }
         }
         return UNKNOWN;
+    }
+
+    /**
+     * The IANA timezone name for the given region code, via a fixed region-to-timezone table
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
+     * {@code null} when the region is {@code null} or not in the table (e.g. {@link #UNKNOWN}).
+     */
+    public static String timezoneForRegion(String region) {
+        return region == null ? null : REGION_TIMEZONES.get(region);
     }
 }
