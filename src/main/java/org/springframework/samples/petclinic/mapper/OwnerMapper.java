@@ -28,7 +28,20 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's preferred contact channel from its stored contact details:
+     * {@code "EMAIL"} when a (non-blank) email address is present, otherwise {@code "PHONE"}.
+     */
+    default String formatContactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Resolve an owner's bulk-signup warning flag, coalescing a {@code null} stored value
