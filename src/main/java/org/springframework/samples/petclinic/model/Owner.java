@@ -60,6 +60,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -121,6 +124,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -257,6 +268,7 @@ public class Owner extends Person {
             .append("email", this.email)
             .append("postcode", this.postcode)
             .append("registrationDate", this.registrationDate)
+            .append("birthDate", this.birthDate)
             .append("customerCode", this.customerCode)
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
