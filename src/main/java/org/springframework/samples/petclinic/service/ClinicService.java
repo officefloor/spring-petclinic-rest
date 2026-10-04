@@ -62,24 +62,6 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	/**
-	 * Returns {@code true} if any existing owner already uses the given telephone once it has
-	 * been normalized. Enforces the invariant that no two owners may share a normalized
-	 * telephone, so callers can reject a duplicate create.
-	 *
-	 * @param telephone the candidate telephone (normalized before comparison)
-	 */
-	boolean isTelephoneInUse(String telephone) throws DataAccessException;
-
-	/**
-	 * Returns {@code true} if any existing owner already uses the given email once it has been
-	 * normalized (lower-cased). Enforces the invariant that no two owners may share a lower-cased
-	 * email, so callers can reject a duplicate create.
-	 *
-	 * @param email the candidate email (normalized before comparison)
-	 */
-	boolean isEmailInUse(String email) throws DataAccessException;
-
-	/**
 	 * Returns {@code true} if any existing owner already shares a household with the given
 	 * candidate, i.e. has the same last name and the same address once both are compared
 	 * case-insensitively with internal whitespace collapsed. Enforces the invariant that two
@@ -90,6 +72,18 @@ public interface ClinicService {
 	 * @param address  the candidate owner's address
 	 */
 	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
+
+	/**
+	 * Returns {@code true} if any existing owner already has the same identity key as the given
+	 * candidate, where the identity key is the owner's normalized telephone, (lower-cased) email
+	 * or empty string, and household id or empty string, joined with {@code '|'}. This is the
+	 * single consolidated duplicate check: a create is a duplicate only when the candidate's WHOLE
+	 * identity key matches an existing owner's, so two household members with different telephones
+	 * (hence different keys) are both allowed.
+	 *
+	 * @param owner the candidate owner, with its telephone, email and household id already set
+	 */
+	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
 	 * Places the given owner into the household identified by its last name and address and

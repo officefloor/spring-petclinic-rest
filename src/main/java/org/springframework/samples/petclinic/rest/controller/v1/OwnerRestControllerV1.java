@@ -135,25 +135,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Bulk-signup warning: flag this owner when more than 80 owners have already been created
         // for its registration date, signalling a bulk-signup surge.
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
-        if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (this.clinicService.isEmailInUse(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         // Per-city capacity: a city that already holds the maximum number of owners is full.
         if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // When the owner acknowledges sharing a household with an existing owner (same last name
+        // and address), assign the shared, stable household identifier (back-filling the existing
+        // member(s)) before the identity key is computed, so household members carry the same
+        // householdId component.
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress());
-        if (householdInUse) {
-            if (!sharesHousehold) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-            // Joining an existing household: assign the shared, stable household identifier to
-            // the new owner (and back-fill the existing member(s)).
+        if (sharesHousehold
+            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
             this.clinicService.assignHousehold(owner);
+        }
+        // Consolidated duplicate detection: the former separate telephone, email and household
+        // checks are now expressed through a single derived identityKey. Reject with 409 only when
+        // the new owner's WHOLE identityKey (normalized telephone | email-or-empty | householdId)
+        // equals an existing owner's; an exact full-key match is the only duplicate.
+        if (this.clinicService.isIdentityKeyInUse(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(
             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));

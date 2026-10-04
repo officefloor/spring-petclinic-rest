@@ -156,6 +156,22 @@ public class Owner extends Person {
         this.registrationDate = BusinessDays.effectiveRegistrationDate(this.registrationDate);
     }
 
+    /**
+     * The single derived key behind all duplicate detection: the normalized telephone, the
+     * (lower-cased) email or an empty string when absent, and the household id or an empty string
+     * when absent, joined with {@code '|'} (e.g. {@code +61412345678||H-3F5A9C2E}). Because the
+     * telephone is part of the key, two owners are duplicates only when their WHOLE identity keys
+     * are equal; two members of the same household (same {@code householdId}) with different
+     * telephones have different identity keys and are therefore both allowed. The telephone and
+     * email are already stored in their normalized forms on create, so this composes them directly.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone) + "|"
+            + (this.email == null ? "" : this.email) + "|"
+            + (this.householdId == null ? "" : this.householdId);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

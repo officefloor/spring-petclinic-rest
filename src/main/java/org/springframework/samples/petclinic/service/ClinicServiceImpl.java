@@ -20,7 +20,6 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
-import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
@@ -51,7 +50,6 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final OwnerMapper ownerMapper;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -59,15 +57,13 @@ public class ClinicServiceImpl implements ClinicService {
         OwnerRepository ownerRepository,
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
-        PetTypeRepository petTypeRepository,
-        OwnerMapper ownerMapper) {
+        PetTypeRepository petTypeRepository) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.ownerMapper = ownerMapper;
     }
 
     @Override
@@ -279,30 +275,6 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isTelephoneInUse(String telephone) throws DataAccessException {
-        String normalized = ownerMapper.normalizeTelephone(telephone);
-        if (normalized == null) {
-            return false;
-        }
-        return ownerRepository.findAll().stream()
-            .map(existing -> ownerMapper.normalizeTelephone(existing.getTelephone()))
-            .anyMatch(normalized::equals);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isEmailInUse(String email) throws DataAccessException {
-        String normalized = ownerMapper.normalizeEmail(email);
-        if (normalized == null) {
-            return false;
-        }
-        return ownerRepository.findAll().stream()
-            .map(existing -> ownerMapper.normalizeEmail(existing.getEmail()))
-            .anyMatch(normalized::equals);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
         String normalizedLastName = normalizeForComparison(lastName);
         String normalizedAddress = normalizeForComparison(address);
@@ -334,6 +306,14 @@ public class ClinicServiceImpl implements ClinicService {
     private boolean inHousehold(Owner existing, String normalizedLastName, String normalizedAddress) {
         return normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
             && normalizedAddress.equals(normalizeForComparison(existing.getAddress()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isIdentityKeyInUse(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     @Override
