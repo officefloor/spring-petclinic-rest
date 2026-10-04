@@ -23,6 +23,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
@@ -284,6 +285,18 @@ public interface OwnerMapper {
             return owner.getLastName();
         }
         return title + " " + owner.getLastName();
+    }
+
+    /**
+     * Build a link to an owner's own resource, formed as {@code "/api/owners/"} followed by the
+     * owner's id. Returns {@code null} when the owner or its id is absent, since the link cannot
+     * be formed without an id.
+     */
+    default String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
     }
 
     /**
