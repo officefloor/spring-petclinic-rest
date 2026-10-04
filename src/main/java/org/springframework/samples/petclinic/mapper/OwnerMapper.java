@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.BusinessDays;
 import org.springframework.samples.petclinic.util.Regions;
 
 import java.time.LocalDate;
@@ -28,8 +29,6 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
-    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -132,23 +131,40 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's locality from its region-and-hash identity: the {@code <REGION>} segment
-     * of the {@code customerCode} (the part before the first hyphen), which is the region code
-     * derived from the owner's postcode. For an owner that has not yet been assigned a customer
-     * code, the region is derived directly from the postcode (see {@link Regions#forPostcode}),
-     * yielding the same value the code would carry. Returns {@code null} only when the owner
-     * itself is {@code null}.
+     * Derive an owner's locality from its {@code memberId}: the leading {@code <REGION>} segment
+     * (the run of letters before the 2-digit fiscal year), which is the region code derived from
+     * the owner's postcode. For an owner that has not yet been assigned a member id, the region is
+     * derived directly from the postcode (see {@link Regions#forPostcode}), yielding the same value
+     * the id would carry. Returns {@code null} only when the owner itself is {@code null}.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int hyphen = code.indexOf('-');
-            return hyphen >= 0 ? code.substring(0, hyphen) : code;
+        String region = memberIdRegion(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return Regions.forPostcode(owner.getPostcode());
+    }
+
+    /**
+     * The leading {@code <REGION>} segment of a {@code memberId}: its maximal prefix of letters,
+     * which precedes the 2-digit fiscal year. Returns {@code null} when the member id is
+     * {@code null} (so callers can fall back to deriving the region from the postcode).
+     *
+     * <p>Declared {@code private} so MapStruct does not pick it up as an automatic {@code String ->
+     * String} conversion and apply it to every string property.
+     */
+    private String memberIdRegion(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return memberId.substring(0, i);
     }
 
     /**
@@ -191,7 +207,8 @@ public interface OwnerMapper {
         }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-            && fiscalYearEndYear(LocalDate.now()) - fiscalYearEndYear(registrationDate) > 1) {
+            && BusinessDays.fiscalYearEndYear(LocalDate.now())
+                - BusinessDays.fiscalYearEndYear(registrationDate) > 1) {
             points += 3;
         }
         return points;
@@ -235,74 +252,31 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute an owner's check digit: a single Luhn check digit (0-9) over the digits
-     * contained in the owner's {@code customerCode}. Non-digit characters (the region segment
-     * and any hex letters of the hash) are ignored. Returns {@code null} when the owner or its
-     * customer code is absent, since the digit cannot be derived without the code.
-     */
-    default Integer formatCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * Format an owner's membership number as {@code "<customerCode>-M<YY>"}, where {@code YY}
-     * is the last two digits of the owner's fiscal year (see {@link #formatFiscalYear(Owner)}),
-     * the fiscal year of the business-day-adjusted registration date (e.g.
-     * {@code "NSW-3F5A9C2E-M26"}). Returns {@code null} when either the customer code or
-     * registration date is absent, since the number cannot be derived without both.
-     */
-    default String formatMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            fiscalYearEndYear(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Format an owner's fiscal year as {@code "FY<YY>"}, where {@code YY} is the last two digits
-     * of the fiscal year its (business-day-adjusted) {@code registrationDate} falls in (e.g.
-     * {@code "FY26"}). The fiscal year starts on 1 July and is named by the calendar year in
-     * which it ends, so a registration date of {@code 2026-07-01} is {@code "FY27"} while
-     * {@code 2026-06-30} is {@code "FY26"}. Returns {@code null} when the owner or its
-     * registration date is absent.
+     * Format an owner's fiscal year as {@code "FY<YY>"}, where {@code YY} is the 2-digit fiscal
+     * year. The value is read from the {@code <FY>} segment of the owner's {@code memberId} (the
+     * two digits immediately after the leading region segment), which is the fiscal year the
+     * owner's (business-day-adjusted) {@code registrationDate} falls in. The fiscal year starts on
+     * 1 July and is named by the calendar year in which it ends, so a registration date of
+     * {@code 2026-07-01} is {@code "FY27"} while {@code 2026-06-30} is {@code "FY26"}. For an owner
+     * with no member id yet, it falls back to deriving the fiscal year directly from the
+     * registration date. Returns {@code null} when the owner, or both its member id and
+     * registration date, are absent.
      */
     default String formatFiscalYear(Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        if (owner == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearEndYear(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * The calendar year in which {@code date}'s fiscal year ends, used as the fiscal year's name.
-     * The fiscal year starts on 1 July, so a date in July through December belongs to the fiscal
-     * year ending the following calendar year, while January through June belongs to the one
-     * ending in the current calendar year.
-     */
-    default int fiscalYearEndYear(LocalDate date) {
-        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int start = memberIdRegion(memberId).length();
+            if (start + 2 <= memberId.length()) {
+                return "FY" + memberId.substring(start, start + 2);
+            }
+        }
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", BusinessDays.fiscalYearEndYear(owner.getRegistrationDate()) % 100);
     }
 
     /**

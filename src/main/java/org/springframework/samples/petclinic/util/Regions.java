@@ -14,7 +14,7 @@ import java.util.Map;
  * </ul>
  *
  * <p>This is the single rule behind the {@code <REGION>} segment of an owner's
- * {@code customerCode} and the owner's derived locality. A {@code null} postcode,
+ * {@code memberId} and the owner's derived locality. A {@code null} postcode,
  * a value that is not a 4-digit number, or a 4-digit value outside every known
  * range all derive the region {@code "UNKNOWN"}.
  */

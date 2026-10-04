@@ -76,8 +76,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -183,24 +183,23 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
      * The owner's current primary identifier, i.e. whatever external reference presently identifies
-     * this owner as a member. Today that is the {@link #getCustomerCode() customerCode}; when the
-     * customerCode is later unified into the memberId this method should return the memberId instead.
-     * Reading the identifier through this single accessor lets callers track whichever identifier is
-     * current across that migration without changing at their call site.
+     * this owner as a member. That is the unified {@link #getMemberId() memberId}. Reading the
+     * identifier through this single accessor lets callers track the current identifier without
+     * depending on its field name at their call site.
      */
     @Transient
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public Integer getNamesakeCount() {
@@ -409,7 +408,7 @@ public class Owner extends Person {
             .append("postcode", this.postcode)
             .append("registrationDate", this.registrationDate)
             .append("birthDate", this.birthDate)
-            .append("customerCode", this.customerCode)
+            .append("memberId", this.memberId)
             .append("householdId", this.getHouseholdId())
             .append("namesakeCount", this.namesakeCount)
             .append("bulkSignupWarning", this.bulkSignupWarning)

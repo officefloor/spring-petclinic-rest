@@ -64,7 +64,7 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger: on a successful create an audit line records the owner id,
-     * customerCode and registrationDate. */
+     * memberId and registrationDate. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /** Serializes the structured {@link OwnerCreatedEvent} emitted on each create. */
@@ -228,13 +228,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Compute the derived membership level once so the human-readable line and the structured
         // event below are guaranteed to report the identical value.
         int membershipLevel = ownerMapper.formatMembershipLevel(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, ownerMapper.formatMembershipNumber(owner));
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         // In addition to the human-readable audit line above, emit an immutable structured event.
-        // The event carries the owner's current primary identifier (today the customerCode, later the
-        // memberId) via Owner.getPrimaryIdentifier(), and a sequence number that strictly increases
-        // across creates.
+        // The event carries the owner's current primary identifier (the memberId) via
+        // Owner.getPrimaryIdentifier(), and a sequence number that strictly increases across creates.
         OwnerCreatedEvent event = new OwnerCreatedEvent(
             AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(), owner.getPrimaryIdentifier(),
             membershipLevel, OwnerCreatedEvent.EVENT_TYPE);

@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.BusinessDays;
 import org.springframework.samples.petclinic.util.Regions;
 import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
@@ -243,40 +244,47 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         ownerRepository.save(owner);
 
     }
 
     /**
-     * Build a {@code customerCode} of the form {@code <REGION>-<HASH8>}: the region code derived
-     * from the owner's postcode (see {@link Regions#forPostcode}), a hyphen, and {@code HASH8} —
-     * the first eight upper-case hex characters of the SHA-256 of the owner's normalized telephone
-     * concatenated with its last name (e.g. {@code NSW-3F5A9C2E}). The identity carries no sequence
-     * number, so it depends only on the owner's own postcode, telephone and last name.
+     * Build a unified {@code memberId} of the form {@code <REGION><FY><HASH8><CHK>}: the region code
+     * derived from the owner's postcode (see {@link Regions#forPostcode}), the 2-digit fiscal year of
+     * the owner's (business-day-adjusted) registration date, {@code HASH8} — the first eight
+     * upper-case hex characters of the SHA-256 of the owner's normalized telephone concatenated with
+     * its last name — and {@code CHK}, a single Luhn check digit over the digits of
+     * {@code <REGION><FY><HASH8>} (e.g. {@code NSW263F5A9C2E4}). Aside from the fiscal year the
+     * identity carries no sequence number, so it depends only on the owner's own postcode, telephone,
+     * last name and registration date.
      *
-     * <p>If the computed code collides with an existing owner's {@code customerCode}, {@code -<n>}
-     * is appended with the smallest {@code n} of 2 or more that makes it unique, and the
-     * de-duplicated code is returned.
+     * <p>If the computed id collides with an existing owner's {@code memberId}, {@code -<n>} is
+     * appended with the smallest {@code n} of 2 or more that makes it unique, and the de-duplicated
+     * id is returned.
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = Regions.forPostcode(owner.getPostcode()) + "-" + hash8(telephone + lastName);
-        return deduplicateCustomerCode(base, owner);
+        String region = Regions.forPostcode(owner.getPostcode());
+        LocalDate registrationDate = BusinessDays.effectiveRegistrationDate(owner.getRegistrationDate());
+        int fiscalYear = BusinessDays.fiscalYearEndYear(registrationDate) % 100;
+        String prefix = String.format("%s%02d%s", region, fiscalYear, hash8(telephone + lastName));
+        String base = prefix + luhn(prefix);
+        return deduplicateMemberId(base, owner);
     }
 
     /**
-     * Return {@code base} if no other owner already uses it as a {@code customerCode}; otherwise
+     * Return {@code base} if no other owner already uses it as a {@code memberId}; otherwise
      * append {@code -<n>} with the smallest {@code n >= 2} that is not already taken, so distinct
-     * owners always receive distinct customer codes.
+     * owners always receive distinct member ids.
      */
-    private String deduplicateCustomerCode(String base, Owner owner) {
+    private String deduplicateMemberId(String base, Owner owner) {
         Set<String> existing = ownerRepository.findAll().stream()
             .filter(other -> other != owner)
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         if (!existing.contains(base)) {
@@ -290,8 +298,34 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * A single Luhn check digit (0-9) over the digits contained in {@code value}; non-digit
+     * characters (the region segment and any hex letters of the hash) are ignored. This is the
+     * {@code CHK} segment of a {@code memberId}.
+     */
+    private static int luhn(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The first eight upper-case hex characters (the first four bytes) of the SHA-256 of
-     * {@code value}, the {@code HASH8} segment of a {@code customerCode}.
+     * {@code value}, the {@code HASH8} segment of a {@code memberId}.
      */
     private static String hash8(String value) {
         try {

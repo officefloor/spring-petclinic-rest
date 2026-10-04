@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.util;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.Set;
 
 /**
@@ -53,5 +54,18 @@ public final class BusinessDays {
      */
     public static LocalDate effectiveRegistrationDate(LocalDate supplied) {
         return rollToBusinessDay(supplied != null ? supplied : LocalDate.now());
+    }
+
+    /**
+     * The calendar year in which {@code date}'s fiscal year ends, used as the fiscal year's name.
+     * The fiscal year starts on 1 July, so a date in July through December belongs to the fiscal
+     * year ending the following calendar year, while January through June belongs to the one ending
+     * in the current calendar year. This is the single definition of the fiscal-year naming rule
+     * shared by the member-id generation and the owner mapper; the choice of which date to feed it
+     * (e.g. the {@link #effectiveRegistrationDate business-day-adjusted} registration date) is a
+     * separate decision left to the caller.
+     */
+    public static int fiscalYearEndYear(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 }
