@@ -23,7 +23,7 @@ import java.util.Map;
  * for its country is not a valid E.164 number here and is rejected. Country codes without a
  * listed rule keep only the general 8-to-15-digit total check.
  */
-final class OwnerTelephone {
+public final class OwnerTelephone {
 
     /**
      * Country code (without the leading {@code '+'}) to its required national-number length.
@@ -88,5 +88,40 @@ final class OwnerTelephone {
     static String toE164OrRaw(String telephone) {
         String e164 = toE164(telephone);
         return e164 != null ? e164 : (telephone == null ? "" : telephone);
+    }
+
+    /**
+     * Human-readable form of a stored E.164 {@code telephone}: the country code, a space, then
+     * the national digits grouped in threes (e.g. {@code "+61412345678"} => {@code "+61 412 345
+     * 678"}). The country code is identified from {@link #NATIONAL_LENGTHS}, longest-prefix-first
+     * (so {@code 61} matches before {@code 1}). Null in gives null out; a value that is not a
+     * recognisable E.164 number (cannot be canonicalised, or whose country code is not one we
+     * list) is returned unchanged, so the display is always best-effort rather than throwing.
+     */
+    public static String toDisplay(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        String e164 = toE164(telephone);
+        if (e164 == null) {
+            return telephone;
+        }
+        String digits = e164.substring(1); // drop the leading '+'
+        String countryCode = null;
+        for (String code : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(code)) {
+                countryCode = code;
+                break;
+            }
+        }
+        if (countryCode == null) {
+            return e164;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
     }
 }
