@@ -1,0 +1,243 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e9e0c160d..ea6a41086 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,7 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -62,23 +62,26 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Determine an owner's membership tier. {@code "GOLD"} when the owner's household held three
+-     * or more members after the owner was created (its {@code householdSize} is {@code 3} or
+-     * more); otherwise {@code "SILVER"} when the owner has no namesakes (its {@code namesakeCount}
+-     * is {@code 0}) and an email address is present, and {@code "BRONZE"} in every other case. A
+-     * null or absent namesake count is treated as not being zero, so the tier only reaches SILVER
+-     * for an explicitly unique owner with an email.
++     * Determine an owner's membership level, a number from {@code 1} to {@code 3} assigned on
++     * create. It starts at {@code 1}, gains {@code 1} when an email address is present, and gains
++     * {@code 1} when the owner has no namesakes (its {@code namesakeCount} is {@code 0}), capped at
++     * {@code 3}. A null or absent namesake count is treated as not being zero, so it contributes
++     * nothing. Level {@code 4} is reserved for tenure.
+      */
+-    default String formatMembershipTier(Owner owner) {
++    default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return "GOLD";
++        int level = 1;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
++        if (hasEmail) {
++            level++;
+         }
+         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+-        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
++        if (uniqueName) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+@@ -116,14 +119,12 @@ public interface OwnerMapper {
+             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+     }
+ 
+-    @Mapping(target = "householdSize", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+-    @Mapping(target = "householdSize", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2e4d9f813..3ece12f35 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,9 +66,6 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
+-    @Column(name = "household_size")
+-    private Integer householdSize;
+-
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -139,14 +136,6 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
+-    public Integer getHouseholdSize() {
+-        return this.householdSize;
+-    }
+-
+-    public void setHouseholdSize(Integer householdSize) {
+-        this.householdSize = householdSize;
+-    }
+-
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+@@ -243,7 +232,6 @@ public class Owner extends Person {
+             .append("customerCode", this.customerCode)
+             .append("householdId", this.householdId)
+             .append("namesakeCount", this.namesakeCount)
+-            .append("householdSize", this.householdSize)
+             .append("bulkSignupWarning", this.bulkSignupWarning)
+             .toString();
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 632ea190a..42f56fd72 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -152,12 +152,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             // the new owner (and back-fill the existing member(s)).
+             this.clinicService.assignHousehold(owner);
+         }
+-        // Record the size of the owner's household after this create: the owners already stored
+-        // under the shared household identifier plus this new owner. Owners that do not join a
+-        // household have a size of one (just themselves). This drives the GOLD membership tier.
+-        int householdSize = owner.getHouseholdId() == null ? 1
+-            : this.clinicService.countHouseholdMembers(owner.getHouseholdId()) + 1;
+-        owner.setHouseholdSize(householdSize);
+         owner.setNamesakeCount(
+             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 05457afc5..92ae10a5b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -107,16 +107,6 @@ public interface ClinicService {
+ 	 */
+ 	int countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 
+-	/**
+-	 * Returns the number of stored owners that belong to the household identified by the given
+-	 * household identifier. Used on create to record how large an owner's household is at the
+-	 * moment it is created, which in turn drives the GOLD membership tier.
+-	 *
+-	 * @param householdId the household identifier to match; {@code null} yields {@code 0}
+-	 * @return the count of stored owners sharing the given household identifier
+-	 */
+-	int countHouseholdMembers(String householdId) throws DataAccessException;
+-
+ 	/**
+ 	 * Returns the number of existing owners located in the given city, compared
+ 	 * case-insensitively with surrounding whitespace ignored. Used on create to enforce the
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 9ad927e99..7a176f273 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -379,17 +379,6 @@ public class ClinicServiceImpl implements ClinicService {
+             .count();
+     }
+ 
+-    @Override
+-    @Transactional(readOnly = true)
+-    public int countHouseholdMembers(String householdId) throws DataAccessException {
+-        if (householdId == null) {
+-            return 0;
+-        }
+-        return (int) ownerRepository.findAll().stream()
+-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+-            .count();
+-    }
+-
+     @Override
+     @Transactional(readOnly = true)
+     public int countOwnersInCity(String city) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index bee4723a5..612a9052b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 96357e503..c467e7bd1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,6 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 0e5afcc93..195d8909e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a7746d4c5..738a327ab 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b9ebabbe7..965458bb6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2135,16 +2135,18 @@ components:
+               type: string
+               example: 'H-3F5A9C2E'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household
+-                (owners sharing the same householdId) held 3 or more members
+-                after this owner was created; otherwise 'SILVER' when the owner
+-                has no namesakes (namesakeCount is 0) and an email address is
+-                present, and 'BRONZE' in every other case.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 assigned on
++                create. It starts at 1, gains 1 when an email address is present,
++                and gains 1 when the owner has no namesakes (namesakeCount is 0),
++                capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
