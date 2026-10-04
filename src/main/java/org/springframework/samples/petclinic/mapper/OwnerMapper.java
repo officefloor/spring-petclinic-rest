@@ -23,7 +23,18 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no
+     * namesakes at creation and has an email on file, otherwise {@code BRONZE}.
+     */
+    default String membershipTier(Owner owner) {
+        boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+            && owner.getEmail() != null && !owner.getEmail().isBlank();
+        return silver ? "SILVER" : "BRONZE";
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
