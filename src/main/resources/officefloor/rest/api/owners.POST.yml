@@ -1,6 +1,18 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: a repeat with an already-seen 'Idempotency-Key' replays the original
+# owner (200) and skips the create pipeline; a new (or absent) key falls through to create.
+# Both are flows and this step has no 'next', so exactly one branch runs.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  outputs:
+    replay: respondReplay
+    create: validate
+
+respondReplay:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithReplayedOwner
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: validatePostcode
@@ -85,6 +97,13 @@ save:
 
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Governed like its neighbours so the transaction span stays contiguous (build..respond) and
+# the request still commits once at the end; the cache write itself is non-transactional.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: respond
 
