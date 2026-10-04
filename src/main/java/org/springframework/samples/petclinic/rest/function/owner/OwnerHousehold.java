@@ -9,9 +9,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Single source of truth for the owner "household" notion used by the {@code POST /owners}
- * pipeline: two owners belong to the same household when they share a last name and an address,
- * compared case-insensitively with collapsed whitespace. Centralised here (rather than inlined
- * in {@link CheckOwnerHouseholdUnique} and {@link AssignHousehold}) so the uniqueness guard and
+ * pipeline: two owners belong to the same household when they share a last name (compared
+ * case-insensitively with collapsed whitespace) and a normalised address (see
+ * {@link OwnerAddress#normalize}). Centralised here (rather than inlined in
+ * {@link CheckOwnerHouseholdUnique} and {@link AssignHousehold}) so the uniqueness guard and
  * the id assignment cannot silently disagree about who belongs together.
  */
 final class OwnerHousehold {
@@ -22,7 +23,8 @@ final class OwnerHousehold {
     /** Whether the create request names the same household as an existing owner. */
     static boolean matches(OwnerFieldsDto request, Owner existing) {
         return normalize(request.getLastName()).equals(normalize(existing.getLastName()))
-                && normalize(request.getAddress()).equals(normalize(existing.getAddress()));
+                && OwnerAddress.normalize(request.getAddress())
+                        .equals(OwnerAddress.normalize(existing.getAddress()));
     }
 
     /**
@@ -31,7 +33,7 @@ final class OwnerHousehold {
      * every member of the same household derives the same id.
      */
     static String deriveId(OwnerFieldsDto request) {
-        String key = normalize(request.getLastName()) + "\n" + normalize(request.getAddress());
+        String key = normalize(request.getLastName()) + "\n" + OwnerAddress.normalize(request.getAddress());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
@@ -46,7 +48,7 @@ final class OwnerHousehold {
         }
     }
 
-    /** The comparison form: trimmed, internal whitespace collapsed, lower-cased. */
+    /** The last-name comparison form: trimmed, internal whitespace collapsed, lower-cased. */
     static String normalize(String value) {
         if (value == null) {
             return "";
