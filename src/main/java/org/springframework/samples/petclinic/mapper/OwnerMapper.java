@@ -29,9 +29,22 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+    @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Resolve an owner's possible-duplicate flag, coalescing a {@code null} stored value
+     * (e.g. for owners created before the flag existed) to {@code false} so the response
+     * always carries an explicit boolean.
+     */
+    default Boolean formatPossibleDuplicate(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate());
+    }
 
     /**
      * Derive an owner's age band from its {@code birthDate}, measured as the owner's age in whole
@@ -194,6 +207,8 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "possibleDuplicate", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")

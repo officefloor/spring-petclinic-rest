@@ -325,6 +325,27 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (normalizedLastName == null || postcode == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        return ownerRepository.findAll().stream()
+            .filter(existing -> existing.getId() != null)
+            .filter(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName())))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> telephone == null
+                ? existing.getTelephone() != null
+                : !telephone.equals(existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
+    }
+
+    @Override
     @Transactional
     public String assignHousehold(Owner owner) throws DataAccessException {
         String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());

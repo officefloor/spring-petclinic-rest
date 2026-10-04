@@ -155,6 +155,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Soft "possible duplicate" detection: not a hard duplicate, but an existing owner shares
+        // this owner's last name and postcode with a different telephone. The create still proceeds,
+        // flagged with possibleDuplicate=true and possibleDuplicateOf set to the matching owner id.
+        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(
             this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
