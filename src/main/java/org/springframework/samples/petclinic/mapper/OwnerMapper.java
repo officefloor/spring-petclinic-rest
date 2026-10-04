@@ -24,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -118,6 +119,37 @@ public interface OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Compute an owner's check digit: a single Luhn check digit (0-9) over the digits
+     * contained in the owner's {@code customerCode}. Non-digit characters (the city and
+     * last-name segments) are ignored. Returns {@code null} when the owner or its customer
+     * code is absent, since the digit cannot be derived without the code.
+     */
+    default Integer formatCheckDigit(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null) {
+            return null;
+        }
+        String code = owner.getCustomerCode();
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
