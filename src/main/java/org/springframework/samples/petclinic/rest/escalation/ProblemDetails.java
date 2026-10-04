@@ -26,4 +26,16 @@ final class ProblemDetails {
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
     }
+
+    /**
+     * Builds a {@link #build(Exception, HttpStatus, String) standard} problem body and adds an
+     * {@code errors} member naming the rejected owner field(s). Used by the create endpoint's
+     * field-level 400 handlers, which previously responded with a bare {@code {"errors": [...]}}
+     * body but must now emit RFC 7807 {@code application/problem+json} like every other rejection.
+     */
+    static ProblemDetail build(Exception ex, HttpStatus status, String detail, List<String> fields) {
+        ProblemDetail problemDetail = build(ex, status, detail);
+        problemDetail.setProperty("errors", List.copyOf(fields));
+        return problemDetail;
+    }
 }
