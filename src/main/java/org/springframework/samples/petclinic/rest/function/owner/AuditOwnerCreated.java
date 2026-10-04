@@ -12,9 +12,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * Emits the owner-created audit trail to the dedicated {@code AUDIT} logger once a new owner has
  * been persisted. Two things are emitted:
  * <ul>
- *   <li>a human-readable line recording the assigned owner id, the region-and-hash
- *       {@code customerCode}, {@code registrationDate}, the derived {@code membershipLevel} and the
- *       assigned {@code membershipNumber};</li>
+ *   <li>a human-readable line recording the assigned owner id, the unified {@code memberId},
+ *       {@code registrationDate} and the derived {@code membershipLevel};</li>
  *   <li>an immutable structured {@link OwnerCreatedEvent} (as JSON), tagged with a monotonically
  *       increasing {@link #SEQUENCE sequence} across creates and carrying the owner's current
  *       primary identifier.</li>
@@ -31,15 +30,13 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         int membershipLevel = ownerMapper.membershipLevel(owner);
-        logger.info("Owner created: id={} customerCode={} registrationDate={} "
-                + "membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipLevel, owner.getMembershipNumber());
+        logger.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                membershipLevel);
 
-        // The current primary identifier is the customerCode; a later unification into memberId
-        // changes only this argument (and OwnerCreatedEvent's field), not this step's shape.
+        // The owner's primary identifier is the unified memberId.
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(),
-                owner.getId(), owner.getCustomerCode(), membershipLevel);
+                owner.getId(), owner.getMemberId(), membershipLevel);
         logger.info(event.toJson());
     }
 }

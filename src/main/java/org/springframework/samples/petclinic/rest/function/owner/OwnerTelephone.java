@@ -81,8 +81,8 @@ public final class OwnerTelephone {
      * Best-effort canonical form of {@code telephone}: its E.164 form ({@link #toE164(String)})
      * when it forms one, otherwise the raw value unchanged (and the empty string when null). Used
      * where a stable string is needed even for a value that is not a valid E.164 number — folding
-     * the telephone into the owner identity key ({@link OwnerIdentity}) and into the identity's
-     * hash ({@code OwnerCustomerCode}) — so that fallback policy lives here alongside the rule it
+     * the telephone into the owner identity key ({@link OwnerIdentity}) and into the member id's
+     * hash ({@code OwnerMemberId}) — so that fallback policy lives here alongside the rule it
      * builds on rather than being reimplemented at each site.
      */
     static String toE164OrRaw(String telephone) {

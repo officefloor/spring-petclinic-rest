@@ -16,8 +16,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * listed holiday also rolls forward to the next non-holiday business day.
  *
  * <p>Centralised here so every site agrees on one definition: {@link BuildOwner} stores the
- * adjusted date on the owner (and everything derived from it, such as the membership number's
- * year segment in {@link AssignMembershipNumber}, then uses the adjusted value), while
+ * adjusted date on the owner (and everything derived from it, such as the member id's fiscal-year
+ * segment in {@link AssignMemberId}, then uses the adjusted value), while
  * {@link CheckDailyOwnerLimit} counts existing owners against the same adjusted business day.
  */
 final class BusinessDay {

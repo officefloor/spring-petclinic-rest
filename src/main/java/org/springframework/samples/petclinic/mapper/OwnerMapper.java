@@ -26,7 +26,6 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -113,36 +112,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits contained
-     * in {@code customerCode}, derived at read time. Returns {@code null} when no customer code has
-     * been assigned.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * Derives the owner's membership points: starts at 0, adds 2 when an email is present, adds 1
      * when the owner had no namesakes at creation ({@code namesakeCount == 0}), adds 2 when the
      * owner belongs to a household of 3 or more members ({@code householdSize >= 3}, counted at
@@ -207,8 +176,9 @@ public interface OwnerMapper {
     /**
      * The owner's tenure in whole elapsed fiscal years (fiscal years start 1 July): the number of
      * 1-July boundaries between its {@code registrationDate} and today, derived via
-     * {@code FiscalYear} so it matches the fiscal year the membership number and {@code fiscalYear}
-     * label use. Returns 0 when no registration date is stored (or it lies in the future), so an
+     * {@code FiscalYear} so it matches the fiscal year the member id's fiscal-year segment and
+     * {@code fiscalYear} label use. Returns 0 when no registration date is stored (or it lies in
+     * the future), so an
      * owner with no recorded tenure never qualifies for the tenure-gated points.
      */
     default long tenureFiscalYears(Owner owner) {
@@ -235,17 +205,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) at read time from the region-and-hash
-     * {@code customerCode}: its {@code REGION} prefix (e.g. {@code NSW} for {@code NSW-1A2B3C4D}),
-     * so the region cannot drift from the identity every other derived value flows through. Owners
-     * with no {@code customerCode} fall back to resolving the region directly. Both the parse and
-     * the fallback (including the {@code UNKNOWN} sentinel) live in {@code OwnerCustomerCode}.
+     * Derives the owner's locality (region) at read time from the unified {@code memberId}: its
+     * {@code REGION} prefix (e.g. {@code NSW} for {@code NSW271A2B3C4D5}), so the region cannot
+     * drift from the identity every other derived value flows through. Owners with no
+     * {@code memberId} fall back to resolving the region directly. Both the parse and the fallback
+     * (including the {@code UNKNOWN} sentinel) live in {@code OwnerMemberId}.
      */
     default String locality(Owner owner) {
-        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
-            .regionOf(owner.getCustomerCode());
+        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
+            .regionOf(owner.getMemberId());
         return region != null ? region
-            : org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+            : org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
                 .regionFor(owner);
     }
 

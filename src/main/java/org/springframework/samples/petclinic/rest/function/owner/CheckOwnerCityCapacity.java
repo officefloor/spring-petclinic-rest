@@ -9,7 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * contains 50 or more owners, with a 409 via {@link CityAtCapacityException}.
  *
  * <p>The city is compared case-insensitively against each existing owner's city (as in
- * {@link AssignCustomerCode}), so the count is independent of letter case. Runs before
+ * {@link AssignMemberId}), so the count is independent of letter case. Runs before
  * {@link BuildOwner}.
  */
 public class CheckOwnerCityCapacity {

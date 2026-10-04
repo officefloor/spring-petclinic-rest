@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * same id automatically — there is no longer any explicit linking of existing owners. Owners with
  * no postcode belong to no household and are left with a null {@code householdId}.
  *
- * <p>Runs within the create transaction (after {@link BuildOwner}/{@link AssignCustomerCode},
+ * <p>Runs within the create transaction (after {@link BuildOwner}/{@link AssignMemberId},
  * before {@link SaveOwner}). Sharing a household is no longer a duplicate: several members may
  * belong to the same household as long as their identity keys differ (see
  * {@link CheckOwnerIdentityUnique}). The id assigned here is purely a function of
