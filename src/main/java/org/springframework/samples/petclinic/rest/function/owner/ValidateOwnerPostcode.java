@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
@@ -19,12 +17,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  */
 public class ValidateOwnerPostcode {
 
-    /** Region -> inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-            "NSW", new int[] {2000, 2099},
-            "VIC", new int[] {3000, 3099},
-            "QLD", new int[] {4000, 4099});
-
     public void service(@Val OwnerFieldsDto request) throws InvalidPostcodeException {
         String postcode = request.getPostcode();
         if (postcode == null || postcode.isBlank()) {
@@ -33,8 +25,8 @@ public class ValidateOwnerPostcode {
         if (!postcode.matches("[0-9]{4}")) {
             throw new InvalidPostcodeException(postcode);
         }
-        String region = OwnerLocality.regionFor(request.getCity());
-        int[] range = region == null ? null : REGION_POSTCODES.get(region);
+        String region = OwnerLocality.regionForCity(request.getCity());
+        int[] range = OwnerLocality.postcodeRange(region);
         if (range != null) {
             int value = Integer.parseInt(postcode);
             if (value < range[0] || value > range[1]) {
