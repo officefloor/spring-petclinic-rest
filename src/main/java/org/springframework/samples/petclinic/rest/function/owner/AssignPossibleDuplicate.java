@@ -8,16 +8,17 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Soft-duplicate detection for {@code POST /owners}. A request that cleared the hard-duplicate
  * guard ({@link CheckOwnerIdentityUnique}) is still created, but is flagged as a <em>possible</em>
- * duplicate when it shares an existing owner's {@code lastName} and {@code postcode} while carrying
- * a <em>different</em> telephone. The matching owner's id is recorded in {@code possibleDuplicateOf};
- * when there is no such match both {@code possibleDuplicate} is {@code false} and
- * {@code possibleDuplicateOf} is {@code null}.
+ * duplicate when its surname's Soundex ({@link OwnerSoundex}) and its {@code postcode} match an
+ * existing owner's while its whole {@link OwnerIdentity identityKey} <em>differs</em>. The matching
+ * owner's id is recorded in {@code possibleDuplicateOf}; when there is no such match both
+ * {@code possibleDuplicate} is {@code false} and {@code possibleDuplicateOf} is {@code null}.
  *
  * <p>A <em>declared</em> household member — one created with {@code sharesHousehold} true, which
  * deliberately shares an existing owner's household — is never flagged: a declared member is not a
- * suspected duplicate. A non-declared owner sharing a household (same {@code lastName} and
- * {@code postcode}, different telephone) is no longer rejected by {@link CheckOwnerIdentityUnique}
- * — it reaches this step and is flagged as a possible duplicate of the matching owner.
+ * suspected duplicate. A non-declared owner with a surname that sounds like an existing owner's and
+ * the same postcode but a different telephone (so a different identity key) is no longer rejected by
+ * {@link CheckOwnerIdentityUnique} — it reaches this step and is flagged as a possible duplicate of
+ * the matching owner.
  *
  * <p>Runs within the create transaction after {@link BuildOwner} (so the built owner's telephone is
  * already in its stored E.164 form) and before {@link SaveOwner} (so {@code findAll} excludes the
@@ -39,18 +40,18 @@ public class AssignPossibleDuplicate {
         if (postcode == null || postcode.isBlank()) {
             return;
         }
-        String lastName = owner.getLastName();
-        String telephone = owner.getTelephone();
+        String lastNameSoundex = OwnerSoundex.of(owner.getLastName());
+        String identityKey = OwnerIdentity.of(owner);
 
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner is not a possible duplicate
             }
-            boolean sameLastName = lastName != null && lastName.equalsIgnoreCase(existing.getLastName());
+            boolean sameSoundex = lastNameSoundex.equals(OwnerSoundex.of(existing.getLastName()));
             boolean samePostcode = postcode.equals(existing.getPostcode());
-            boolean differentTelephone = telephone == null || !telephone.equals(existing.getTelephone());
-            if (sameLastName && samePostcode && differentTelephone) {
+            boolean differentIdentity = !identityKey.equals(OwnerIdentity.of(existing));
+            if (sameSoundex && samePostcode && differentIdentity) {
                 if (match == null || existing.getId() < match.getId()) {
                     match = existing;
                 }

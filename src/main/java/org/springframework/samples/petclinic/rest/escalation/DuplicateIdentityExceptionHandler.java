@@ -9,7 +9,7 @@ import org.springframework.samples.petclinic.rest.function.owner.DuplicateIdenti
 
 /**
  * Responds 409 when an owner create request's whole identityKey (normalised telephone, email and
- * household together) is already used by an existing owner.
+ * the last name's Soundex together) is already used by an existing owner.
  */
 public class DuplicateIdentityExceptionHandler {
 

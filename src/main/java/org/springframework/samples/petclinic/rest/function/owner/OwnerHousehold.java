@@ -1,9 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
@@ -52,18 +48,7 @@ final class OwnerHousehold {
             return null;
         }
         String key = normalize(lastName) + "|" + postcode;
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, 12);
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+        return Sha256.hex(key).substring(0, 12).toUpperCase();
     }
 
     /** The last-name comparison form: trimmed, internal whitespace collapsed, lower-cased. */
