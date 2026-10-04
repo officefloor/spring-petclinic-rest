@@ -24,6 +24,7 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -34,6 +35,28 @@ public interface OwnerMapper {
         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
             && owner.getEmail() != null && !owner.getEmail().isBlank();
         return silver ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * Derives the owner's locality (region) at read time from the city via a fixed
+     * city-to-region table: Sydney->NSW, Melbourne->VIC, Brisbane->QLD. Returns the
+     * canonical region string, or {@code UNKNOWN} when the city is not in the table.
+     */
+    default String locality(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return "UNKNOWN";
+        }
+        switch (city) {
+            case "Sydney":
+                return "NSW";
+            case "Melbourne":
+                return "VIC";
+            case "Brisbane":
+                return "QLD";
+            default:
+                return "UNKNOWN";
+        }
     }
 
     Owner toOwner(OwnerDto ownerDto);
