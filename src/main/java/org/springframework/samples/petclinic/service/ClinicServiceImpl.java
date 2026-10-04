@@ -381,6 +381,17 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public int countHouseholdMembers(String householdId) throws DataAccessException {
+        if (householdId == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public int countOwnersInCity(String city) throws DataAccessException {
         String normalized = normalizeForComparison(city);
         if (normalized == null) {

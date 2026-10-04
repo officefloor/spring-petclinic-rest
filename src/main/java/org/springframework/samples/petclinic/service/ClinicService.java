@@ -108,6 +108,16 @@ public interface ClinicService {
 	int countNamesakes(String firstName, String lastName) throws DataAccessException;
 
 	/**
+	 * Returns the number of stored owners that belong to the household identified by the given
+	 * household identifier. Used on create to record how large an owner's household is at the
+	 * moment it is created, which in turn drives the GOLD membership tier.
+	 *
+	 * @param householdId the household identifier to match; {@code null} yields {@code 0}
+	 * @return the count of stored owners sharing the given household identifier
+	 */
+	int countHouseholdMembers(String householdId) throws DataAccessException;
+
+	/**
 	 * Returns the number of existing owners located in the given city, compared
 	 * case-insensitively with surrounding whitespace ignored. Used on create to enforce the
 	 * per-city capacity rule, so a city that has already reached its limit rejects further owners.

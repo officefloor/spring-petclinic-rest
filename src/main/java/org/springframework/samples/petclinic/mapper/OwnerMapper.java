@@ -62,14 +62,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine an owner's membership tier: {@code "SILVER"} when the owner has no namesakes
-     * (its {@code namesakeCount} is {@code 0}) and an email address is present, otherwise
-     * {@code "BRONZE"}. A null or absent namesake count is treated as not being zero, so the
-     * tier only reaches SILVER for an explicitly unique owner with an email.
+     * Determine an owner's membership tier. {@code "GOLD"} when the owner's household held three
+     * or more members after the owner was created (its {@code householdSize} is {@code 3} or
+     * more); otherwise {@code "SILVER"} when the owner has no namesakes (its {@code namesakeCount}
+     * is {@code 0}) and an email address is present, and {@code "BRONZE"} in every other case. A
+     * null or absent namesake count is treated as not being zero, so the tier only reaches SILVER
+     * for an explicitly unique owner with an email.
      */
     default String formatMembershipTier(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
         }
         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
@@ -111,12 +116,14 @@ public interface OwnerMapper {
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
     }
 
+    @Mapping(target = "householdSize", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
