@@ -76,20 +76,9 @@ public interface OwnerMapper {
      * canonical region string, or {@code UNKNOWN} when the city is not in the table.
      */
     default String locality(Owner owner) {
-        String city = owner.getCity();
-        if (city == null) {
-            return "UNKNOWN";
-        }
-        switch (city) {
-            case "Sydney":
-                return "NSW";
-            case "Melbourne":
-                return "VIC";
-            case "Brisbane":
-                return "QLD";
-            default:
-                return "UNKNOWN";
-        }
+        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerLocality
+            .regionFor(owner.getCity());
+        return region != null ? region : "UNKNOWN";
     }
 
     Owner toOwner(OwnerDto ownerDto);
