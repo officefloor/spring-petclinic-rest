@@ -1,0 +1,176 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index afa82c23e..22d317ac4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,8 +27,21 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
++    @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Resolve an owner's bulk-signup warning flag, coalescing a {@code null} stored value
++     * (e.g. for owners created before the flag existed) to {@code false} so the response
++     * always carries an explicit boolean.
++     */
++    default Boolean formatBulkSignupWarning(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
++    }
++
+     /**
+      * Known city-to-region mappings. Keyed by the exact city name, the canonical region
+      * string is returned for a listed city and {@code "UNKNOWN"} for anything else.
+@@ -104,6 +117,7 @@ public interface OwnerMapper {
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
++    @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b3e3ef052..3ece12f35 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -133,6 +136,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     /**
+      * When no registration date is supplied, default it to the server's current date, then roll
+      * the effective date forward onto a business day: a Saturday or Sunday becomes the following
+@@ -221,6 +232,7 @@ public class Owner extends Person {
+             .append("customerCode", this.customerCode)
+             .append("householdId", this.householdId)
+             .append("namesakeCount", this.namesakeCount)
++            .append("bulkSignupWarning", this.bulkSignupWarning)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 418515d48..42f56fd72 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -68,6 +68,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * create is rejected once this many owners already carry today's registration date. */
+     private static final int DAILY_REGISTRATION_LIMIT = 100;
+ 
++    /** Once more than this many owners already carry a given day's registration date, a new owner
++     * created for that day is flagged with {@code bulkSignupWarning} to signal a bulk-signup surge. */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -124,9 +128,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setRegistrationDate(effectiveDate);
+         // Per-day capacity: once the day has reached its limit of newly created owners, reject
+         // further creates for that day with 429 Too Many Requests.
+-        if (this.clinicService.countOwnersRegisteredOn(effectiveDate) >= DAILY_REGISTRATION_LIMIT) {
++        int ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(effectiveDate);
++        if (ownersRegisteredToday >= DAILY_REGISTRATION_LIMIT) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
++        // Bulk-signup warning: flag this owner when more than 80 owners have already been created
++        // for its registration date, signalling a bulk-signup surge.
++        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index aa945722d..612a9052b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 893aa49a8..c467e7bd1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c0161d411..195d8909e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..738a327ab 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 899d1161c..477e89740 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2165,6 +2165,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created on this
++                owner's registration date at the moment this owner was created,
++                signalling a bulk-signup surge; otherwise false. Assigned on
++                create and never changed afterwards.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
