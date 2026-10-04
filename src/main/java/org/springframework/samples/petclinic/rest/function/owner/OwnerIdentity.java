@@ -41,13 +41,8 @@ public final class OwnerIdentity {
      * '|' + (householdId or empty)}.
      */
     public static String key(String telephone, String email, String householdId) {
-        return normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
+        return OwnerTelephone.toE164OrRaw(telephone) + "|" + normalizeEmail(email) + "|"
                 + (householdId == null ? "" : householdId);
-    }
-
-    private static String normalizeTelephone(String telephone) {
-        String e164 = OwnerTelephone.toE164(telephone);
-        return e164 != null ? e164 : (telephone == null ? "" : telephone);
     }
 
     private static String normalizeEmail(String email) {

@@ -7,8 +7,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits an audit trail line to the dedicated {@code AUDIT} logger once a new owner
- * has been persisted, recording the assigned owner id, {@code customerCode} and
- * {@code registrationDate}.
+ * has been persisted, recording the assigned owner id, the region-and-hash
+ * {@code customerCode} and {@code registrationDate}.
  *
  * <p>Runs after {@link SaveOwner}, so the generated id is available.
  */
