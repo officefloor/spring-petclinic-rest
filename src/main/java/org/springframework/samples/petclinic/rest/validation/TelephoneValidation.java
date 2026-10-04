@@ -10,7 +10,8 @@ import java.lang.annotation.*;
 @Documented
 public @interface TelephoneValidation {
 
-    String message() default "Telephone must be convertible to E.164 form (8 to 15 digits)";
+    String message() default "Telephone must be convertible to E.164 form with a national-number "
+        + "length valid for its country code (+61 requires 9 national digits, +1 requires 10)";
 
     Class<?>[] groups() default {};
 

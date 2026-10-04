@@ -1,5 +1,8 @@
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Converts a raw, user-supplied telephone number into E.164 form.
  *
@@ -9,7 +12,10 @@ package org.springframework.samples.petclinic.rest.validation;
  *     <li>a leading {@code '+'} and country code are kept when present;</li>
  *     <li>otherwise country code {@code '+61'} is assumed and a single leading
  *         {@code '0'} is dropped from the national digits;</li>
- *     <li>the result must carry 8 to 15 digits after the {@code '+'}.</li>
+ *     <li>the result must carry 8 to 15 digits after the {@code '+'};</li>
+ *     <li>for a known country code the national number (the digits after the
+ *         country code) must have the exact length that country requires:
+ *         {@code '+61'} requires 9 national digits and {@code '+1'} requires 10.</li>
  * </ul>
  *
  * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and
@@ -19,6 +25,17 @@ package org.springframework.samples.petclinic.rest.validation;
 public final class E164Telephone {
 
     private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /**
+     * Known country codes mapped to the exact national-number length they require.
+     * Ordered longest-prefix first so the country code is matched unambiguously.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = new LinkedHashMap<>();
+
+    static {
+        NATIONAL_LENGTHS.put("61", 9);
+        NATIONAL_LENGTHS.put("1", 10);
+    }
 
     private E164Telephone() {
     }
@@ -44,6 +61,13 @@ public final class E164Telephone {
         }
         if (!digits.matches("\\d{8,15}")) {
             return null;
+        }
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalLength = digits.length() - countryCode.length();
+                return nationalLength == entry.getValue() ? "+" + digits : null;
+            }
         }
         return "+" + digits;
     }
