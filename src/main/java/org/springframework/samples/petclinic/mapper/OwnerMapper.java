@@ -27,7 +27,20 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Resolve an owner's bulk-signup warning flag, coalescing a {@code null} stored value
+     * (e.g. for owners created before the flag existed) to {@code false} so the response
+     * always carries an explicit boolean.
+     */
+    default Boolean formatBulkSignupWarning(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
 
     /**
      * Known city-to-region mappings. Keyed by the exact city name, the canonical region
@@ -104,6 +117,7 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")

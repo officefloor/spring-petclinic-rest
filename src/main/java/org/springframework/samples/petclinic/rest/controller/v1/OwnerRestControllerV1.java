@@ -68,6 +68,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * create is rejected once this many owners already carry today's registration date. */
     private static final int DAILY_REGISTRATION_LIMIT = 100;
 
+    /** Once more than this many owners already carry a given day's registration date, a new owner
+     * created for that day is flagged with {@code bulkSignupWarning} to signal a bulk-signup surge. */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -124,9 +128,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(effectiveDate);
         // Per-day capacity: once the day has reached its limit of newly created owners, reject
         // further creates for that day with 429 Too Many Requests.
-        if (this.clinicService.countOwnersRegisteredOn(effectiveDate) >= DAILY_REGISTRATION_LIMIT) {
+        int ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(effectiveDate);
+        if (ownersRegisteredToday >= DAILY_REGISTRATION_LIMIT) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        // Bulk-signup warning: flag this owner when more than 80 owners have already been created
+        // for its registration date, signalling a bulk-signup surge.
+        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
