@@ -1,0 +1,102 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0254bff6f..efbbb674b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -16,7 +18,10 @@ import java.util.List;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    @Autowired
++    protected OwnerRepository ownerRepository;
+ 
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+@@ -26,33 +31,45 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+-    OwnerDto toOwnerDto(Owner owner);
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Reports the owner's bulk-signup warning: {@code true} when more than 80 owners had already
+      * been created on this owner's registration business day at the time it was created. Treats a
+      * missing value (owners created before this rule existed) as {@code false}.
+      */
+-    default boolean bulkSignupWarning(Owner owner) {
++    public boolean bulkSignupWarning(Owner owner) {
+         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+     }
+ 
+     /**
+-     * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no
+-     * namesakes at creation and has an email on file, otherwise {@code BRONZE}.
++     * Derives the owner's membership tier at read time: {@code GOLD} when the owner belongs to a
++     * household (owners sharing the same {@code householdId}) of 3 or more members; otherwise
++     * {@code SILVER} when the owner had no namesakes at creation and has an email on file, else
++     * {@code BRONZE}.
+      */
+-    default String membershipTier(Owner owner) {
++    public String membershipTier(Owner owner) {
++        if (owner.getHouseholdId() != null && householdSize(owner.getHouseholdId()) >= 3) {
++            return "GOLD";
++        }
+         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+             && owner.getEmail() != null && !owner.getEmail().isBlank();
+         return silver ? "SILVER" : "BRONZE";
+     }
+ 
++    /** Count of owners currently sharing the given {@code householdId}. */
++    private long householdSize(String householdId) {
++        return ownerRepository.findAll().stream()
++            .filter(o -> householdId.equals(o.getHouseholdId()))
++            .count();
++    }
++
+     /**
+      * Derives the owner's locality (region) at read time from the city via a fixed
+      * city-to-region table: Sydney->NSW, Melbourne->VIC, Brisbane->QLD. Returns the
+      * canonical region string, or {@code UNKNOWN} when the city is not in the table.
+      */
+-    default String locality(Owner owner) {
++    public String locality(Owner owner) {
+         String city = owner.getCity();
+         if (city == null) {
+             return "UNKNOWN";
+@@ -69,17 +86,17 @@ public interface OwnerMapper {
+         }
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());

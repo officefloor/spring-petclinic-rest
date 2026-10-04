@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0254bff6f..6c5e4825b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -38,10 +38,15 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no
+-     * namesakes at creation and has an email on file, otherwise {@code BRONZE}.
++     * Derives the owner's membership tier at read time from fields captured at creation:
++     * {@code GOLD} when the owner's household (owners sharing the same {@code householdId}) had 3
++     * or more members after this owner was created; otherwise {@code SILVER} when the owner had no
++     * namesakes at creation and has an email on file, else {@code BRONZE}.
+      */
+     default String membershipTier(Owner owner) {
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            return "GOLD";
++        }
+         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+             && owner.getEmail() != null && !owner.getEmail().isBlank();
+         return silver ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1ab316f62..47546faa5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -67,6 +67,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -145,6 +148,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index 188603caf..25bb81d7d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -41,6 +41,10 @@ public class AssignHousehold {
+             householdId = OwnerHousehold.deriveId(request);
+         }
+         owner.setHouseholdId(householdId);
++        // Membership-size snapshot "after this create": the matched existing members plus
++        // this new owner. Captured at creation (like namesakeCount) so the mapper can derive
++        // the GOLD tier from a field without querying persistence at read time.
++        owner.setHouseholdSize(matches.size() + 1);
+         for (Owner existing : matches) {
+             if (!householdId.equals(existing.getHouseholdId())) {
+                 existing.setHouseholdId(householdId);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 4cb726f6d..0b7856f5a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index b8a97234e..6509c6109 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE owners (
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1fde77ebe..b8d883afd 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  household_size INT,
+   bulk_signup_warning BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 540ab182d..f7d72a01f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
++                                      household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
