@@ -40,7 +40,27 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", expression = "java(formatPossibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's marketing segment, formatted {@code "<TIER>_<AREA>"}. The tier is
+     * {@code "PREMIUM"} when the owner's {@code membershipLevel} (see
+     * {@link #formatMembershipLevel(Owner)}) is {@code 3} or more, otherwise {@code "STANDARD"}.
+     * The area is {@code "METRO"} when the owner's locality (see {@link #formatLocality(Owner)}) is
+     * a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. Returns one of
+     * {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"} or
+     * {@code "STANDARD_REGIONAL"}; {@code null} only when the owner is {@code null}.
+     */
+    default String formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = formatMembershipLevel(owner);
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String area = Regions.isKnownRegion(formatLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
 
     /**
      * Resolve an owner's possible-duplicate flag, coalescing a {@code null} stored value

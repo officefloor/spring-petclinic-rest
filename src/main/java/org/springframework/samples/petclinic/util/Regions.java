@@ -65,6 +65,15 @@ public final class Regions {
     }
 
     /**
+     * Whether the given region code is a known region, i.e. one of the regions in the
+     * region-to-range table (NSW, VIC or QLD). {@code null} and {@link #UNKNOWN}, along with any
+     * other value, are not known regions.
+     */
+    public static boolean isKnownRegion(String region) {
+        return region != null && REGION_RANGES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for the given region code, via a fixed region-to-timezone table
      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
      * {@code null} when the region is {@code null} or not in the table (e.g. {@link #UNKNOWN}).
