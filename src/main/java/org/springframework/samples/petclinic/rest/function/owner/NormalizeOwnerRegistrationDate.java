@@ -14,7 +14,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * back on the owner. Weekdays are left unchanged. The rule extends to public holidays:
  * when the adjusted date lands on a listed public holiday, it rolls forward to the next
  * non-holiday business day. Everything derived from the registration date (the
- * membership number's year segment, the daily create-limit) reads it back off the owner,
+ * memberId's FY segment, the daily create-limit) reads it back off the owner,
  * so it sees the adjusted date.
  */
 public class NormalizeOwnerRegistrationDate {

@@ -8,8 +8,8 @@ import java.time.Month;
  * and is named by the calendar year in which it ends, so a date from 1 July 2025 to
  * 30 June 2026 falls in fiscal year 2026.
  *
- * <p>Everything date-derived that is tracked on a fiscal-year basis — the membership
- * number's year segment and the membership-tenure count — reads through here, off the
+ * <p>Everything date-derived that is tracked on a fiscal-year basis — the {@code memberId}'s
+ * {@code FY} segment and the membership-tenure count — reads through here, off the
  * (business-day-adjusted) registration date stored on the owner.
  */
 public final class OwnerFiscalYear {

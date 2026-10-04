@@ -5,7 +5,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import net.officefloor.plugin.variable.Val;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 
 import tools.jackson.databind.ObjectMapper;
@@ -21,10 +20,10 @@ public class AuditOwnerCreated {
     /** Monotonically increasing sequence across every owner create in this JVM. */
     private static final AtomicLong SEQUENCE = new AtomicLong();
 
-    public void service(@Val Owner owner, OwnerMapper mapper) {
-        audit.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), mapper.membershipNumber(owner));
+    public void service(@Val Owner owner) {
+        audit.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(),
                 owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
@@ -33,11 +32,10 @@ public class AuditOwnerCreated {
 
     /**
      * Resolves the owner's current primary identifier — the single point that decides
-     * what the event's identifier field carries. Today the primary identifier is the
-     * {@code customerCode}; when it is later unified into the {@code memberId}, change
-     * only this method and the emitted event switches to the {@code memberId}.
+     * what the event's identifier field carries. The primary identifier is the unified
+     * {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

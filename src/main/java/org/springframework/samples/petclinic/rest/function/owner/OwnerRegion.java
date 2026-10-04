@@ -6,8 +6,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Single source of truth for an owner's {@code REGION} code — the geographic segment of
- * the owner's {@code customerCode} identity ({@code <REGION>-<HASH8>}) and, through it,
- * the owner's locality.
+ * the owner's {@code memberId} identity ({@code <REGION><FY><HASH8><CHK>}) and, through
+ * it, the owner's locality.
  *
  * <p>The region is derived from the postcode first: a 4-digit postcode falling within a
  * known region's inclusive range yields that region. When the postcode is absent or in no
@@ -60,17 +60,24 @@ public final class OwnerRegion {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
+    /** Length of the fixed trailing {@code <FY><HASH8><CHK>} segment of a memberId:
+     *  2 (fiscal year) + 8 (hash) + 1 (Luhn check digit). */
+    private static final int MEMBER_ID_SUFFIX_LENGTH = 11;
+
     /**
-     * Extracts the {@code REGION} segment from a {@code customerCode} of the form
-     * {@code <REGION>-<HASH8>} (the layout produced by
-     * {@link AssignOwnerCustomerCode}). Returns {@code null} when the code is
-     * {@code null}; returns the whole code when it carries no separator.
+     * Extracts the {@code REGION} segment from a {@code memberId} of the form
+     * {@code <REGION><FY><HASH8><CHK>} (the layout produced by
+     * {@link AssignOwnerMemberId}), optionally followed by a {@code -<n>} collision
+     * suffix. Returns {@code null} when the id is {@code null}; returns the whole id when
+     * it is too short to carry the fixed trailing segment.
      */
-    public static String regionFromCustomerCode(String customerCode) {
-        if (customerCode == null) {
+    public static String regionFromMemberId(String memberId) {
+        if (memberId == null) {
             return null;
         }
-        int dash = customerCode.indexOf('-');
-        return dash >= 0 ? customerCode.substring(0, dash) : customerCode;
+        int dash = memberId.indexOf('-');
+        String base = dash >= 0 ? memberId.substring(0, dash) : memberId;
+        return base.length() > MEMBER_ID_SUFFIX_LENGTH
+                ? base.substring(0, base.length() - MEMBER_ID_SUFFIX_LENGTH) : base;
     }
 }

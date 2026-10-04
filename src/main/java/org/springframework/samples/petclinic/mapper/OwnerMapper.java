@@ -23,8 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -112,15 +110,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the owner's {@code customerCode}
-     * identity ({@code <REGION>-<HASH8>}): the locality is the {@code REGION} segment
-     * of that identity. When the customer code has not been assigned yet, it falls
+     * Derives the owner's locality (region) from the owner's {@code memberId}
+     * identity ({@code <REGION><FY><HASH8><CHK>}): the locality is the {@code REGION}
+     * segment of that identity. When the member id has not been assigned yet, it falls
      * back to deriving the region directly (see
      * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion}).
      */
     default String locality(Owner owner) {
         String region = org.springframework.samples.petclinic.rest.function.owner.OwnerRegion
-            .regionFromCustomerCode(owner.getCustomerCode());
+            .regionFromMemberId(owner.getMemberId());
         return region != null ? region
             : org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.regionOf(owner);
     }
@@ -136,22 +134,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>}
-     * where {@code YY} is the two-digit fiscal year of the (business-day-adjusted)
-     * registration date (e.g. {@code NSW-1A2B3C4D-M26}). The fiscal year starts on
-     * 1 July and is named by the calendar year it ends in. Null when either source
-     * field is absent.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear
-            .fiscalYearOf(owner.getRegistrationDate());
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear % 100);
-    }
-
-    /**
      * Derives the owner's fiscal year, formatted {@code FY<YY>}, from the
      * (business-day-adjusted) registration date. The fiscal year starts on 1 July and
      * is named by the calendar year it ends in. Null when no registration date is set.
@@ -162,35 +144,6 @@ public interface OwnerMapper {
         }
         return org.springframework.samples.petclinic.rest.function.owner.OwnerFiscalYear
             .fiscalYearLabel(owner.getRegistrationDate());
-    }
-
-    /**
-     * Computes a single Luhn check digit (0-9) over the digits contained in the
-     * owner's {@code customerCode}. Null when the customer code is absent.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);
