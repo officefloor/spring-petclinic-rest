@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.Regions;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -335,8 +336,8 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Canonicalize a free-text value for equality comparison: trim, collapse every run of
      * whitespace to a single space and lower-case the result, so values that differ only in
-     * letter case or incidental whitespace are treated as equal. Shared by the household
-     * (last name) and per-city matching rules.
+     * letter case or incidental whitespace are treated as equal. Used by the per-city matching
+     * rule.
      */
     private String normalizeForComparison(String value) {
         if (value == null) {
@@ -357,20 +358,18 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
-        String normalizedLastName = normalizeForComparison(owner.getLastName());
-        String postcode = owner.getPostcode();
-        if (normalizedLastName == null || postcode == null) {
+        if (owner.getLastName() == null || owner.getPostcode() == null) {
             return null;
         }
-        String telephone = owner.getTelephone();
+        String soundex = Soundex.encode(owner.getLastName());
+        String postcode = owner.getPostcode();
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
             .filter(existing -> existing.getId() != null)
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName())))
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
-            .filter(existing -> telephone == null
-                ? existing.getTelephone() != null
-                : !telephone.equals(existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);

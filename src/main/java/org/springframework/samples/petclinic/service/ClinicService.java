@@ -88,25 +88,26 @@ public interface ClinicService {
 
 	/**
 	 * Returns {@code true} if any existing owner already has the same identity key as the given
-	 * candidate, where the identity key is the owner's normalized telephone, (lower-cased) email
-	 * or empty string, and household id or empty string, joined with {@code '|'}. This is the
-	 * single consolidated duplicate check: a create is a duplicate only when the candidate's WHOLE
-	 * identity key matches an existing owner's, so two household members with different telephones
-	 * (hence different keys) are both allowed.
+	 * candidate, where the identity key is the SHA-256 of the owner's normalized telephone,
+	 * lower-cased email (or empty string) and the Soundex of its last name, joined with {@code '|'}
+	 * (see {@link Owner#getIdentityKey()}). This is the single consolidated duplicate check: a
+	 * create is a duplicate only when the candidate's WHOLE identity key matches an existing
+	 * owner's, so two owners sharing a surname and postcode but with different telephones (hence
+	 * different keys) are both allowed.
 	 *
-	 * @param owner the candidate owner, with its telephone, email and household id already set
+	 * @param owner the candidate owner, with its telephone, email and last name already set
 	 */
 	boolean isIdentityKeyInUse(Owner owner) throws DataAccessException;
 
 	/**
 	 * Returns the id of an existing owner that is a soft "possible duplicate" of the given
-	 * candidate — one that shares the candidate's last name (compared case-insensitively) and
-	 * postcode but carries a different telephone — or {@code null} when none exists. Unlike
+	 * candidate — one whose last name has the same Soundex code and whose postcode matches, while
+	 * its identity key differs — or {@code null} when none exists. Unlike
 	 * {@link #isIdentityKeyInUse(Owner)}, which detects a hard duplicate that blocks the create,
 	 * this flags a near-match that is still allowed to be created. When several owners match, the
 	 * one with the lowest id is returned so the result is deterministic.
 	 *
-	 * @param owner the candidate owner, with its last name, postcode and telephone already set
+	 * @param owner the candidate owner, with its last name, postcode, telephone and email already set
 	 * @return the matching owner's id, or {@code null} when none exists
 	 */
 	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;

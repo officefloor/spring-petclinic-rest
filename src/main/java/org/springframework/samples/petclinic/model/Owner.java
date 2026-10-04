@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.BusinessDays;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -255,20 +256,22 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived key behind all duplicate detection: the normalized telephone, the
-     * (lower-cased) email or an empty string when absent, and the household id or an empty string
-     * when absent, joined with {@code '|'} (e.g. {@code +61412345678||H-3F5A9C2E}). Because the
-     * telephone is part of the key, two owners are duplicates only when their WHOLE identity keys
-     * are equal; two members of the same household (same {@code householdId}) with different
-     * telephones have different identity keys and are therefore both allowed. The telephone and
-     * email are already stored in their normalized forms on create, so this composes them directly.
+     * The single derived key behind all duplicate detection: the lower-case hex SHA-256 (64 hex
+     * characters) of {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}, where the
+     * telephone is the stored (normalized) value or an empty string when absent, the email is
+     * lower-cased or an empty string when absent, and the surname component is the standard Soundex
+     * code of the last name (see {@link org.springframework.samples.petclinic.util.Soundex}).
+     * Because the telephone is part of the key, two owners are duplicates only when their WHOLE
+     * identity keys are equal; two owners sharing a surname (hence Soundex) and postcode but with
+     * different telephones have different identity keys and are therefore both allowed, surfacing
+     * instead as a soft possible-duplicate match.
      */
     @Transient
     public String getIdentityKey() {
-        String householdId = getHouseholdId();
-        return (this.telephone == null ? "" : this.telephone) + "|"
-            + (this.email == null ? "" : this.email) + "|"
-            + (householdId == null ? "" : householdId);
+        String telephone = this.telephone == null ? "" : this.telephone;
+        String email = this.email == null ? "" : this.email.toLowerCase();
+        String key = telephone + "|" + email + "|" + Soundex.encode(getLastName());
+        return sha256Hex(key, 32);
     }
 
     /**
@@ -284,10 +287,19 @@ public class Owner extends Person {
         String lastName = getLastName() == null ? ""
             : getLastName().trim().replaceAll("\\s+", " ").toLowerCase();
         String key = lastName + "|" + (this.postcode == null ? "" : this.postcode);
+        return sha256Hex(key, 6);
+    }
+
+    /**
+     * The lower-case hex SHA-256 of {@code value}, truncated to the first {@code bytes} bytes
+     * (so {@code 2 * bytes} hex characters). Shared by the derived identity and household keys so
+     * the two stay consistent; they differ only in how many leading bytes they keep.
+     */
+    private static String sha256Hex(String value, int bytes) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(12);
-            for (int i = 0; i < 6; i++) {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(bytes * 2);
+            for (int i = 0; i < bytes; i++) {
                 sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();

@@ -169,8 +169,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // last name and postcode share it automatically — no linking step and no ordering to manage.
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // Exact-identity hard duplicate: reject with 409 when the new owner's WHOLE identityKey
-        // (normalized telephone | email-or-empty | householdId) equals an existing owner's. A
-        // truly identical record is always rejected, independent of sharesHousehold.
+        // (the SHA-256 of normalized telephone | lower-cased email-or-empty | soundex(lastName))
+        // equals an existing owner's. A truly identical record is always rejected, independent of
+        // sharesHousehold.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -180,11 +181,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // set) that is not an exact-identity duplicate is still allowed through, flagged as a
         // possible duplicate for review.
         boolean householdInUse = this.clinicService.isHouseholdInUse(owner);
-        // Soft "possible duplicate" detection: an existing owner shares this owner's last name and
-        // postcode with a different telephone. A declared household member (sharesHousehold on an
-        // in-use household) is an intentional share, not a suspected duplicate, so it is not
-        // flagged; otherwise the create still proceeds, flagged with possibleDuplicate=true and
-        // possibleDuplicateOf set to the matching owner id.
+        // Soft "possible duplicate" detection: an existing owner's last name has the same Soundex
+        // code and the same postcode, while its identity key differs (so it is not a hard
+        // duplicate). A declared household member (sharesHousehold on an in-use household) is an
+        // intentional share, not a suspected duplicate, so it is not flagged; otherwise the create
+        // still proceeds, flagged with possibleDuplicate=true and possibleDuplicateOf set to the
+        // matching owner id.
         Integer possibleDuplicateOf = (householdInUse && sharesHousehold)
             ? null
             : this.clinicService.findPossibleDuplicateOwnerId(owner);
