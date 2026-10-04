@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 
 import java.util.Collection;
 import java.util.List;
@@ -54,14 +55,16 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * Normalize a telephone number for storage by removing every non-digit character.
-     * The "exactly 10 digits" requirement is enforced separately by {@code TelephoneValidation}.
+     * Normalize a telephone number for storage into E.164 form (see {@link E164Telephone}).
+     * The requirement that a valid E.164 number can be formed is enforced separately by
+     * {@code TelephoneValidation}, so for already-validated input this returns the E.164
+     * string; it is idempotent, so re-normalizing a stored value yields the same value.
      * {@code @Named} keeps this out of MapStruct's automatic method selection, so it only
      * runs where a mapping explicitly references it via {@code qualifiedByName}.
      */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return E164Telephone.normalize(telephone);
     }
 
     /**

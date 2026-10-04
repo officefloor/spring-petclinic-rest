@@ -10,7 +10,7 @@ import java.lang.annotation.*;
 @Documented
 public @interface TelephoneValidation {
 
-    String message() default "Telephone must contain exactly 10 digits";
+    String message() default "Telephone must be convertible to E.164 form (8 to 15 digits)";
 
     Class<?>[] groups() default {};
 
