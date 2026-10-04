@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f100923d0..92fa5f354 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.mapstruct.Named;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -24,8 +25,20 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Normalize a telephone number for storage by removing every non-digit character.
++     * The "exactly 10 digits" requirement is enforced separately by {@code TelephoneValidation}.
++     * {@code @Named} keeps this out of MapStruct's automatic method selection, so it only
++     * runs where a mapping explicitly references it via {@code qualifiedByName}.
++     */
++    @Named("normalizeTelephone")
++    default String normalizeTelephone(String telephone) {
++        return telephone == null ? null : telephone.replaceAll("\\D", "");
++    }
++
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+new file mode 100644
+index 000000000..fd0f6fc82
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = TelephoneValidator.class)
++@Documented
++public @interface TelephoneValidation {
++
++    String message() default "Telephone must contain exactly 10 digits";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+new file mode 100644
+index 000000000..fc574e4bd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++/**
++ * Validates that a telephone number contains exactly 10 digits once every
++ * non-digit character has been stripped. This mirrors the normalization the
++ * {@code OwnerMapper} performs on create: the validator does not mutate the
++ * value, it only checks that the normalized form is exactly 10 digits.
++ */
++public class TelephoneValidator implements ConstraintValidator<TelephoneValidation, String> {
++
++    @Override
++    public boolean isValid(String telephone, ConstraintValidatorContext context) {
++        if (telephone == null) {
++            return true; // null is handled by the field's @NotNull constraint
++        }
++        return telephone.replaceAll("\\D", "").length() == 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 47b600bd8..2763f06ab 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,12 +2027,15 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create it is normalized by
++            removing every non-digit character and must contain exactly 10 digits
++            afterwards; the stored and returned value is those 10 digits.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.TelephoneValidation"
+       required:
+         - firstName
+         - lastName

@@ -1,0 +1,40 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e52..53c0df407 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -99,6 +99,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Normalize the telephone on create: strip every non-digit character and
++        // require exactly 10 digits, otherwise reject the request as a bad request.
++        String telephone = ownerFieldsDto.getTelephone();
++        String normalizedTelephone = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (normalizedTelephone.length() != 10) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
++        ownerFieldsDto.setTelephone(normalizedTelephone);
++
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 47b600bd8..9e6a6c774 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,11 +2027,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create it is normalized by
++            removing every non-digit character and must contain exactly 10 digits
++            afterwards; the stored and returned value is those 10 digits.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
