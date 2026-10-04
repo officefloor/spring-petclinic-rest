@@ -9,12 +9,13 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Create-time daily-limit guard for {@code POST /owners}: rejects a request once 100 or more owners
- * have already been registered today (by {@code registrationDate}), with a 429 via
- * {@link DailyOwnerLimitException}.
+ * have already been registered on the request's effective business day (by {@code registrationDate}),
+ * with a 429 via {@link DailyOwnerLimitException}.
  *
- * <p>Counts existing owners whose {@code registrationDate} equals today's date; new owners default
- * their registration date to today (see {@link BuildOwner}), so the count reflects owners created
- * today. Runs before {@link BuildOwner}.
+ * <p>The effective business day is the supplied registration date, or the server date when omitted,
+ * rolled forward over a weekend to Monday — exactly the adjusted date {@link BuildOwner} stores on a
+ * new owner. Counts existing owners whose stored {@code registrationDate} equals that business day,
+ * so the count reflects owners registered on the same business day. Runs before {@link BuildOwner}.
  */
 public class CheckDailyOwnerLimit {
 
@@ -23,10 +24,14 @@ public class CheckDailyOwnerLimit {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        // The limit is per business day of the EFFECTIVE registration date: use the supplied date
+        // when present, else the server date, then roll a weekend forward to Monday — matching the
+        // adjusted date stored on new owners (see BuildOwner), so the count lines up.
+        LocalDate supplied = request.getRegistrationDate();
+        LocalDate businessDay = BusinessDay.rollForward(supplied != null ? supplied : LocalDate.now());
         long count = ownerRepository.findAll().stream()
             .map(Owner::getRegistrationDate)
-            .filter(today::equals)
+            .filter(businessDay::equals)
             .count();
         if (count >= DAILY_LIMIT) {
             throw new DailyOwnerLimitException(count);
