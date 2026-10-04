@@ -53,6 +53,9 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
 
+    /** Maximum number of owners permitted in a single city; the create is rejected at this count. */
+    private static final int CITY_CAPACITY = 50;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -102,6 +105,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        // Per-city capacity: a city that already holds the maximum number of owners is full.
+        if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());

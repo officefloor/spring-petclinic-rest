@@ -106,6 +106,16 @@ public interface ClinicService {
 	 */
 	int countNamesakes(String firstName, String lastName) throws DataAccessException;
 
+	/**
+	 * Returns the number of existing owners located in the given city, compared
+	 * case-insensitively with surrounding whitespace ignored. Used on create to enforce the
+	 * per-city capacity rule, so a city that has already reached its limit rejects further owners.
+	 *
+	 * @param city the city to match
+	 * @return the count of existing owners in the given city
+	 */
+	int countOwnersInCity(String city) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;

@@ -291,8 +291,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
-        String normalizedLastName = normalizeHouseholdValue(lastName);
-        String normalizedAddress = normalizeHouseholdValue(address);
+        String normalizedLastName = normalizeForComparison(lastName);
+        String normalizedAddress = normalizeForComparison(address);
         if (normalizedLastName == null || normalizedAddress == null) {
             return false;
         }
@@ -301,11 +301,12 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Canonicalize a last name or address for household comparison: trim, collapse every run of
+     * Canonicalize a free-text value for equality comparison: trim, collapse every run of
      * whitespace to a single space and lower-case the result, so values that differ only in
-     * letter case or incidental whitespace are treated as equal.
+     * letter case or incidental whitespace are treated as equal. Shared by the household
+     * (last name / address) and per-city matching rules.
      */
-    private String normalizeHouseholdValue(String value) {
+    private String normalizeForComparison(String value) {
         if (value == null) {
             return null;
         }
@@ -318,8 +319,8 @@ public class ClinicServiceImpl implements ClinicService {
      * address match. Keeping this in one place means the household-equality rule is changed once.
      */
     private boolean inHousehold(Owner existing, String normalizedLastName, String normalizedAddress) {
-        return normalizedLastName.equals(normalizeHouseholdValue(existing.getLastName()))
-            && normalizedAddress.equals(normalizeHouseholdValue(existing.getAddress()));
+        return normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+            && normalizedAddress.equals(normalizeForComparison(existing.getAddress()));
     }
 
     @Override
@@ -327,8 +328,8 @@ public class ClinicServiceImpl implements ClinicService {
     public String assignHousehold(Owner owner) throws DataAccessException {
         String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
         owner.setHouseholdId(householdId);
-        String normalizedLastName = normalizeHouseholdValue(owner.getLastName());
-        String normalizedAddress = normalizeHouseholdValue(owner.getAddress());
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String normalizedAddress = normalizeForComparison(owner.getAddress());
         if (normalizedLastName != null && normalizedAddress != null) {
             // Back-fill existing members of the household so the joining owner and the
             // owner(s) already at the address share the same stable identifier.
@@ -351,7 +352,7 @@ public class ClinicServiceImpl implements ClinicService {
      * with {@code 'H-'} (e.g. {@code H-3F5A9C2E}).
      */
     private String generateHouseholdId(String lastName, String address) {
-        String key = normalizeHouseholdValue(lastName) + "|" + normalizeHouseholdValue(address);
+        String key = normalizeForComparison(lastName) + "|" + normalizeForComparison(address);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder("H-");
@@ -374,6 +375,18 @@ public class ClinicServiceImpl implements ClinicService {
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersInCity(String city) throws DataAccessException {
+        String normalized = normalizeForComparison(city);
+        if (normalized == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> normalized.equals(normalizeForComparison(existing.getCity())))
             .count();
     }
 
