@@ -67,6 +67,11 @@ public final class OwnerLocality {
         return region == null ? null : REGION_POSTCODES.get(region);
     }
 
+    /** Whether the region is one of the known regions (NSW, VIC, QLD). */
+    public static boolean isKnownRegion(String region) {
+        return region != null && REGION_POSTCODES.containsKey(region);
+    }
+
     /**
      * The region's IANA timezone name (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
      * QLD-&gt;Australia/Brisbane), or {@code null} when the region is null or has no known timezone.
