@@ -32,6 +32,9 @@ public class CheckOwnerIdentityUnique {
         String householdId = OwnerHousehold.deriveId(request);
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not a duplicate
+            }
             if (!sharesHousehold && householdId != null
                     && householdId.equals(OwnerHousehold.deriveId(existing))) {
                 throw new DuplicateIdentityException(identityKey);
