@@ -20,9 +20,12 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,6 +66,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger: on a successful create an audit line records the owner id,
      * customerCode and registrationDate. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Serializes the structured {@link OwnerCreatedEvent} emitted on each create. */
+    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
+
+    /** Monotonically increasing sequence number assigned to each successful create's audit event. */
+    private static final AtomicLong AUDIT_EVENT_SEQ = new AtomicLong();
 
     /** Maximum number of owners permitted in a single city; the create is rejected at this count. */
     private static final int CITY_CAPACITY = 50;
@@ -207,9 +216,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setMembershipLevelCap(maxHouseholdLevel + 1);
         }
         this.clinicService.saveOwner(owner);
+        // Compute the derived membership level once so the human-readable line and the structured
+        // event below are guaranteed to report the identical value.
+        int membershipLevel = ownerMapper.formatMembershipLevel(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.formatMembershipLevel(owner), ownerMapper.formatMembershipNumber(owner));
+            membershipLevel, ownerMapper.formatMembershipNumber(owner));
+        // In addition to the human-readable audit line above, emit an immutable structured event.
+        // The event carries the owner's current primary identifier (today the customerCode, later the
+        // memberId) via Owner.getPrimaryIdentifier(), and a sequence number that strictly increases
+        // across creates.
+        OwnerCreatedEvent event = new OwnerCreatedEvent(
+            AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(), owner.getPrimaryIdentifier(),
+            membershipLevel, OwnerCreatedEvent.EVENT_TYPE);
+        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
         if (hasIdempotencyKey) {
             this.idempotencyStore.record(idempotencyKey, owner.getId());
         }

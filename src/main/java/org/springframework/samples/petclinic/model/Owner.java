@@ -188,6 +188,18 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current primary identifier, i.e. whatever external reference presently identifies
+     * this owner as a member. Today that is the {@link #getCustomerCode() customerCode}; when the
+     * customerCode is later unified into the memberId this method should return the memberId instead.
+     * Reading the identifier through this single accessor lets callers track whichever identifier is
+     * current across that migration without changing at their call site.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return getCustomerCode();
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
