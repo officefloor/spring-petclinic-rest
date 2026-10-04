@@ -44,7 +44,7 @@ public interface OwnerMapper {
 
     /**
      * Format an owner's membership number as {@code "<customerCode>-M<YY>"}, where {@code YY}
-     * is the last two digits of the registration date year (e.g. {@code "SMI-0007-M26"}).
+     * is the last two digits of the registration date year (e.g. {@code "TOW-SMI-0007-M26"}).
      * Returns {@code null} when either the customer code or registration date is absent, since
      * the number cannot be derived without both.
      */

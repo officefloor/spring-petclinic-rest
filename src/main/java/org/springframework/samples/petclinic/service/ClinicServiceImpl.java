@@ -247,15 +247,27 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a {@code customerCode} of the form {@code <LAST3>-<NNNN>}: the upper-cased first
-     * three letters of the owner's last name, a hyphen, and a global 4-digit zero-padded
-     * sequence equal to one more than the current number of owners (e.g. {@code SMI-0007}).
+     * Build a {@code customerCode} of the form {@code <CITY3>-<LAST3>-<NNNN>}: the upper-cased
+     * first three letters of the owner's city, a hyphen, the upper-cased first three letters of
+     * the owner's last name, a hyphen, and a per-city 4-digit zero-padded sequence equal to one
+     * more than the number of owners already registered in that city (e.g. {@code TOW-SMI-0007}).
      */
     private String generateCustomerCode(Owner owner) {
-        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String city = owner.getCity() == null ? "" : owner.getCity();
+        int sequence = (int) ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count() + 1;
+        return String.format("%s-%s-%04d", prefix3(city), prefix3(owner.getLastName()), sequence);
+    }
+
+    /**
+     * The upper-cased first three letters of {@code value} (fewer if it is shorter), treating a
+     * {@code null} value as empty. This is the shared rule behind both the CITY3 and LAST3
+     * segments of a {@code customerCode}.
+     */
+    private static String prefix3(String value) {
+        String s = value == null ? "" : value;
+        return s.substring(0, Math.min(3, s.length())).toUpperCase();
     }
 
     @Override
