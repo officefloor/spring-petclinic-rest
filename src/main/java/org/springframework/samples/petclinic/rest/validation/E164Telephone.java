@@ -78,4 +78,43 @@ public final class E164Telephone {
     public static boolean isValid(String raw) {
         return normalize(raw) != null;
     }
+
+    /**
+     * Format a stored E.164 number for humans as the country code, a space, then the national
+     * digits grouped in threes, e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
+     * The country code is split off using the known country codes (longest prefix first); an
+     * unrecognised code is left whole and all digits after the {@code '+'} are grouped in threes.
+     * Returns {@code null} for a {@code null} input and, defensively, the raw value unchanged when
+     * it is not a {@code '+'} followed by digits.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        if (!e164.matches("\\+\\d+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        String countryCode = "";
+        String national = digits;
+        for (String code : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                countryCode = code;
+                national = digits.substring(code.length());
+                break;
+            }
+        }
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        if (grouped.length() > 0) {
+            sb.append(' ').append(grouped);
+        }
+        return sb.toString();
+    }
 }

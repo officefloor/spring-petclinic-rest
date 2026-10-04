@@ -24,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -176,6 +177,19 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Format an owner's stored E.164 telephone for humans as the country code, a space, then the
+     * national digits grouped in threes, e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"} (see {@link E164Telephone#toDisplay}). The raw {@code telephone}
+     * is left in E.164 form. Returns {@code null} when the owner or its telephone is absent.
+     */
+    default String formatTelephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return E164Telephone.toDisplay(owner.getTelephone());
     }
 
     /**
