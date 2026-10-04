@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 27b7fb9c5..469ce39a0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -184,6 +185,18 @@ public interface OwnerMapper {
+                 .regionFor(owner);
+     }
+ 
++    /**
++     * Derives the owner's timezone at read time: the IANA name for the owner's
++     * {@link #locality(Owner) locality} (region) from the fixed region-to-timezone table
++     * (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane). Returns
++     * {@code null} when the region has no known timezone (e.g. {@code UNKNOWN}), so the field is
++     * absent for such owners.
++     */
++    default String timezone(Owner owner) {
++        return org.springframework.samples.petclinic.rest.function.owner.OwnerLocality
++            .timezoneForRegion(locality(owner));
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java
+index 88dab5864..1da81fb48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java
+@@ -27,6 +27,12 @@ public final class OwnerLocality {
+             "VIC", new int[] {3000, 3099},
+             "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. Anything not listed has no known timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
+     private OwnerLocality() {
+     }
+ 
+@@ -61,6 +67,14 @@ public final class OwnerLocality {
+         return region == null ? null : REGION_POSTCODES.get(region);
+     }
+ 
++    /**
++     * The region's IANA timezone name (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++     * QLD-&gt;Australia/Brisbane), or {@code null} when the region is null or has no known timezone.
++     */
++    public static String timezoneForRegion(String region) {
++        return region == null ? null : REGION_TIMEZONE.get(region);
++    }
++
+     /**
+      * The owner's canonical region, preferring the postcode's region and falling back to the
+      * city-to-region table when the postcode is absent or in no known range. Returns {@code null}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2e149e56d..4ede26aaa 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2224,6 +2224,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's timezone, derived at read time as the IANA name for the
++                owner's region via a fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Null when the region
++                has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
