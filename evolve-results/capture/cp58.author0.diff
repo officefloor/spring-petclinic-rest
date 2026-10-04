@@ -1,0 +1,203 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5fc83cbdd..0b69fbd39 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.E164Telephone;
+ import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.samples.petclinic.util.BusinessDays;
++import org.springframework.samples.petclinic.util.DisposableDomains;
+ import org.springframework.samples.petclinic.util.Regions;
+ 
+ import java.time.LocalDate;
+@@ -40,8 +41,43 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
++    @Mapping(target = "riskFlag", expression = "java(formatRiskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derive an owner's risk flag, {@code true} when the owner warrants review because any of
++     * these hold: the owner is a possible duplicate (see {@link #formatPossibleDuplicate(Owner)}),
++     * its email domain is disposable-adjacent (see
++     * {@link DisposableDomains#isDisposableAdjacent(String)}), or its city is over its soft
++     * capacity (its capacity warning is set, see {@link #formatCapacityWarning(Owner)}); otherwise
++     * {@code false}. Returns {@code null} only when the owner is {@code null}.
++     */
++    default Boolean formatRiskFlag(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return formatPossibleDuplicate(owner)
++            || formatCapacityWarning(owner)
++            || isDisposableAdjacentEmail(owner);
++    }
++
++    /**
++     * Whether an owner's email address sits on a disposable-adjacent domain (see
++     * {@link DisposableDomains#isDisposableAdjacent(String)}). An absent email, or one without a
++     * domain part, is not disposable-adjacent.
++     */
++    private boolean isDisposableAdjacentEmail(Owner owner) {
++        String email = owner.getEmail();
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        return DisposableDomains.isDisposableAdjacent(email.substring(at + 1));
++    }
++
+     /**
+      * Derive an owner's marketing segment, formatted {@code "<TIER>_<AREA>"}. The tier is
+      * {@code "PREMIUM"} when the owner's {@code membershipLevel} (see
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+index d31fc5580..062569653 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.rest.validation;
+ import jakarta.validation.ConstraintValidator;
+ import jakarta.validation.ConstraintValidatorContext;
+ 
+-import java.util.Set;
++import org.springframework.samples.petclinic.util.DisposableDomains;
+ 
+ /**
+  * Rejects an owner's email address when its domain is on the disposable-domain blocklist.
+@@ -13,9 +13,6 @@ import java.util.Set;
+  */
+ public class EmailDomainValidator implements ConstraintValidator<EmailDomainValidation, String> {
+ 
+-    private static final Set<String> DISPOSABLE_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     @Override
+     public boolean isValid(String email, ConstraintValidatorContext context) {
+         if (email == null) {
+@@ -25,7 +22,7 @@ public class EmailDomainValidator implements ConstraintValidator<EmailDomainVali
+         if (at < 0 || at == email.length() - 1) {
+             return true; // no domain part; leave to the @Email constraint
+         }
+-        String domain = email.substring(at + 1).toLowerCase();
+-        return !DISPOSABLE_DOMAINS.contains(domain);
++        String domain = email.substring(at + 1);
++        return !DisposableDomains.isDisposable(domain);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/DisposableDomains.java b/src/main/java/org/springframework/samples/petclinic/util/DisposableDomains.java
+new file mode 100644
+index 000000000..c24a6f4f7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/DisposableDomains.java
+@@ -0,0 +1,84 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Set;
++import java.util.stream.Collectors;
++
++/**
++ * Knowledge of the disposable email-domain blocklist and the related
++ * "disposable-adjacent" heuristic, kept in one place so the create-time validation
++ * and the owner risk flag agree on the same list.
++ *
++ * <p>A domain is <em>disposable</em> when it is exactly one of the blocklisted
++ * throw-away email providers ({@code mailinator.com}, {@code tempmail.com},
++ * {@code guerrillamail.com}); the create endpoint rejects such an email outright.
++ *
++ * <p>A domain is <em>disposable-adjacent</em> when it is not itself blocklisted but
++ * shares a blocklisted provider's registrable label — its second-level label (the
++ * label immediately before the final TLD label) equals that of a blocklisted
++ * domain. This catches the same provider under a different TLD
++ * ({@code mailinator.net}) and subdomains of a blocklisted provider
++ * ({@code signup.mailinator.com}), which pass create-time validation but are still
++ * worth flagging as risky. All comparisons are case-insensitive.
++ */
++public final class DisposableDomains {
++
++    /**
++     * The exact disposable email domains that are rejected at create time.
++     */
++    private static final Set<String> DISPOSABLE_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /**
++     * The second-level labels of the blocklisted domains (e.g. {@code mailinator}),
++     * used for the disposable-adjacent heuristic.
++     */
++    private static final Set<String> DISPOSABLE_LABELS = DISPOSABLE_DOMAINS.stream()
++        .map(DisposableDomains::secondLevelLabel)
++        .collect(Collectors.toUnmodifiableSet());
++
++    private DisposableDomains() {
++    }
++
++    /**
++     * Whether {@code domain} is exactly one of the blocklisted disposable domains.
++     * A {@code null} or blank domain is not disposable.
++     */
++    public static boolean isDisposable(String domain) {
++        if (domain == null || domain.isBlank()) {
++            return false;
++        }
++        return DISPOSABLE_DOMAINS.contains(domain.toLowerCase());
++    }
++
++    /**
++     * Whether {@code domain} is disposable-adjacent: not itself blocklisted, but sharing
++     * a blocklisted provider's second-level label (a different TLD or a subdomain of a
++     * blocklisted provider). A {@code null} or blank domain is not adjacent.
++     */
++    public static boolean isDisposableAdjacent(String domain) {
++        if (domain == null || domain.isBlank()) {
++            return false;
++        }
++        String normalized = domain.toLowerCase();
++        if (DISPOSABLE_DOMAINS.contains(normalized)) {
++            return false;
++        }
++        return DISPOSABLE_LABELS.contains(secondLevelLabel(normalized));
++    }
++
++    /**
++     * The second-level label of a domain: the dot-separated label immediately before the
++     * final (TLD) label, or the whole string when it has no dot. Returns the input
++     * unchanged when it is {@code null}.
++     */
++    private static String secondLevelLabel(String domain) {
++        if (domain == null) {
++            return null;
++        }
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return domain;
++        }
++        return labels[labels.length - 2];
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 50244930f..912ce4812 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2361,6 +2361,19 @@ components:
+               type: string
+               example: 'STANDARD_METRO'
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants review because any of the following
++                hold: the owner is a possible duplicate ('possibleDuplicate' is
++                true), the owner's email domain is disposable-adjacent (not itself
++                on the disposable blocklist, but sharing a blocklisted provider's
++                second-level label, e.g. the same provider under a different TLD or
++                a subdomain of it), or the owner's city is over its soft capacity
++                ('capacityWarning' is true); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
