@@ -11,9 +11,14 @@ import java.util.Map;
  * {@code "  12  main  st "} canonicalises to {@code "12 MAIN STREET"} and {@code "7 elm ave"} to
  * {@code "7 ELM AVENUE"}.
  *
+ * <p>The class also owns the <em>composition</em> rule for the structured address form (see
+ * {@link #compose(String, String)}): the single stored/returned/compared value is the normalized
+ * {@code addressLine1} with the normalized {@code addressLine2} appended after a single space when
+ * present.
+ *
  * <p>Centralised here (rather than inlined) so its one consumer has a single definition to agree
- * on: {@link ValidateOwnerFields} stores the canonical value and rejects a value that is blank
- * once normalised.
+ * on: {@link ValidateOwnerFields} stores the canonical value — flat or composed — and rejects a
+ * value that is blank once normalised.
  */
 final class OwnerAddress {
 
@@ -48,5 +53,19 @@ final class OwnerAddress {
             sb.append(ABBREVIATIONS.getOrDefault(token, token));
         }
         return sb.toString();
+    }
+
+    /**
+     * The stored/returned/compared form of a structured address: the {@link #normalize(String)
+     * normalized} {@code line1} with a single space and the normalized {@code line2} appended when
+     * {@code line2} is non-blank once normalised. Returns just the normalized {@code line1} when
+     * there is no second line. Normalisation is idempotent, so already-normalised inputs compose to
+     * the same result.
+     */
+    static String compose(String line1, String line2) {
+        String normalizedLine1 = normalize(line1);
+        String normalizedLine2 = normalize(line2);
+        return normalizedLine2.isEmpty() ? normalizedLine1
+                : normalizedLine1 + " " + normalizedLine2;
     }
 }

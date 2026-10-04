@@ -36,16 +36,30 @@ public class ValidateOwnerFields {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        // Address is normalised first (trim/collapse/upper-case/expand abbreviations) and the
-        // required-field check runs against that form, so a value that is blank only once
-        // normalised is rejected. The canonical value is written back in place so it is what
-        // gets stored and returned and what the household checks later compare.
-        String normalizedAddress = OwnerAddress.normalize(request.getAddress());
-        if (normalizedAddress.isEmpty()) {
-            missing.add("address");
+        // Address may be supplied in a structured form (addressLine1 + optional addressLine2) or
+        // as the flat 'address' (kept for backward compatibility). The structured form is preferred
+        // whenever a non-blank addressLine1 is present; otherwise the flat address is used. Each
+        // supplied field is normalised (trim/collapse/upper-case/expand abbreviations) and the
+        // required-field check runs against that form, so a value blank only once normalised is
+        // rejected. The canonical, composed value is written back onto 'address' in place, so it is
+        // what gets stored and returned and what everything downstream reads — the household hash,
+        // postcode validation and locality all see the structured-derived value, falling back to the
+        // flat address when no structured fields were given.
+        String normalizedLine1 = OwnerAddress.normalize(request.getAddressLine1());
+        if (!normalizedLine1.isEmpty()) {
+            String normalizedLine2 = OwnerAddress.normalize(request.getAddressLine2());
+            request.setAddressLine1(normalizedLine1);
+            request.setAddressLine2(normalizedLine2.isEmpty() ? null : normalizedLine2);
+            request.setAddress(OwnerAddress.compose(normalizedLine1, normalizedLine2));
         }
         else {
-            request.setAddress(normalizedAddress);
+            String normalizedAddress = OwnerAddress.normalize(request.getAddress());
+            if (normalizedAddress.isEmpty()) {
+                missing.add("address");
+            }
+            else {
+                request.setAddress(normalizedAddress);
+            }
         }
         if (isBlank(request.getCity())) {
             missing.add("city");
