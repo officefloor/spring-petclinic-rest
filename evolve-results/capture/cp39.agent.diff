@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a2f69dce8..c7d96b6b7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -113,9 +113,14 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's numeric membership level from fields captured at creation: starts at 1,
+-     * adds 1 when an email is present, adds 1 when the owner had no namesakes at creation
+-     * ({@code namesakeCount == 0}), and is capped at 3. Level 4 is reserved for tenure.
++     * Derives the owner's numeric membership level: starts at 1, adds 1 when an email is present,
++     * adds 1 when the owner had no namesakes at creation ({@code namesakeCount == 0}), and adds 1
++     * when the owner belongs to a household (has a {@code householdId}).
++     *
++     * <p>Level 4 requires tenure of more than 365 days: the level is capped at 3 unless the owner's
++     * tenure (days since {@code registrationDate}) exceeds 365, in which case it may reach 4. Because
++     * a newly created owner has zero tenure, a new owner never exceeds level 3 — even one with an
++     * email, a {@code namesakeCount} of 0 and a household (which otherwise sum to 4) lands at 3.
+      */
+     default int membershipLevel(Owner owner) {
+         int level = 1;
+@@ -125,7 +130,25 @@ public interface OwnerMapper {
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        if (owner.getHouseholdId() != null && !owner.getHouseholdId().isBlank()) {
++            level++;
++        }
++        int cap = tenureDays(owner) > 365 ? 4 : 3;
++        return Math.min(level, cap);
++    }
++
++    /**
++     * The owner's tenure in whole days: the number of days from its {@code registrationDate} to
++     * today. Returns 0 when no registration date is stored (or it lies in the future), so an owner
++     * with no recorded tenure never qualifies for the tenure-gated level 4.
++     */
++    default long tenureDays(Owner owner) {
++        java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        long days = java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
++        return Math.max(days, 0);
+     }
+ 
+     /**
