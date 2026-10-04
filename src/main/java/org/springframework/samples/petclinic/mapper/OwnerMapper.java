@@ -13,6 +13,8 @@ import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.Regions;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -113,11 +115,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine an owner's membership level, a number from {@code 1} to {@code 3} assigned on
-     * create. It starts at {@code 1}, gains {@code 1} when an email address is present, and gains
-     * {@code 1} when the owner has no namesakes (its {@code namesakeCount} is {@code 0}), capped at
-     * {@code 3}. A null or absent namesake count is treated as not being zero, so it contributes
-     * nothing. Level {@code 4} is reserved for tenure.
+     * Determine an owner's membership level, a number from {@code 1} to {@code 4}. It starts at
+     * {@code 1}, gains {@code 1} when an email address is present, and gains {@code 1} when the
+     * owner has no namesakes (its {@code namesakeCount} is {@code 0}). A null or absent namesake
+     * count is treated as not being zero, so it contributes nothing. These pre-tenure factors are
+     * capped at {@code 3}. Level {@code 4} is reserved for tenure: an owner reaches it only once
+     * its tenure (days elapsed since its {@code registrationDate}) exceeds {@code 365}. A newly
+     * created owner has zero tenure, so it never exceeds level {@code 3}.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
@@ -132,7 +136,12 @@ public interface OwnerMapper {
         if (uniqueName) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /**
