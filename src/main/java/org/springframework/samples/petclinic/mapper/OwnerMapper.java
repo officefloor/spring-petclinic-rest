@@ -30,6 +30,8 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "capacityWarning",
+        expression = "java(Boolean.TRUE.equals(owner.getCapacityWarning()))")
     @Mapping(target = "possibleDuplicate",
         expression = "java(Boolean.TRUE.equals(owner.getPossibleDuplicate()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")

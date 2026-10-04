@@ -17,11 +17,7 @@ public class RejectCityAtCapacity {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws CityAtCapacityException {
-        String city = owner.getCity() == null ? "" : owner.getCity().trim();
-        long count = ownerRepository.findAll().stream()
-                .filter(existing -> existing.getCity() != null
-                        && city.equalsIgnoreCase(existing.getCity().trim()))
-                .count();
+        long count = OwnerCityCount.sharingCity(ownerRepository, owner.getCity());
         if (count >= CITY_CAPACITY) {
             throw new CityAtCapacityException(
                     "City '" + owner.getCity() + "' already contains " + CITY_CAPACITY
