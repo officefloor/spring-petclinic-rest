@@ -21,20 +21,10 @@ public class CheckOwnerHouseholdUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (OwnerHousehold.matches(request, existing)) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
-    }
-
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
