@@ -26,7 +26,22 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's preferred contact channel at read time: {@code EMAIL} when an email is
+     * present, otherwise {@code PHONE}.
+     */
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        return hasEmail(owner) ? OwnerDto.ContactPreferenceEnum.EMAIL
+            : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /** Whether the owner has a non-blank email address. */
+    default boolean hasEmail(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank();
+    }
 
     /**
      * Reports the owner's bulk-signup warning: {@code true} when more than 80 owners had already
@@ -44,7 +59,7 @@ public interface OwnerMapper {
      */
     default int membershipLevel(Owner owner) {
         int level = 1;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+        if (hasEmail(owner)) {
             level++;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
