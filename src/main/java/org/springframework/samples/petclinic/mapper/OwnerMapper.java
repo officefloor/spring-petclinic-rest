@@ -14,7 +14,6 @@ import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.Regions;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -30,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -134,9 +134,9 @@ public interface OwnerMapper {
      * Compute an owner's membership points. Points start at {@code 0} and gain: {@code 2} when an
      * email address is present; {@code 1} when the owner has no namesakes (its
      * {@code namesakeCount} is {@code 0}); {@code 2} for a household of three or more members (the
-     * owner plus its pets); and {@code 3} when the owner's tenure (days elapsed since its
-     * {@code registrationDate}) exceeds {@code 365}. A null or absent namesake count is treated as
-     * not being zero, so it contributes nothing.
+     * owner plus its pets); and {@code 3} when the owner's tenure (the number of fiscal years
+     * elapsed since its {@code registrationDate}'s fiscal year) exceeds {@code 1}. A null or absent
+     * namesake count is treated as not being zero, so it contributes nothing.
      */
     default Integer formatMembershipPoints(Owner owner) {
         if (owner == null) {
@@ -156,7 +156,8 @@ public interface OwnerMapper {
             points += 2;
         }
         LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate != null && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+        if (registrationDate != null
+            && fiscalYearEndYear(LocalDate.now()) - fiscalYearEndYear(registrationDate) > 1) {
             points += 3;
         }
         return points;
@@ -218,15 +219,42 @@ public interface OwnerMapper {
 
     /**
      * Format an owner's membership number as {@code "<customerCode>-M<YY>"}, where {@code YY}
-     * is the last two digits of the registration date year (e.g. {@code "NSW-3F5A9C2E-M26"}).
-     * Returns {@code null} when either the customer code or registration date is absent, since
-     * the number cannot be derived without both.
+     * is the last two digits of the owner's fiscal year (see {@link #formatFiscalYear(Owner)}),
+     * the fiscal year of the business-day-adjusted registration date (e.g.
+     * {@code "NSW-3F5A9C2E-M26"}). Returns {@code null} when either the customer code or
+     * registration date is absent, since the number cannot be derived without both.
      */
     default String formatMembershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+            fiscalYearEndYear(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Format an owner's fiscal year as {@code "FY<YY>"}, where {@code YY} is the last two digits
+     * of the fiscal year its (business-day-adjusted) {@code registrationDate} falls in (e.g.
+     * {@code "FY26"}). The fiscal year starts on 1 July and is named by the calendar year in
+     * which it ends, so a registration date of {@code 2026-07-01} is {@code "FY27"} while
+     * {@code 2026-06-30} is {@code "FY26"}. Returns {@code null} when the owner or its
+     * registration date is absent.
+     */
+    default String formatFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearEndYear(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * The calendar year in which {@code date}'s fiscal year ends, used as the fiscal year's name.
+     * The fiscal year starts on 1 July, so a date in July through December belongs to the fiscal
+     * year ending the following calendar year, while January through June belongs to the one
+     * ending in the current calendar year.
+     */
+    default int fiscalYearEndYear(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
