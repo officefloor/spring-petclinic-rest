@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.Regions;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -244,27 +245,34 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a {@code customerCode} of the form {@code <CITY3>-<LAST3>-<NNNN>}: the upper-cased
-     * first three letters of the owner's city, a hyphen, the upper-cased first three letters of
-     * the owner's last name, a hyphen, and a per-city 4-digit zero-padded sequence equal to one
-     * more than the number of owners already registered in that city (e.g. {@code TOW-SMI-0007}).
+     * Build a {@code customerCode} of the form {@code <REGION>-<HASH8>}: the region code derived
+     * from the owner's postcode (see {@link Regions#forPostcode}), a hyphen, and {@code HASH8} —
+     * the first eight upper-case hex characters of the SHA-256 of the owner's normalized telephone
+     * concatenated with its last name (e.g. {@code NSW-3F5A9C2E}). The identity carries no sequence
+     * number, so it depends only on the owner's own postcode, telephone and last name.
      */
     private String generateCustomerCode(Owner owner) {
-        String city = owner.getCity() == null ? "" : owner.getCity();
-        int sequence = (int) ownerRepository.findAll().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", prefix3(city), prefix3(owner.getLastName()), sequence);
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        return Regions.forPostcode(owner.getPostcode()) + "-" + hash8(telephone + lastName);
     }
 
     /**
-     * The upper-cased first three letters of {@code value} (fewer if it is shorter), treating a
-     * {@code null} value as empty. This is the shared rule behind both the CITY3 and LAST3
-     * segments of a {@code customerCode}.
+     * The first eight upper-case hex characters (the first four bytes) of the SHA-256 of
+     * {@code value}, the {@code HASH8} segment of a {@code customerCode}.
      */
-    private static String prefix3(String value) {
-        String s = value == null ? "" : value;
-        return s.substring(0, Math.min(3, s.length())).toUpperCase();
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @Override

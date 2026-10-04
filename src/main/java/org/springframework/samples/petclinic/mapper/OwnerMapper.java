@@ -11,10 +11,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.E164Telephone;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.Regions;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -57,45 +57,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Known city-to-region mappings. Keyed by the exact city name, the canonical region
-     * string is returned for a listed city and {@code "UNKNOWN"} for anything else.
-     */
-    Map<String, String> CITY_REGIONS = Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Canonical region ranges keyed by region, each an inclusive 4-digit postcode range
-     * {@code {low, high}}: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
-     */
-    Map<String, int[]> REGION_RANGES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
-    /**
-     * Derive an owner's locality, preferring the postcode: when the owner has a 4-digit
-     * postcode that falls in a known region range ({@link #REGION_RANGES}), that region
-     * is returned. Otherwise (the postcode is absent or in no known range) it falls back
-     * to the fixed {@link #CITY_REGIONS} city-to-region table, returning the canonical
-     * region string or {@code "UNKNOWN"} when the city is {@code null} or not listed.
-     * This returns the same region for known cities but disambiguates cities that share
-     * a name. Returns {@code null} only when the owner itself is {@code null}.
+     * Derive an owner's locality from its region-and-hash identity: the {@code <REGION>} segment
+     * of the {@code customerCode} (the part before the first hyphen), which is the region code
+     * derived from the owner's postcode. For an owner that has not yet been assigned a customer
+     * code, the region is derived directly from the postcode (see {@link Regions#forPostcode}),
+     * yielding the same value the code would carry. Returns {@code null} only when the owner
+     * itself is {@code null}.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("[0-9]{4}")) {
-            int value = Integer.parseInt(postcode);
-            for (Map.Entry<String, int[]> entry : REGION_RANGES.entrySet()) {
-                int[] range = entry.getValue();
-                if (value >= range[0] && value <= range[1]) {
-                    return entry.getKey();
-                }
-            }
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int hyphen = code.indexOf('-');
+            return hyphen >= 0 ? code.substring(0, hyphen) : code;
         }
-        return CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+        return Regions.forPostcode(owner.getPostcode());
     }
 
     /**
@@ -123,9 +101,9 @@ public interface OwnerMapper {
 
     /**
      * Compute an owner's check digit: a single Luhn check digit (0-9) over the digits
-     * contained in the owner's {@code customerCode}. Non-digit characters (the city and
-     * last-name segments) are ignored. Returns {@code null} when the owner or its customer
-     * code is absent, since the digit cannot be derived without the code.
+     * contained in the owner's {@code customerCode}. Non-digit characters (the region segment
+     * and any hex letters of the hash) are ignored. Returns {@code null} when the owner or its
+     * customer code is absent, since the digit cannot be derived without the code.
      */
     default Integer formatCheckDigit(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null) {
@@ -154,7 +132,7 @@ public interface OwnerMapper {
 
     /**
      * Format an owner's membership number as {@code "<customerCode>-M<YY>"}, where {@code YY}
-     * is the last two digits of the registration date year (e.g. {@code "TOW-SMI-0007-M26"}).
+     * is the last two digits of the registration date year (e.g. {@code "NSW-3F5A9C2E-M26"}).
      * Returns {@code null} when either the customer code or registration date is absent, since
      * the number cannot be derived without both.
      */
