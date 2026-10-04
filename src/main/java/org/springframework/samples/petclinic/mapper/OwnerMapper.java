@@ -271,7 +271,9 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
@@ -286,6 +288,30 @@ public interface OwnerMapper {
     @Named("normalizeAddress")
     default String normalizeAddress(String address) {
         return AddressNormalizer.normalize(address);
+    }
+
+    /**
+     * Compose the single stored/returned {@code address} from whichever address fields the request
+     * supplies, preferring the structured form. When a non-blank {@code addressLine1} is present the
+     * composed value is the normalized {@code addressLine1} (see {@link AddressNormalizer}), with a
+     * single space and the normalized {@code addressLine2} appended when {@code addressLine2} is
+     * present; otherwise it falls back to the normalized flat {@code address}. This keeps everything
+     * that reads the stored address consistent regardless of which form the caller used.
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        if (ownerDto == null) {
+            return null;
+        }
+        String line1 = ownerDto.getAddressLine1();
+        if (line1 != null && !line1.trim().isEmpty()) {
+            String composed = AddressNormalizer.normalize(line1);
+            String line2 = ownerDto.getAddressLine2();
+            if (line2 != null && !line2.trim().isEmpty()) {
+                composed = composed + " " + AddressNormalizer.normalize(line2);
+            }
+            return composed;
+        }
+        return AddressNormalizer.normalize(ownerDto.getAddress());
     }
 
     /**
