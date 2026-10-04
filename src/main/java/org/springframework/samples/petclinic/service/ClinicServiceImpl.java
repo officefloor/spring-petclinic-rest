@@ -283,37 +283,27 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
-        String normalizedLastName = normalizeForComparison(lastName);
-        String normalizedAddress = normalizeForComparison(address);
-        if (normalizedLastName == null || normalizedAddress == null) {
+    public boolean isHouseholdInUse(Owner owner) throws DataAccessException {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
             return false;
         }
         return ownerRepository.findAll().stream()
-            .anyMatch(existing -> inHousehold(existing, normalizedLastName, normalizedAddress));
+            .filter(existing -> existing.getId() != null)
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
     /**
      * Canonicalize a free-text value for equality comparison: trim, collapse every run of
      * whitespace to a single space and lower-case the result, so values that differ only in
      * letter case or incidental whitespace are treated as equal. Shared by the household
-     * (last name / address) and per-city matching rules.
+     * (last name) and per-city matching rules.
      */
     private String normalizeForComparison(String value) {
         if (value == null) {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    /**
-     * Single definition of household membership: an owner belongs to the household identified by
-     * the given already-normalized last name and address when its own normalized last name and
-     * address match. Keeping this in one place means the household-equality rule is changed once.
-     */
-    private boolean inHousehold(Owner existing, String normalizedLastName, String normalizedAddress) {
-        return normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
-            && normalizedAddress.equals(normalizeForComparison(existing.getAddress()));
     }
 
     @Override
@@ -343,49 +333,6 @@ public class ClinicServiceImpl implements ClinicService {
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);
-    }
-
-    @Override
-    @Transactional
-    public String assignHousehold(Owner owner) throws DataAccessException {
-        String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
-        owner.setHouseholdId(householdId);
-        String normalizedLastName = normalizeForComparison(owner.getLastName());
-        String normalizedAddress = normalizeForComparison(owner.getAddress());
-        if (normalizedLastName != null && normalizedAddress != null) {
-            // Back-fill existing members of the household so the joining owner and the
-            // owner(s) already at the address share the same stable identifier.
-            for (Owner existing : ownerRepository.findAll()) {
-                if (existing.getHouseholdId() == null
-                    && inHousehold(existing, normalizedLastName, normalizedAddress)) {
-                    existing.setHouseholdId(householdId);
-                    ownerRepository.save(existing);
-                }
-            }
-        }
-        return householdId;
-    }
-
-    /**
-     * Derive a stable household identifier from the normalized last name and address, so that
-     * every owner sharing a household (same last name and address, compared case-insensitively
-     * with internal whitespace collapsed) maps to the same value. The identifier is the first
-     * eight upper-case hex characters of the SHA-256 of {@code <lastName>|<address>}, prefixed
-     * with {@code 'H-'} (e.g. {@code H-3F5A9C2E}).
-     */
-    private String generateHouseholdId(String lastName, String address) {
-        String key = normalizeForComparison(lastName) + "|" + normalizeForComparison(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("H-");
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     @Override

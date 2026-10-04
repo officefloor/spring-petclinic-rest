@@ -139,26 +139,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // When the owner acknowledges sharing a household with an existing owner (same last name
-        // and address), assign the shared, stable household identifier (back-filling the existing
-        // member(s)) before the identity key is computed, so household members carry the same
-        // householdId component.
+        // The household id is derived deterministically on the owner itself (see
+        // Owner.getHouseholdId()) from its normalized last name and postcode, so owners sharing a
+        // last name and postcode share it automatically — no linking step and no ordering to manage.
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold
-            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
-            this.clinicService.assignHousehold(owner);
-        }
-        // Consolidated duplicate detection: the former separate telephone, email and household
-        // checks are now expressed through a single derived identityKey. Reject with 409 only when
-        // the new owner's WHOLE identityKey (normalized telephone | email-or-empty | householdId)
-        // equals an existing owner's; an exact full-key match is the only duplicate.
+        // Exact-identity hard duplicate: reject with 409 when the new owner's WHOLE identityKey
+        // (normalized telephone | email-or-empty | householdId) equals an existing owner's. A
+        // truly identical record is always rejected, independent of sharesHousehold.
         if (this.clinicService.isIdentityKeyInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Soft "possible duplicate" detection: not a hard duplicate, but an existing owner shares
-        // this owner's last name and postcode with a different telephone. The create still proceeds,
-        // flagged with possibleDuplicate=true and possibleDuplicateOf set to the matching owner id.
-        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+        // Household duplicate: another owner already belongs to this (last name, postcode)
+        // household. Reject with 409 unless the caller declares the shared household via
+        // sharesHousehold, which bypasses the block and creates this owner as a declared member.
+        boolean householdInUse = this.clinicService.isHouseholdInUse(owner);
+        if (householdInUse && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        // Soft "possible duplicate" detection: an existing owner shares this owner's last name and
+        // postcode with a different telephone. A declared household member (sharesHousehold on an
+        // in-use household) is an intentional share, not a suspected duplicate, so it is not
+        // flagged; otherwise the create still proceeds, flagged with possibleDuplicate=true and
+        // possibleDuplicateOf set to the matching owner id.
+        Integer possibleDuplicateOf = (householdInUse && sharesHousehold)
+            ? null
+            : this.clinicService.findPossibleDuplicateOwnerId(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(

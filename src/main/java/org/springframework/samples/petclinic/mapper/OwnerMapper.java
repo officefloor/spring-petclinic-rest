@@ -204,7 +204,6 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)

@@ -23,6 +23,9 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -65,9 +68,6 @@ public class Owner extends Person {
 
     @Column(name = "customer_code")
     private String customerCode;
-
-    @Column(name = "household_id")
-    private String householdId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -148,14 +148,6 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
-    public String getHouseholdId() {
-        return this.householdId;
-    }
-
-    public void setHouseholdId(String householdId) {
-        this.householdId = householdId;
-    }
-
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
@@ -211,9 +203,36 @@ public class Owner extends Person {
      */
     @Transient
     public String getIdentityKey() {
+        String householdId = getHouseholdId();
         return (this.telephone == null ? "" : this.telephone) + "|"
             + (this.email == null ? "" : this.email) + "|"
-            + (this.householdId == null ? "" : this.householdId);
+            + (householdId == null ? "" : householdId);
+    }
+
+    /**
+     * The deterministic household identifier derived from the owner's own fields, mirroring
+     * {@link #getIdentityKey()}: the first twelve lower-case hex characters (the first six bytes)
+     * of the SHA-256 of {@code <normalizedLastName>|<postcode>}, where the last name is normalized
+     * by trimming, collapsing internal whitespace and lower-casing, and an absent postcode counts
+     * as empty. Because it is a pure function of the stored last name and postcode, every owner
+     * sharing both automatically carries the same value, with no linking step or stored column.
+     */
+    @Transient
+    public String getHouseholdId() {
+        String lastName = getLastName() == null ? ""
+            : getLastName().trim().replaceAll("\\s+", " ").toLowerCase();
+        String key = lastName + "|" + (this.postcode == null ? "" : this.postcode);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     protected Set<Pet> getPetsInternal() {
@@ -292,7 +311,7 @@ public class Owner extends Person {
             .append("registrationDate", this.registrationDate)
             .append("birthDate", this.birthDate)
             .append("customerCode", this.customerCode)
-            .append("householdId", this.householdId)
+            .append("householdId", this.getHouseholdId())
             .append("namesakeCount", this.namesakeCount)
             .append("bulkSignupWarning", this.bulkSignupWarning)
             .append("possibleDuplicate", this.possibleDuplicate)
