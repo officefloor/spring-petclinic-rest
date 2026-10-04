@@ -355,6 +355,18 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public int countNamesakes(String firstName, String lastName) throws DataAccessException {
+        if (firstName == null || lastName == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {
         return visitRepository.findByPetId(petId);
     }

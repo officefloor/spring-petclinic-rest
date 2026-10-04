@@ -95,6 +95,17 @@ public interface ClinicService {
 	 */
 	String assignHousehold(Owner owner) throws DataAccessException;
 
+	/**
+	 * Returns the number of existing owners that share the given first name and last name,
+	 * compared case-insensitively. Used on create to record how many namesakes an owner already
+	 * had at the moment it was created.
+	 *
+	 * @param firstName the first name to match
+	 * @param lastName  the last name to match
+	 * @return the count of existing owners with the same first and last name
+	 */
+	int countNamesakes(String firstName, String lastName) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;

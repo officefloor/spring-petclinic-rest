@@ -114,6 +114,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             // the new owner (and back-fill the existing member(s)).
             this.clinicService.assignHousehold(owner);
         }
+        owner.setNamesakeCount(
+            this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
