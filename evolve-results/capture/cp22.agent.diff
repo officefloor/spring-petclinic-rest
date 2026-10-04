@@ -1,0 +1,233 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 874c93972..0254bff6f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,8 +25,18 @@ public interface OwnerMapper {
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Reports the owner's bulk-signup warning: {@code true} when more than 80 owners had already
++     * been created on this owner's registration business day at the time it was created. Treats a
++     * missing value (owners created before this rule existed) as {@code false}.
++     */
++    default boolean bulkSignupWarning(Owner owner) {
++        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
++    }
++
+     /**
+      * Derives the owner's membership tier at read time: {@code SILVER} when the owner had no
+      * namesakes at creation and has an email on file, otherwise {@code BRONZE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e9574b50d..1ab316f62 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -67,6 +67,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -142,6 +145,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignBulkSignupWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignBulkSignupWarning.java
+new file mode 100644
+index 000000000..5ab9475ce
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignBulkSignupWarning.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Assigns the owner's {@code bulkSignupWarning}: {@code true} when more than 80 owners have already
++ * been created on this owner's registration business day, {@code false} otherwise.
++ *
++ * <p>Runs within the create transaction after {@link BuildOwner} (so the adjusted business-day
++ * {@code registrationDate} is set) and before {@link SaveOwner} (so {@code findAll} excludes the
++ * owner being created). Counts existing owners whose stored {@code registrationDate} equals this
++ * owner's business day — the same accumulation the daily-limit rule ({@link CheckDailyOwnerLimit})
++ * uses, so the warning turns on at 81 while the hard cap still rejects at 100.
++ */
++public class AssignBulkSignupWarning {
++
++    /** Owners already created today above which the bulk-signup warning is raised. */
++    private static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        LocalDate businessDay = owner.getRegistrationDate();
++        long count = BusinessDay.countOwnersOn(businessDay, ownerRepository);
++        owner.setBulkSignupWarning(count > BULK_SIGNUP_THRESHOLD);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+index 0dc065797..21de3cb96 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+@@ -3,6 +3,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ 
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
+ /**
+  * Single source of truth for the business-day rule on an owner's registration date: the
+  * effective registration date must fall on a business day, so a Saturday or Sunday rolls
+@@ -29,4 +32,17 @@ final class BusinessDay {
+         }
+         return rolled;
+     }
++
++    /**
++     * Counts existing owners whose stored {@code registrationDate} equals {@code businessDay} — the
++     * single definition of "owners created on this business day" shared by the create-time rules
++     * ({@link CheckDailyOwnerLimit}'s hard cap and {@link AssignBulkSignupWarning}'s flag), so they
++     * can never drift apart. Both call this and compare the result against their own threshold.
++     */
++    static long countOwnersOn(LocalDate businessDay, OwnerRepository ownerRepository) {
++        return ownerRepository.findAll().stream()
++            .map(Owner::getRegistrationDate)
++            .filter(businessDay::equals)
++            .count();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyOwnerLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyOwnerLimit.java
+index 95c7aa186..d09367edc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyOwnerLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyOwnerLimit.java
+@@ -3,7 +3,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+@@ -29,10 +28,7 @@ public class CheckDailyOwnerLimit {
+         // adjusted date stored on new owners (see BuildOwner), so the count lines up.
+         LocalDate supplied = request.getRegistrationDate();
+         LocalDate businessDay = BusinessDay.rollForward(supplied != null ? supplied : LocalDate.now());
+-        long count = ownerRepository.findAll().stream()
+-            .map(Owner::getRegistrationDate)
+-            .filter(businessDay::equals)
+-            .count();
++        long count = BusinessDay.countOwnersOn(businessDay, ownerRepository);
+         if (count >= DAILY_LIMIT) {
+             throw new DailyOwnerLimitException(count);
+         }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 72b135d42..4cb726f6d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a410e77cb..b8a97234e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 45ee76e90..1fde77ebe 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(32),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  bulk_signup_warning BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 485b78e8a..540ab182d 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index bc357d82d..c2b783ed6 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -37,6 +37,11 @@ build:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignNamesakeCount
+   govern: [ transaction ]
++  next: assignBulkSignupWarning
++
++assignBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignBulkSignupWarning
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d9fc8a6b2..6ab3e0928 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2146,6 +2146,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created on this owner's
++                registration business day at the time this owner was created; false
++                otherwise. Assigned at creation time.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
