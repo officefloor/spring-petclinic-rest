@@ -69,6 +69,18 @@ public interface ClinicService {
 	 */
 	boolean isTelephoneInUse(String telephone) throws DataAccessException;
 
+	/**
+	 * Returns {@code true} if any existing owner already shares a household with the given
+	 * candidate, i.e. has the same last name and the same address once both are compared
+	 * case-insensitively with internal whitespace collapsed. Enforces the invariant that two
+	 * owners may not be created at the same address under the same last name, so callers can
+	 * reject a duplicate create unless the household is shared intentionally.
+	 *
+	 * @param lastName the candidate owner's last name
+	 * @param address  the candidate owner's address
+	 */
+	boolean isHouseholdInUse(String lastName, String address) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;

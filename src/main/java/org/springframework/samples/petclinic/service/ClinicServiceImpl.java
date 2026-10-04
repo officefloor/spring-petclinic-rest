@@ -275,6 +275,31 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isHouseholdInUse(String lastName, String address) throws DataAccessException {
+        String normalizedLastName = normalizeHouseholdValue(lastName);
+        String normalizedAddress = normalizeHouseholdValue(address);
+        if (normalizedLastName == null || normalizedAddress == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdValue(existing.getLastName()))
+                && normalizedAddress.equals(normalizeHouseholdValue(existing.getAddress())));
+    }
+
+    /**
+     * Canonicalize a last name or address for household comparison: trim, collapse every run of
+     * whitespace to a single space and lower-case the result, so values that differ only in
+     * letter case or incidental whitespace are treated as equal.
+     */
+    private String normalizeHouseholdValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {
         return visitRepository.findByPetId(petId);
     }
