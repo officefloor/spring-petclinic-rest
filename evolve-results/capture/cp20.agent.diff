@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 714a004a7..b3e3ef052 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.BusinessDays;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.Email;
+@@ -133,15 +134,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * When no registration date is supplied, default it to the server's current date.
+-     * Running on {@link PrePersist} keeps this invariant true for every create path
+-     * (any controller, bulk import or test fixture) rather than a single entry point.
++     * When no registration date is supplied, default it to the server's current date, then roll
++     * the effective date forward onto a business day: a Saturday or Sunday becomes the following
++     * Monday. Running on {@link PrePersist} keeps both invariants true for every create path
++     * (any controller, bulk import or test fixture) rather than a single entry point. The roll is
++     * idempotent, so a date already adjusted by a caller is left unchanged.
+      */
+     @PrePersist
+     protected void onCreate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
+-        }
++        this.registrationDate = BusinessDays.effectiveRegistrationDate(this.registrationDate);
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 61726d756..34653a041 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.BusinessDays;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -109,9 +110,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        // The effective registration date (supplied, or the server date when omitted) must fall on
++        // a business day: a weekend rolls forward to the next Monday. Everything derived from the
++        // registration date — the stored value, the per-day limit below and the membership number —
++        // uses this adjusted date.
++        LocalDate effectiveDate = BusinessDays.effectiveRegistrationDate(owner.getRegistrationDate());
++        owner.setRegistrationDate(effectiveDate);
+         // Per-day capacity: once the day has reached its limit of newly created owners, reject
+         // further creates for that day with 429 Too Many Requests.
+-        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_REGISTRATION_LIMIT) {
++        if (this.clinicService.countOwnersRegisteredOn(effectiveDate) >= DAILY_REGISTRATION_LIMIT) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+new file mode 100644
+index 000000000..8bf5bc928
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Rolls a calendar date forward onto a business day.
++ *
++ * <p>A business day is any day that is not a Saturday or Sunday. When the supplied date already
++ * falls on a weekday it is returned unchanged; when it falls on a Saturday or Sunday it is rolled
++ * forward to the following Monday. The operation is idempotent: feeding it an already-adjusted
++ * (weekday) value returns that same value.
++ */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /**
++     * Return {@code date} when it falls on a weekday, or the next Monday when it falls on a
++     * Saturday or Sunday. Returns {@code null} when the input is {@code null}.
++     */
++    public static LocalDate rollToBusinessDay(LocalDate date) {
++        if (date == null) {
++            return null;
++        }
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++
++    /**
++     * Resolve the effective registration date: the supplied date, or the server's current date
++     * when {@code null}, rolled forward onto a business day. This is the single definition of the
++     * "default-to-now, then roll" policy shared by the create controller (which needs the value
++     * eagerly) and the {@code @PrePersist} backstop. Idempotent for an already-adjusted value.
++     */
++    public static LocalDate effectiveRegistrationDate(LocalDate supplied) {
++        return rollToBusinessDay(supplied != null ? supplied : LocalDate.now());
++    }
++}
