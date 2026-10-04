@@ -41,10 +41,6 @@ public class AssignHousehold {
             householdId = OwnerHousehold.deriveId(request);
         }
         owner.setHouseholdId(householdId);
-        // Membership-size snapshot "after this create": the matched existing members plus
-        // this new owner. Captured at creation (like namesakeCount) so the mapper can derive
-        // the GOLD tier from a field without querying persistence at read time.
-        owner.setHouseholdSize(matches.size() + 1);
         for (Owner existing : matches) {
             if (!householdId.equals(existing.getHouseholdId())) {
                 existing.setHouseholdId(householdId);
