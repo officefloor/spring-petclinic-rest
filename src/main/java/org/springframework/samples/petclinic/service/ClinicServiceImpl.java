@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -387,6 +388,17 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> normalized.equals(normalizeForComparison(existing.getCity())))
+            .count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersRegisteredOn(LocalDate date) throws DataAccessException {
+        if (date == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
 

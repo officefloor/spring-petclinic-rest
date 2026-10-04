@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -115,6 +116,16 @@ public interface ClinicService {
 	 * @return the count of existing owners in the given city
 	 */
 	int countOwnersInCity(String city) throws DataAccessException;
+
+	/**
+	 * Returns the number of existing owners whose {@code registrationDate} equals the given date.
+	 * Used on create to enforce the per-day registration cap, so that once a day has reached its
+	 * limit of newly created owners further creates on that day are rejected.
+	 *
+	 * @param date the registration date to match
+	 * @return the count of existing owners registered on the given date
+	 */
+	int countOwnersRegisteredOn(LocalDate date) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;

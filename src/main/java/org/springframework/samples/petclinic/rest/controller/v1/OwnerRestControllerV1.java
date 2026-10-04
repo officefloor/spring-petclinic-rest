@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -55,6 +56,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners permitted in a single city; the create is rejected at this count. */
     private static final int CITY_CAPACITY = 50;
+
+    /** Maximum number of owners that may be created on a single day (by registrationDate); the
+     * create is rejected once this many owners already carry today's registration date. */
+    private static final int DAILY_REGISTRATION_LIMIT = 100;
 
     private final ClinicService clinicService;
 
@@ -104,6 +109,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // Per-day capacity: once the day has reached its limit of newly created owners, reject
+        // further creates for that day with 429 Too Many Requests.
+        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_REGISTRATION_LIMIT) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         if (this.clinicService.isTelephoneInUse(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
