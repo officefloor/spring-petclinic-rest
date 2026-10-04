@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+new file mode 100644
+index 000000000..95ee6d10e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * De-duplicates the owner's {@code customerCode} against the codes already in the data store.
++ * {@link AssignCustomerCode} derives the code deterministically from the owner's own fields, so two
++ * distinct owners can in principle collide. When the assigned code matches an existing owner's
++ * {@code customerCode}, this step finds the smallest {@code n} of 2 or more that makes it unique and
++ * applies {@link OwnerCustomerCode#withSuffix} (e.g. {@code NSW-1A2B3C4D} → {@code NSW-1A2B3C4D-2}).
++ * The suffix spelling lives in {@link OwnerCustomerCode}, which owns the {@code customerCode} format;
++ * this step contributes only the orchestration — gather existing codes, pick a free {@code n}.
++ *
++ * <p>Runs within the create transaction after {@link AssignCustomerCode} and before
++ * {@link AssignMembershipNumber}, so the membership number and every other value derived from the
++ * code see the de-duplicated value. The owner being created has not been saved yet, so it is not
++ * among the existing codes compared against.
++ */
++public class DeduplicateCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String base = owner.getCustomerCode();
++        Set<String> existing = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            existing.add(other.getCustomerCode());
++        }
++        if (!existing.contains(base)) {
++            return;
++        }
++        int n = 2;
++        String candidate;
++        do {
++            candidate = OwnerCustomerCode.withSuffix(base, n);
++            n++;
++        }
++        while (existing.contains(candidate));
++        owner.setCustomerCode(candidate);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
+index f2640da08..2a2797a3f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCode.java
+@@ -51,6 +51,19 @@ public final class OwnerCustomerCode {
+         return region != null ? region : UNKNOWN_REGION;
+     }
+ 
++    /**
++     * A de-duplicated variant of {@code base}, formed by appending {@code -<n>} (e.g.
++     * {@code NSW-1A2B3C4D} with {@code n == 2} becomes {@code NSW-1A2B3C4D-2}). Used when the
++     * derived {@code customerCode} collides with an existing owner's: the caller picks the smallest
++     * {@code n} of 2 or more that is free. Keeping the suffix spelling here, next to {@link #of} and
++     * {@link #regionOf}, keeps this class the single authority for the {@code customerCode} format —
++     * the {@code REGION} prefix is unchanged, so {@link #regionOf} still reads the region from the
++     * first {@code '-'}.
++     */
++    public static String withSuffix(String base, int n) {
++        return base + SEPARATOR + n;
++    }
++
+     /**
+      * The {@code REGION} half of a {@code customerCode} (the text before the first {@code '-'}), or
+      * {@code null} when {@code customerCode} is null or carries no region prefix.
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 60388de1b..113ab921d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -51,6 +51,11 @@ assignBulkSignupWarning:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
++  next: deduplicateCustomerCode
++
++deduplicateCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateCustomerCode
++  govern: [ transaction ]
+   next: assignMembershipNumber
+ 
+ assignMembershipNumber:
