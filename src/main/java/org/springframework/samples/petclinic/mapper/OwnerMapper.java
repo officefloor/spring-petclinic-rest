@@ -35,6 +35,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+    @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
@@ -223,6 +224,13 @@ public interface OwnerMapper {
             doubled = !doubled;
         }
         return (10 - sum % 10) % 10;
+    }
+
+    /**
+     * The relative URI of the owner resource, '/api/owners/&lt;id&gt;'; absent for an unsaved owner.
+     */
+    default String toSelfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
     }
 
     default String toInitials(Owner owner) {
