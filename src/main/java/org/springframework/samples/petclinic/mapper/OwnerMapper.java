@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -38,6 +39,13 @@ public interface OwnerMapper {
      */
     default String toLocality(Owner owner) {
         return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * 'EMAIL' when the owner has an email address, otherwise 'PHONE'.
+     */
+    default String toContactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
     }
 
     /** The highest membership level assigned on create; level 4 is reserved for tenure. */
