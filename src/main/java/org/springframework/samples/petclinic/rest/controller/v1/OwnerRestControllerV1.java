@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -114,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(telephone);
         }
         owner.setTelephone(telephone);
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -134,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -213,5 +216,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 }
