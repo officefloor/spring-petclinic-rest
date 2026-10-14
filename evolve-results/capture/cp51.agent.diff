@@ -1,0 +1,281 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e63b202ac..994168b49 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -140,10 +140,12 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}.
++     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}
++     * and capped at the owner's membership level cap, when it has one.
+      */
+     default Integer toMembershipLevel(Owner owner) {
+-        return membershipLevel(toMembershipPoints(owner));
++        int level = membershipLevel(toMembershipPoints(owner));
++        return owner.getMembershipLevelCap() == null ? level : Math.min(level, owner.getMembershipLevelCap());
+     }
+ 
+     /**
+@@ -249,6 +251,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "householdSize", ignore = true)
++    @Mapping(target = "membershipLevelCap", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
+     @Mapping(target = "deleted", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6176c26d3..b2771fa5f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,13 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    /**
++     * The highest membership level this owner may have: one above the maximum level among the existing
++     * household members when the owner was created; null when no cap applies.
++     */
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -196,6 +203,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     /**
+      * The derived identity used for duplicate detection on create:
+      * '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;householdId or empty&gt;', with the email lower-cased.
+@@ -348,6 +363,7 @@ public class Owner extends Person {
+             .append("householdId", this.householdId)
+             .append("namesakeCount", this.namesakeCount)
+             .append("householdSize", this.householdSize)
++            .append("membershipLevelCap", this.membershipLevelCap)
+             .append("bulkSignupWarning", this.bulkSignupWarning)
+             .append("possibleDuplicateOf", this.possibleDuplicateOf)
+             .append("birthDate", this.birthDate)
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 32c53f378..6e224e1e6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -84,7 +84,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -99,7 +99,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -123,7 +123,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -139,7 +139,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("telephone", telephone);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE telephone = :telephone",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE telephone = :telephone",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+@@ -149,7 +149,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("idempotencyKey", idempotencyKey);
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE idempotency_key = :idempotencyKey",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE idempotency_key = :idempotencyKey",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         if (owners.isEmpty()) {
+@@ -165,7 +165,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE LOWER(last_name) = :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE LOWER(last_name) = :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+@@ -257,7 +257,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted, idempotency_key=:idempotencyKey WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, membership_level_cap=:membershipLevelCap, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted, idempotency_key=:idempotencyKey WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -283,7 +283,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -298,7 +298,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 42fc29dc9..d05b0e833 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,6 +20,7 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.OptionalInt;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -169,6 +170,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // A declared household member is not a suspected duplicate.
+         owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
+         owner.setIdempotencyKey(idempotencyKey);
++        // The level cannot exceed one above the highest level among the existing household members.
++        OptionalInt maxHouseholdLevel = this.clinicService.findHouseholdMembers(owner).stream()
++            .mapToInt(ownerMapper::toMembershipLevel)
++            .max();
++        owner.setMembershipLevelCap(maxHouseholdLevel.isPresent() ? maxHouseholdLevel.getAsInt() + 1 : null);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
+                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index f345d5862..f43e31259 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -85,6 +85,11 @@ public interface ClinicService {
+ 	 * Checks whether an existing non-deleted owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
+ 	 */
+ 	boolean householdExists(Owner owner) throws DataAccessException;
++	/**
++	 * Finds the non-deleted owners, other than the given owner, that belong to the given owner's household
++	 * (see {@link #householdIdOf(Owner)}); empty when the owner has no household ID.
++	 */
++	Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException;
+ 	/**
+ 	 * Computes the owner's household ID: the first 12 lower-case hex characters of the SHA-256 of the UTF-8 bytes of
+ 	 * '&lt;normalizedLastName&gt;|&lt;postcode&gt;', where the last name is trimmed, whitespace-collapsed and
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index b9a6c4cb8..4012a1fe3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -305,6 +305,20 @@ public class ClinicServiceImpl implements ClinicService {
+         return householdId != null && ownerRepository.countNotDeletedByHouseholdId(householdId) > 0;
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException {
++        String householdId = householdIdOf(owner);
++        if (householdId == null) {
++            return List.of();
++        }
++        return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
++            .filter(existing -> !existing.getId().equals(owner.getId())
++                && !existing.isDeleted()
++                && householdId.equals(existing.getHouseholdId()))
++            .toList();
++    }
++
+     @Override
+     public String householdIdOf(Owner owner) {
+         if (owner.getLastName() == null || owner.getPostcode() == null) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index fd44f4e9c..2591c3d8c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4f5f733c9..e9acce217 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,6 +51,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index dc6a35ee6..96c46064d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 95f50b2b9..eb4352e84 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       birth_date DATE,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7c1a7eecd..437beb825 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2293,7 +2293,9 @@ components:
+               title: Membership level
+               description: >-
+                 Derived from 'membershipPoints': 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5
+-                points, 4 for 6 or more points.
++                points, 4 for 6 or more points. Capped on create at one above the highest
++                'membershipLevel' among the owner's existing (non-deleted) household members; no cap
++                applies when the household has no other members.
+               type: integer
+               format: int32
+               minimum: 1
