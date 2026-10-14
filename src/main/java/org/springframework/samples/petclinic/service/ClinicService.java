@@ -86,6 +86,11 @@ public interface ClinicService {
 	 */
 	boolean householdExists(Owner owner) throws DataAccessException;
 	/**
+	 * Finds the non-deleted owners, other than the given owner, that belong to the given owner's household
+	 * (see {@link #householdIdOf(Owner)}); empty when the owner has no household ID.
+	 */
+	Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException;
+	/**
 	 * Computes the owner's household ID: the first 12 lower-case hex characters of the SHA-256 of the UTF-8 bytes of
 	 * '&lt;normalizedLastName&gt;|&lt;postcode&gt;', where the last name is trimmed, whitespace-collapsed and
 	 * lower-cased. Null when the owner has no last name or no postcode.

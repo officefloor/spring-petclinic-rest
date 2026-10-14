@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -169,6 +170,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // A declared household member is not a suspected duplicate.
         owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
         owner.setIdempotencyKey(idempotencyKey);
+        // The level cannot exceed one above the highest level among the existing household members.
+        OptionalInt maxHouseholdLevel = this.clinicService.findHouseholdMembers(owner).stream()
+            .mapToInt(ownerMapper::toMembershipLevel)
+            .max();
+        owner.setMembershipLevelCap(maxHouseholdLevel.isPresent() ? maxHouseholdLevel.getAsInt() + 1 : null);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",

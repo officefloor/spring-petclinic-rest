@@ -140,10 +140,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}.
+     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}
+     * and capped at the owner's membership level cap, when it has one.
      */
     default Integer toMembershipLevel(Owner owner) {
-        return membershipLevel(toMembershipPoints(owner));
+        int level = membershipLevel(toMembershipPoints(owner));
+        return owner.getMembershipLevelCap() == null ? level : Math.min(level, owner.getMembershipLevelCap());
     }
 
     /**
@@ -249,6 +251,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
+    @Mapping(target = "membershipLevelCap", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     @Mapping(target = "deleted", ignore = true)

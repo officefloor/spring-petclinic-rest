@@ -306,6 +306,20 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException {
+        String householdId = householdIdOf(owner);
+        if (householdId == null) {
+            return List.of();
+        }
+        return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
+            .filter(existing -> !existing.getId().equals(owner.getId())
+                && !existing.isDeleted()
+                && householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    @Override
     public String householdIdOf(Owner owner) {
         if (owner.getLastName() == null || owner.getPostcode() == null) {
             return null;

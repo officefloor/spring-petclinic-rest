@@ -78,6 +78,13 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    /**
+     * The highest membership level this owner may have: one above the maximum level among the existing
+     * household members when the owner was created; null when no cap applies.
+     */
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -194,6 +201,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     /**
@@ -348,6 +363,7 @@ public class Owner extends Person {
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
             .append("householdSize", this.householdSize)
+            .append("membershipLevelCap", this.membershipLevelCap)
             .append("bulkSignupWarning", this.bulkSignupWarning)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("birthDate", this.birthDate)

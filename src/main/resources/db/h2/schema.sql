@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(36),
   namesake_count INTEGER,
   household_size INTEGER,
+  membership_level_cap INTEGER,
   bulk_signup_warning BOOLEAN,
   possible_duplicate_of INTEGER,
   birth_date DATE,
