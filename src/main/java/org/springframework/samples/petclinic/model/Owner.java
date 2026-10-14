@@ -92,6 +92,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -241,6 +244,14 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
+    }
+
     /**
      * The id of an existing owner this owner may duplicate (same soundex of the last name and same
      * postcode, different identity key), assigned on create; null when there is no such owner.
@@ -375,6 +386,7 @@ public class Owner extends Person {
             .append("householdSize", this.householdSize)
             .append("membershipLevelCap", this.membershipLevelCap)
             .append("bulkSignupWarning", this.bulkSignupWarning)
+            .append("capacityWarning", this.capacityWarning)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("birthDate", this.birthDate)
             .append("title", this.title)

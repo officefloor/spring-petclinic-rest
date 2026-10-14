@@ -84,7 +84,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName + "%");
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );
@@ -99,7 +99,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         params.put("size", pageable.getPageSize());
         params.put("offset", pageable.getOffset());
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );
@@ -123,7 +123,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
             Map<String, Object> params = new HashMap<>();
             params.put("id", id);
             owner = this.namedParameterJdbcTemplate.queryForObject(
-                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE id= :id",
+                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE id= :id",
                 params,
                 BeanPropertyRowMapper.newInstance(Owner.class)
             );
@@ -139,7 +139,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("telephone", telephone);
         return this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE telephone = :telephone",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE telephone = :telephone",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
     }
@@ -149,7 +149,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("idempotencyKey", idempotencyKey);
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE idempotency_key = :idempotencyKey",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE idempotency_key = :idempotencyKey",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
         if (owners.isEmpty()) {
@@ -165,7 +165,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName);
         return this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE LOWER(last_name) = :lastName",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE LOWER(last_name) = :lastName",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
     }
@@ -257,7 +257,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         } else {
             this.namedParameterJdbcTemplate.update(
                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
-                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, membership_level_cap=:membershipLevelCap, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted, idempotency_key=:idempotencyKey WHERE id=:id",
+                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, membership_level_cap=:membershipLevelCap, bulk_signup_warning=:bulkSignupWarning, capacity_warning=:capacityWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted, idempotency_key=:idempotencyKey WHERE id=:id",
                 parameterSource);
         }
     }
@@ -283,7 +283,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
 	@Override
 	public Collection<Owner> findAll() throws DataAccessException {
 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
-	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners",
+	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners",
 	            new HashMap<String, Object>(),
 	            BeanPropertyRowMapper.newInstance(Owner.class));
 		for (Owner owner : owners) {
@@ -298,7 +298,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         params.put("size", pageable.getPageSize());
         params.put("offset", pageable.getOffset());
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, membership_level_cap, bulk_signup_warning, capacity_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners ORDER BY id LIMIT :size OFFSET :offset",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
         loadOwnersPetsAndVisits(owners);

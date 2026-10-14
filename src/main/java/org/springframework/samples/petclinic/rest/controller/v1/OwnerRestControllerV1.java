@@ -73,6 +73,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
     static final int CITY_CAPACITY = 50;
 
+    /** Owners already in a city at or above which (and below {@link #CITY_CAPACITY}) a new owner there gets 'capacityWarning'. */
+    static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be created per (business-day adjusted) registration date; further creates are rejected. */
     static final int DAILY_OWNER_LIMIT = 100;
 
@@ -156,9 +159,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.ownerIdentityKeyExists(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
-        if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
+        long ownersInCity = this.clinicService.countOwnersInCity(ownerFieldsDto.getCity());
+        if (ownersInCity >= CITY_CAPACITY) {
             throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
         }
+        owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
         LocalDate registrationDate = BusinessDays.rollForward(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         long ownersCreatedToday = this.clinicService.countOwnersRegisteredOn(registrationDate);
