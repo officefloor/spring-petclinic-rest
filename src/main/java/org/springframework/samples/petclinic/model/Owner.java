@@ -146,6 +146,18 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    /**
+     * The derived identity used for duplicate detection on create:
+     * '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;householdId or empty&gt;', with the email lower-cased.
+     * Two owners are duplicates only when their whole identity keys are equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone)
+            + "|" + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT))
+            + "|" + (this.householdId == null ? "" : this.householdId);
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }

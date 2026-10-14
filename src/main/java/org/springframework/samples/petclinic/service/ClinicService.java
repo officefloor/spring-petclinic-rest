@@ -58,12 +58,10 @@ public interface ClinicService {
 	Collection<Owner> findAllOwners() throws DataAccessException;
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
-	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
 	/**
-	 * Checks whether any owner has the given email, compared case-insensitively.
+	 * Checks whether another owner has the same identity key (telephone, email and household ID) as the given owner.
 	 */
-	boolean ownerEmailExists(String email) throws DataAccessException;
-	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
+	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
 	/**
 	 * Counts the owners whose city equals the given city, compared case-insensitively.
 	 */

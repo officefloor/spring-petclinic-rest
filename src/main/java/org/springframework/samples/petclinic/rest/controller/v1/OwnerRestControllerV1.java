@@ -41,9 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
@@ -122,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+    @Transactional
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         List<String> missingFields = RequiredOwnerFields.missingFields(ownerFieldsDto);
@@ -130,20 +129,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = OwnerTelephone.normalize(ownerFieldsDto.getTelephone());
-        if (this.clinicService.ownerTelephoneExists(telephone)) {
-            throw new DuplicateTelephoneException(telephone);
+        owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        owner.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        // Joining a household assigns the householdId that is part of the identity key; this
+        // method is transactional, so a later rejection rolls the household change back.
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            this.clinicService.joinHousehold(owner);
         }
-        String email = normalizeEmail(ownerFieldsDto.getEmail());
-        if (email != null && this.clinicService.ownerEmailExists(email)) {
-            throw new DuplicateEmailException(email);
-        }
-        String address = AddressNormalizer.normalize(ownerFieldsDto.getAddress());
-        owner.setAddress(address);
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold
-            && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), address)) {
-            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+        if (this.clinicService.ownerIdentityKeyExists(owner)) {
+            throw new DuplicateIdentityException(owner.getIdentityKey());
         }
         if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
             throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
@@ -154,11 +149,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersCreatedToday >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(DAILY_OWNER_LIMIT);
         }
-        if (sharesHousehold) {
-            this.clinicService.joinHousehold(owner);
-        }
-        owner.setTelephone(telephone);
-        owner.setEmail(email);
         owner.setRegistrationDate(registrationDate);
         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
         this.clinicService.saveOwner(owner);
