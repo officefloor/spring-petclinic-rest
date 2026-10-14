@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+import org.springframework.samples.petclinic.util.FiscalYears;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
@@ -36,6 +37,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
@@ -119,11 +121,11 @@ public interface OwnerMapper {
     /** The household size earning {@link #HOUSEHOLD_MEMBERSHIP_POINTS}. */
     int HOUSEHOLD_MEMBERSHIP_SIZE = 3;
 
-    /** Membership points for a tenure of more than {@link #TENURE_MEMBERSHIP_DAYS} days. */
+    /** Membership points for a tenure of at least {@link #TENURE_MEMBERSHIP_FISCAL_YEARS} elapsed fiscal years. */
     int TENURE_MEMBERSHIP_POINTS = 3;
 
-    /** {@link #TENURE_MEMBERSHIP_POINTS} requires a tenure of more than this many days. */
-    int TENURE_MEMBERSHIP_DAYS = 365;
+    /** {@link #TENURE_MEMBERSHIP_POINTS} requires a tenure of at least this many elapsed fiscal years. */
+    int TENURE_MEMBERSHIP_FISCAL_YEARS = 1;
 
     /** The highest membership level. */
     int MAX_MEMBERSHIP_LEVEL = 4;
@@ -147,10 +149,10 @@ public interface OwnerMapper {
      * Starts at 0, adds {@link #EMAIL_MEMBERSHIP_POINTS} when an email is present,
      * {@link #NO_NAMESAKE_MEMBERSHIP_POINTS} when the owner has no namesakes,
      * {@link #HOUSEHOLD_MEMBERSHIP_POINTS} for a household of {@link #HOUSEHOLD_MEMBERSHIP_SIZE} or more
-     * members and {@link #TENURE_MEMBERSHIP_POINTS} for a tenure of more than
-     * {@link #TENURE_MEMBERSHIP_DAYS} days.
+     * members and {@link #TENURE_MEMBERSHIP_POINTS} for a tenure of at least
+     * {@link #TENURE_MEMBERSHIP_FISCAL_YEARS} elapsed fiscal years (see {@link FiscalYears#between}).
      */
-    default int membershipPoints(Owner owner, long tenureDays) {
+    default int membershipPoints(Owner owner, long tenureFiscalYears) {
         int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
             points += EMAIL_MEMBERSHIP_POINTS;
@@ -161,7 +163,7 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_MEMBERSHIP_SIZE) {
             points += HOUSEHOLD_MEMBERSHIP_POINTS;
         }
-        if (tenureDays > TENURE_MEMBERSHIP_DAYS) {
+        if (tenureFiscalYears >= TENURE_MEMBERSHIP_FISCAL_YEARS) {
             points += TENURE_MEMBERSHIP_POINTS;
         }
         return points;
@@ -176,15 +178,23 @@ public interface OwnerMapper {
     }
 
     /**
+     * 'FY&lt;YY&gt;' for the fiscal year (starting 1 July) containing the business-day adjusted
+     * registration date; absent when the owner has no registration date.
+     */
+    default String toFiscalYear(Owner owner) {
+        return FiscalYears.label(owner.getRegistrationDate());
+    }
+
+    /**
      * Builds the membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
-     * the registration date's year.
+     * the fiscal year containing the registration date.
      */
     default String toMembershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-            Math.floorMod(owner.getRegistrationDate().getYear(), 100));
+            FiscalYears.twoDigit(owner.getRegistrationDate()));
     }
 
     /**
