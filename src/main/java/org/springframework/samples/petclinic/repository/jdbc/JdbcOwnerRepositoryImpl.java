@@ -143,6 +143,14 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public List<String> findAddressesByLastName(String lastName) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("lastName", lastName);
+        return this.namedParameterJdbcTemplate.queryForList(
+            "SELECT address FROM owners WHERE LOWER(last_name) = :lastName", params, String.class);
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Long count = this.namedParameterJdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM owners", new HashMap<String, Object>(), Long.class);

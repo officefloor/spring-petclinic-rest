@@ -248,6 +248,19 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException {
+        String normalizedAddress = normalizeForComparison(address);
+        return ownerRepository.findAddressesByLastName(normalizeForComparison(lastName)).stream()
+            .anyMatch(existing -> normalizeForComparison(existing).equals(normalizedAddress));
+    }
+
+    /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */
+    private static String normalizeForComparison(String value) {
+        return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
     }

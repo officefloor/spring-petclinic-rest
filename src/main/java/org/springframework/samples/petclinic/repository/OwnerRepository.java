@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.repository;
 
 import java.util.Collection;
+import java.util.List;
 
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
@@ -63,6 +64,15 @@ public interface OwnerRepository {
      * @return <code>true</code> if at least one owner has this telephone number
      */
     boolean existsByTelephone(String telephone) throws DataAccessException;
+
+    /**
+     * Retrieve the addresses of all <code>Owner</code>s whose last name, compared case-insensitively, equals the
+     * given name.
+     *
+     * @param lastName the lower-cased last name to search for
+     * @return the addresses of the matching owners
+     */
+    List<String> findAddressesByLastName(String lastName) throws DataAccessException;
 
     /**
      * Count all <code>Owner</code>s in the data store.

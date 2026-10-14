@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.repository.springdatajpa;
 
 import java.util.Collection;
+import java.util.List;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Page;
@@ -59,6 +60,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Override
     @Query("SELECT COUNT(owner) > 0 FROM Owner owner WHERE owner.telephone = :telephone")
     boolean existsByTelephone(@Param("telephone") String telephone);
+
+    @Override
+    @Query("SELECT owner.address FROM Owner owner WHERE LOWER(owner.lastName) = :lastName")
+    List<String> findAddressesByLastName(@Param("lastName") String lastName);
 
     @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")

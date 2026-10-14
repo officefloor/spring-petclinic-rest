@@ -97,6 +97,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<String> findAddressesByLastName(String lastName) {
+        Query query = this.em.createQuery("SELECT owner.address FROM Owner owner WHERE LOWER(owner.lastName) = :lastName");
+        query.setParameter("lastName", lastName);
+        return query.getResultList();
+    }
+
+    @Override
     public long count() {
         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
     }
