@@ -1,0 +1,380 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d76d4d721..e63b202ac 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -252,6 +252,7 @@ public interface OwnerMapper {
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
+     @Mapping(target = "deleted", ignore = true)
++    @Mapping(target = "idempotencyKey", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2b6c021e4..6176c26d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -94,6 +94,9 @@ public class Owner extends Person {
+     @Column(name = "deleted", nullable = false)
+     private boolean deleted;
+ 
++    @Column(name = "idempotency_key", unique = true)
++    private String idempotencyKey;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -253,6 +256,18 @@ public class Owner extends Person {
+         this.deleted = deleted;
+     }
+ 
++    /**
++     * The 'Idempotency-Key' the owner was created with, if any; a repeated create with the same key
++     * returns this owner instead of creating a duplicate.
++     */
++    public String getIdempotencyKey() {
++        return this.idempotencyKey;
++    }
++
++    public void setIdempotencyKey(String idempotencyKey) {
++        this.idempotencyKey = idempotencyKey;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index cac0cae5f..ddebe2131 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -66,6 +66,14 @@ public interface OwnerRepository {
+      */
+     List<Owner> findByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Retrieve the <code>Owner</code> that was created with the given idempotency key.
++     *
++     * @param idempotencyKey the idempotency key to search for
++     * @return the matching owner, or <code>null</code> if none
++     */
++    Owner findByIdempotencyKey(String idempotencyKey) throws DataAccessException;
++
+     /**
+      * Retrieve all <code>Owner</code>s whose last name, compared case-insensitively, equals the given name.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a99fc9787..32c53f378 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -84,7 +84,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -99,7 +99,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -123,7 +123,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -139,17 +139,33 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("telephone", telephone);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners WHERE telephone = :telephone",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE telephone = :telephone",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+ 
++    @Override
++    public Owner findByIdempotencyKey(String idempotencyKey) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("idempotencyKey", idempotencyKey);
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE idempotency_key = :idempotencyKey",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class));
++        if (owners.isEmpty()) {
++            return null;
++        }
++        Owner owner = owners.get(0);
++        loadPetsAndVisits(owner);
++        return owner;
++    }
++
+     @Override
+     public List<Owner> findByLastNameIgnoringCase(String lastName) throws DataAccessException {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners WHERE LOWER(last_name) = :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners WHERE LOWER(last_name) = :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+@@ -241,7 +257,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title, deleted=:deleted, idempotency_key=:idempotencyKey WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -267,7 +283,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -282,7 +298,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title, deleted, idempotency_key FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index b00f46fca..113ef1f93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -98,6 +98,15 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Owner findByIdempotencyKey(String idempotencyKey) {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.idempotencyKey = :idempotencyKey");
++        query.setParameter("idempotencyKey", idempotencyKey);
++        List<Owner> owners = query.getResultList();
++        return owners.isEmpty() ? null : owners.get(0);
++    }
++
+     @Override
+     @SuppressWarnings("unchecked")
+     public List<Owner> findByLastNameIgnoringCase(String lastName) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 2d01f9f4c..e3a178704 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -62,6 +62,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Query("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone")
+     List<Owner> findByTelephone(@Param("telephone") String telephone);
+ 
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE owner.idempotencyKey = :idempotencyKey")
++    Owner findByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey);
++
+     @Override
+     @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName")
+     List<Owner> findByLastNameIgnoringCase(@Param("lastName") String lastName);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9ec5a0f2c..42fc29dc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -126,7 +126,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Transactional
+     @Override
+-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
++        // A repeated create with an already-seen key returns the originally created owner.
++        if (idempotencyKey != null) {
++            Owner existing = this.clinicService.findOwnerByIdempotencyKey(idempotencyKey);
++            if (existing != null) {
++                return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), ownerLocation(existing), HttpStatus.OK);
++            }
++        }
+         List<String> missingFields = RequiredOwnerFields.missingFields(ownerFieldsDto);
+         if (!missingFields.isEmpty()) {
+             throw new MissingRequiredFieldsException(missingFields);
+@@ -134,7 +141,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+         OwnerEmail.validate(ownerFieldsDto.getEmail());
+         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
+-        HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+@@ -162,16 +168,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
+         // A declared household member is not a suspected duplicate.
+         owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
++        owner.setIdempotencyKey(idempotencyKey);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
+                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
+             ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
+             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
+-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+-        headers.setLocation(UriComponentsBuilder.newInstance()
+-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
++        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -292,6 +296,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             ownerFieldsDto.getAddressLine1(), ownerFieldsDto.getAddressLine2(), ownerFieldsDto.getAddress()));
+     }
+ 
++    private static HttpHeaders ownerLocation(Owner owner) {
++        HttpHeaders headers = new HttpHeaders();
++        headers.setLocation(UriComponentsBuilder.newInstance()
++            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
++        return headers;
++    }
++
+     private static String normalizeEmail(String email) {
+         return email == null ? null : email.toLowerCase(Locale.ROOT);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 2d7b147aa..f345d5862 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -55,6 +55,12 @@ public interface ClinicService {
+ 	void saveVet(Vet vet) throws DataAccessException;
+ 	void deleteVet(Vet vet) throws DataAccessException;
+ 	Owner findOwnerById(int id) throws DataAccessException;
++	/**
++	 * Finds the owner that was created with the given 'Idempotency-Key'.
++	 *
++	 * @return the owner, or {@code null} if no owner was created with the key
++	 */
++	Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException;
+ 	Collection<Owner> findAllOwners() throws DataAccessException;
+ 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
+ 	void saveOwner(Owner owner) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 5cb00c41c..b9a6c4cb8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -212,6 +212,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return findEntityById(() -> ownerRepository.findById(id));
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException {
++        return ownerRepository.findByIdempotencyKey(idempotencyKey);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Pet findPetById(int id) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 5fb2d7c2f..fd44f4e9c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+   title VARCHAR(3),
+-  deleted BOOLEAN DEFAULT FALSE NOT NULL
++  deleted BOOLEAN DEFAULT FALSE NOT NULL,
++  idempotency_key VARCHAR(255) UNIQUE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 73c70e23c..4f5f733c9 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+   title VARCHAR(3),
+-  deleted BOOLEAN DEFAULT FALSE NOT NULL
++  deleted BOOLEAN DEFAULT FALSE NOT NULL,
++  idempotency_key VARCHAR(255) UNIQUE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index dca2d5796..dc6a35ee6 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   title VARCHAR(3),
+   deleted BOOLEAN NOT NULL DEFAULT FALSE,
++  idempotency_key VARCHAR(255) UNIQUE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 5f1c4889b..95f50b2b9 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       possible_duplicate_of INTEGER,
+                                       birth_date DATE,
+                                       title VARCHAR(3),
+-                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
++                                      deleted BOOLEAN DEFAULT FALSE NOT NULL,
++                                      idempotency_key TEXT UNIQUE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index aac1faf39..7c1a7eecd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -68,7 +68,18 @@ paths:
+         - owners
+       operationId: addOwner
+       summary: Adds a pet owner
+-      description: Records the details of a new pet owner.
++      description: >-
++        Records the details of a new pet owner. When the request repeats an 'Idempotency-Key' that
++        was already used to create an owner, the originally created owner is returned with 200
++        instead of creating a duplicate.
++      parameters:
++        - name: Idempotency-Key
++          in: header
++          description: Client-supplied key that makes repeated creates return the original owner.
++          required: false
++          schema:
++            type: string
++            maxLength: 255
+       requestBody:
+         description: The pet owner
+         content:
+@@ -77,6 +88,13 @@ paths:
+               $ref: '#/components/schemas/OwnerFields'
+         required: true
+       responses:
++        200:
++          description: >-
++            The 'Idempotency-Key' was already used; the originally created pet owner is returned.
++          content:
++            application/json:
++              schema:
++                $ref: '#/components/schemas/Owner'
+         201:
+           description: The pet owner was successfully added.
+           content:
