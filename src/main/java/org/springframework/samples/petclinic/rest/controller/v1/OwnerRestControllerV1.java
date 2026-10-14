@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.BusinessDays;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -66,7 +67,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
     static final int CITY_CAPACITY = 50;
 
-    /** Maximum number of owners that may be created (by registration date) per day; further creates are rejected. */
+    /** Maximum number of owners that may be created per (business-day adjusted) registration date; further creates are rejected. */
     static final int DAILY_OWNER_LIMIT = 100;
 
     private final ClinicService clinicService;
@@ -135,7 +136,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
             throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
         }
-        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_OWNER_LIMIT) {
+        LocalDate registrationDate = BusinessDays.rollForward(
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
+        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(DAILY_OWNER_LIMIT);
         }
         if (sharesHousehold) {
@@ -143,9 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -168,7 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(telephone);
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         if (ownerFieldsDto.getRegistrationDate() != null) {
-            currentOwner.setRegistrationDate(ownerFieldsDto.getRegistrationDate());
+            currentOwner.setRegistrationDate(BusinessDays.rollForward(ownerFieldsDto.getRegistrationDate()));
         }
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
