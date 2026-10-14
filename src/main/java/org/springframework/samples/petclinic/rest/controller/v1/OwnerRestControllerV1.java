@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -116,6 +117,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -137,6 +141,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        if (ownerFieldsDto.getRegistrationDate() != null) {
+            currentOwner.setRegistrationDate(ownerFieldsDto.getRegistrationDate());
+        }
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
