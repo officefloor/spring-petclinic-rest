@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFiel
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -116,10 +117,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.ownerTelephoneExists(telephone)) {
             throw new DuplicateTelephoneException(telephone);
         }
+        String address = AddressNormalizer.normalize(ownerFieldsDto.getAddress());
+        owner.setAddress(address);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (!sharesHousehold
-            && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
-            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), address)) {
+            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
         }
         if (sharesHousehold) {
             this.clinicService.joinHousehold(owner);

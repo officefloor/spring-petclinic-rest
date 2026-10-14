@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -274,11 +275,14 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setHouseholdId(householdId);
     }
 
-    /** Finds the owners with the same last name and address, ignoring case and runs of whitespace. */
+    /**
+     * Finds the owners with the same last name (ignoring case and runs of whitespace) and the same
+     * normalized address.
+     */
     private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedAddress = normalizeForComparison(address);
+        String normalizedAddress = AddressNormalizer.normalize(address);
         return ownerRepository.findByLastNameIgnoringCase(normalizeForComparison(lastName)).stream()
-            .filter(existing -> normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
+            .filter(existing -> AddressNormalizer.normalize(existing.getAddress()).equals(normalizedAddress))
             .toList();
     }
 
