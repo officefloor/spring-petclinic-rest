@@ -45,8 +45,16 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
+    @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * '&lt;title&gt; &lt;lastName&gt;', or just the last name when the owner has no title.
+     */
+    default String toSalutation(Owner owner) {
+        return owner.getTitle() == null ? owner.getLastName() : owner.getTitle() + " " + owner.getLastName();
+    }
 
     /**
      * The stored E.164 telephone formatted for humans, e.g. '+61 412 345 678'.

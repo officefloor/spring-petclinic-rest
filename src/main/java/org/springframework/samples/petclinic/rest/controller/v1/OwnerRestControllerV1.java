@@ -198,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownerFieldsDto.getBirthDate() != null) {
             currentOwner.setBirthDate(ownerFieldsDto.getBirthDate());
         }
+        currentOwner.setTitle(ownerFieldsDto.getTitle() == null ? null : ownerFieldsDto.getTitle().getValue());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }

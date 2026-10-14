@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   bulk_signup_warning BOOLEAN,
   possible_duplicate_of INTEGER,
   birth_date DATE,
+  title VARCHAR(3),
   INDEX(last_name)
 ) engine=InnoDB;
 
