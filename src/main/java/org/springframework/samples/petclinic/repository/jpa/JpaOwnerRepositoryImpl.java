@@ -98,6 +98,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public boolean existsByEmailIgnoringCase(String email) {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.email) = :email");
+        query.setParameter("email", email);
+        return (long) query.getSingleResult() > 0;
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public List<Owner> findByLastNameIgnoringCase(String lastName) {
         Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName");

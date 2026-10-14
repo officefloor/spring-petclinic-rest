@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
@@ -133,6 +134,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.ownerTelephoneExists(telephone)) {
             throw new DuplicateTelephoneException(telephone);
         }
+        String email = normalizeEmail(ownerFieldsDto.getEmail());
+        if (email != null && this.clinicService.ownerEmailExists(email)) {
+            throw new DuplicateEmailException(email);
+        }
         String address = AddressNormalizer.normalize(ownerFieldsDto.getAddress());
         owner.setAddress(address);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -153,7 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.clinicService.joinHousehold(owner);
         }
         owner.setTelephone(telephone);
-        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        owner.setEmail(email);
         owner.setRegistrationDate(registrationDate);
         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
         this.clinicService.saveOwner(owner);

@@ -67,6 +67,14 @@ public interface OwnerRepository {
     boolean existsByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Check whether any <code>Owner</code> in the data store has the given email, compared case-insensitively.
+     *
+     * @param email the lower-cased email to search for
+     * @return <code>true</code> if at least one owner has this email
+     */
+    boolean existsByEmailIgnoringCase(String email) throws DataAccessException;
+
+    /**
      * Retrieve all <code>Owner</code>s whose last name, compared case-insensitively, equals the given name.
      *
      * @param lastName the lower-cased last name to search for

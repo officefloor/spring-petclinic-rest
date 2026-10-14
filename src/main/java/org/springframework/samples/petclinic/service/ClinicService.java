@@ -59,6 +59,10 @@ public interface ClinicService {
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
 	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
+	/**
+	 * Checks whether any owner has the given email, compared case-insensitively.
+	 */
+	boolean ownerEmailExists(String email) throws DataAccessException;
 	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
 	/**
 	 * Counts the owners whose city equals the given city, compared case-insensitively.
