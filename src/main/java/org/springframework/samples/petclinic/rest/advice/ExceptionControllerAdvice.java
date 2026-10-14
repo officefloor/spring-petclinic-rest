@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceede
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -232,6 +233,28 @@ public class ExceptionControllerAdvice {
         ValidationMessageDto message = new ValidationMessageDto(
             "Field 'postcode' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
             .putAdditionalProperty("field", "postcode")
+            .putAdditionalProperty("rejectedValue", rejectedValue)
+            .putAdditionalProperty("defaultMessage", e.getMessage());
+        detail.setProperty("schemaValidationErrors", List.of(message));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidEmailException} thrown when an owner's email address is at a disposable domain.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} describing the rejected email address, with a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        ValidationMessageDto message = new ValidationMessageDto(
+            "Field 'email' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+            .putAdditionalProperty("field", "email")
             .putAdditionalProperty("rejectedValue", rejectedValue)
             .putAdditionalProperty("defaultMessage", e.getMessage());
         detail.setProperty("schemaValidationErrors", List.of(message));

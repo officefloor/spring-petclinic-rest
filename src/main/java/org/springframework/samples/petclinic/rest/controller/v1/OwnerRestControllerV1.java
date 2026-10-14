@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+import org.springframework.samples.petclinic.rest.validation.OwnerEmail;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.rest.validation.OwnerRegistrationDate;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
@@ -131,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new MissingRequiredFieldsException(missingFields);
         }
         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+        OwnerEmail.validate(ownerFieldsDto.getEmail());
         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -181,6 +183,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephone = OwnerTelephone.normalize(ownerFieldsDto.getTelephone());
         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+        OwnerEmail.validate(ownerFieldsDto.getEmail());
         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
