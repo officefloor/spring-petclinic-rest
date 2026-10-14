@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -75,6 +76,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);

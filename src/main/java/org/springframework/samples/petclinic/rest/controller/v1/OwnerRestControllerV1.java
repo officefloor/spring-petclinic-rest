@@ -72,6 +72,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners that may be created per (business-day adjusted) registration date; further creates are rejected. */
     static final int DAILY_OWNER_LIMIT = 100;
 
+    /** Owners already created on the same registration date beyond which a new owner gets 'bulkSignupWarning'. */
+    static final int BULK_SIGNUP_THRESHOLD = 80;
+
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
@@ -142,7 +145,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         LocalDate registrationDate = BusinessDays.rollForward(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
-        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= DAILY_OWNER_LIMIT) {
+        long ownersCreatedToday = this.clinicService.countOwnersRegisteredOn(registrationDate);
+        if (ownersCreatedToday >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(DAILY_OWNER_LIMIT);
         }
         if (sharesHousehold) {
@@ -151,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setRegistrationDate(registrationDate);
+        owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={}, customerCode={}, registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
