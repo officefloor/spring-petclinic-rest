@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceede
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
+import org.springframework.samples.petclinic.rest.validation.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
@@ -230,6 +231,28 @@ public class ExceptionControllerAdvice {
         ValidationMessageDto message = new ValidationMessageDto(
             "Field 'postcode' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
             .putAdditionalProperty("field", "postcode")
+            .putAdditionalProperty("rejectedValue", rejectedValue)
+            .putAdditionalProperty("defaultMessage", e.getMessage());
+        detail.setProperty("schemaValidationErrors", List.of(message));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidRegistrationDateException} thrown when an owner's supplied registration date is invalid.
+     *
+     * @param e The {@link InvalidRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} describing the rejected registration date, with a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidRegistrationDateException(InvalidRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        ValidationMessageDto message = new ValidationMessageDto(
+            "Field 'registrationDate' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+            .putAdditionalProperty("field", "registrationDate")
             .putAdditionalProperty("rejectedValue", rejectedValue)
             .putAdditionalProperty("defaultMessage", e.getMessage());
         detail.setProperty("schemaValidationErrors", List.of(message));
