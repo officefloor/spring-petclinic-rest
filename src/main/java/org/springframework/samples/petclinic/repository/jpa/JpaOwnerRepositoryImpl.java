@@ -137,6 +137,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countNotDeletedByHouseholdId(String householdId) {
+        Query query = this.em.createQuery(
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false");
+        query.setParameter("householdId", householdId);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public long countByCustomerCode(String customerCode) {
         Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
         query.setParameter("customerCode", customerCode);

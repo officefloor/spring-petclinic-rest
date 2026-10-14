@@ -59,11 +59,11 @@ public interface ClinicService {
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
 	/**
-	 * Checks whether another owner has the same identity key (telephone, email and household ID) as the given owner.
+	 * Checks whether another non-deleted owner has the same identity key (telephone, email and household ID) as the given owner.
 	 */
 	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
 	/**
-	 * Finds the id of the earliest other owner in the given owner's household (see {@link #householdIdOf(Owner)})
+	 * Finds the id of the earliest other non-deleted owner in the given owner's household (see {@link #householdIdOf(Owner)})
 	 * but with a different telephone, or null when there is none.
 	 */
 	Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException;
@@ -76,7 +76,7 @@ public interface ClinicService {
 	 */
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 	/**
-	 * Checks whether an existing owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
+	 * Checks whether an existing non-deleted owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
 	 */
 	boolean householdExists(Owner owner) throws DataAccessException;
 	/**
@@ -85,6 +85,9 @@ public interface ClinicService {
 	 * lower-cased. Null when the owner has no last name or no postcode.
 	 */
 	String householdIdOf(Owner owner);
+	/**
+	 * Soft-deletes the owner: flags it deleted and retains the record.
+	 */
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 

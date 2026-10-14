@@ -148,7 +148,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -258,6 +259,7 @@ public class ClinicServiceImpl implements ClinicService {
         String identityKey = owner.getIdentityKey();
         return ownerRepository.findByTelephone(owner.getTelephone()).stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
+                && !existing.isDeleted()
                 && existing.getIdentityKey().equals(identityKey));
     }
 
@@ -270,6 +272,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
             .filter(existing -> !existing.getId().equals(owner.getId())
+                && !existing.isDeleted()
                 && householdId.equals(existing.getHouseholdId())
                 && !Objects.equals(owner.getTelephone(), existing.getTelephone()))
             .map(Owner::getId)
@@ -293,7 +296,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean householdExists(Owner owner) throws DataAccessException {
         String householdId = householdIdOf(owner);
-        return householdId != null && ownerRepository.countByHouseholdId(householdId) > 0;
+        return householdId != null && ownerRepository.countNotDeletedByHouseholdId(householdId) > 0;
     }
 
     @Override

@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Pattern(regexp = "^(MR|MRS|MS|DR)$", message = "Title must be one of MR, MRS, MS, DR")
     private String title;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -238,6 +241,18 @@ public class Owner extends Person {
         this.title = title;
     }
 
+    /**
+     * Whether the owner has been soft-deleted. Deleted owners are retained but ignored by the
+     * duplicate and identity checks on create.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
@@ -322,6 +337,7 @@ public class Owner extends Person {
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("birthDate", this.birthDate)
             .append("title", this.title)
+            .append("deleted", this.deleted)
             .toString();
     }
 }

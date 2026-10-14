@@ -108,6 +108,14 @@ public interface OwnerRepository {
     long countByHouseholdId(String householdId) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s that belong to the household with the given ID and are not soft-deleted.
+     *
+     * @param householdId the household ID to search for
+     * @return the number of matching non-deleted owners
+     */
+    long countNotDeletedByHouseholdId(String householdId) throws DataAccessException;
+
+    /**
      * Count the <code>Owner</code>s that have the given customer code.
      *
      * @param customerCode the customer code to search for
