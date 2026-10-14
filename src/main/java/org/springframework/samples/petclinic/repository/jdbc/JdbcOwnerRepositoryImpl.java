@@ -133,6 +133,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return owner;
     }
 
+    @Override
+    public boolean existsByTelephone(String telephone) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("telephone", telephone);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE telephone = :telephone", params, Long.class);
+        return count != null && count > 0;
+    }
+
     public void loadPetsAndVisits(final Owner owner) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", owner.getId());

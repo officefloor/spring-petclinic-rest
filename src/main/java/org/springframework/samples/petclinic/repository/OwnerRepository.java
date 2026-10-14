@@ -56,6 +56,14 @@ public interface OwnerRepository {
      */
     Owner findById(int id) throws DataAccessException;
 
+    /**
+     * Check whether any <code>Owner</code> in the data store has the given telephone number.
+     *
+     * @param telephone the (normalized) telephone number to search for
+     * @return <code>true</code> if at least one owner has this telephone number
+     */
+    boolean existsByTelephone(String telephone) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

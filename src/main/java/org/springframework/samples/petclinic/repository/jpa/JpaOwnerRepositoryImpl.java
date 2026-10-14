@@ -90,6 +90,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 
 
     @Override
+    public boolean existsByTelephone(String telephone) {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.telephone = :telephone");
+        query.setParameter("telephone", telephone);
+        return (long) query.getSingleResult() > 0;
+    }
+
+
+    @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
             this.em.persist(owner);

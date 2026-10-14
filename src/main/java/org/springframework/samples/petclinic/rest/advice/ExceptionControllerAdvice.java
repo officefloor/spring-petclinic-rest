@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
@@ -207,6 +208,22 @@ public class ExceptionControllerAdvice {
             .putAdditionalProperty("rejectedValue", rejectedValue)
             .putAdditionalProperty("defaultMessage", e.getMessage());
         detail.setProperty("schemaValidationErrors", List.of(message));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateTelephoneException} thrown when an owner's telephone number is already in use.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} describing the conflicting telephone number, with a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("telephone", e.getTelephone());
         return ResponseEntity.status(status).body(detail);
     }
 
