@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 
 /**
- * Determines which of the fields required to create an owner are missing or blank. The address is
- * checked in its normalized form, so an address that is blank after normalization counts as missing.
+ * Determines which of the fields required to create an owner are missing or blank. The address may be
+ * supplied either as a structured 'addressLine1' or as the flat 'address'; it is checked in its
+ * normalized form, so an address that is blank after normalization counts as missing.
  */
 public final class RequiredOwnerFields {
 
@@ -25,7 +26,8 @@ public final class RequiredOwnerFields {
         Map<String, String> required = new LinkedHashMap<>();
         required.put("firstName", owner.getFirstName());
         required.put("lastName", owner.getLastName());
-        required.put("address", AddressNormalizer.normalize(owner.getAddress()));
+        required.put("address", AddressNormalizer.compose(
+            owner.getAddressLine1(), owner.getAddressLine2(), owner.getAddress()));
         required.put("city", owner.getCity());
         required.put("telephone", owner.getTelephone());
         List<String> missing = new ArrayList<>();

@@ -57,6 +57,12 @@ public class Owner extends Person {
     @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
     private String postcode;
 
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
 
@@ -122,6 +128,22 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = addressLine1;
+    }
+
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = addressLine2;
     }
 
     public LocalDate getRegistrationDate() {
@@ -277,6 +299,8 @@ public class Owner extends Person {
             .append("telephone", this.telephone)
             .append("email", this.email)
             .append("postcode", this.postcode)
+            .append("addressLine1", this.addressLine1)
+            .append("addressLine2", this.addressLine2)
             .append("registrationDate", this.registrationDate)
             .append("customerCode", this.customerCode)
             .append("householdId", this.householdId)

@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       telephone  TEXT,
                                       email      TEXT,
                                       postcode   VARCHAR(4),
+                                      address_line1 VARCHAR(255),
+                                      address_line2 VARCHAR(255),
                                       registration_date DATE,
                                       customer_code TEXT,
                                       household_id TEXT,

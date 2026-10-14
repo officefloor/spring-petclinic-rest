@@ -138,7 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        owner.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        applyAddress(owner, ownerFieldsDto);
         // The householdId is derived from (lastName, postcode) and is part of the identity key. An
         // existing household blocks the create unless the new owner declares it shares the household.
         owner.setHouseholdId(this.clinicService.householdIdOf(owner));
@@ -185,7 +185,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         OwnerEmail.validate(ownerFieldsDto.getEmail());
         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
-        currentOwner.setAddress(ownerFieldsDto.getAddress());
+        applyAddress(currentOwner, ownerFieldsDto);
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -277,6 +277,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Stores the normalized structured address lines (absent when not supplied) and the composed
+     * 'address': the structured lines when 'addressLine1' is present, otherwise the flat address.
+     */
+    private static void applyAddress(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        owner.setAddressLine1(AddressNormalizer.normalizeOptional(ownerFieldsDto.getAddressLine1()));
+        owner.setAddressLine2(owner.getAddressLine1() == null ? null
+            : AddressNormalizer.normalizeOptional(ownerFieldsDto.getAddressLine2()));
+        owner.setAddress(AddressNormalizer.compose(
+            ownerFieldsDto.getAddressLine1(), ownerFieldsDto.getAddressLine2(), ownerFieldsDto.getAddress()));
     }
 
     private static String normalizeEmail(String email) {
