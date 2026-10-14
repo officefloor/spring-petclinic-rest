@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 
 import java.util.Collection;
 import java.util.List;
@@ -35,9 +36,15 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * The region of the owner's city from {@link #CITY_REGIONS}, or 'UNKNOWN' when the city is not listed.
+     * The region whose postcode range ({@link OwnerPostcode#RANGES_BY_REGION}) contains the owner's postcode;
+     * when the postcode is absent or in no known range, the region of the owner's city from
+     * {@link #CITY_REGIONS}, or 'UNKNOWN' when the city is not listed.
      */
     default String toLocality(Owner owner) {
+        String postcodeRegion = OwnerPostcode.regionOf(owner.getPostcode());
+        if (postcodeRegion != null) {
+            return postcodeRegion;
+        }
         return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 

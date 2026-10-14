@@ -22,6 +22,25 @@ public final class OwnerPostcode {
     }
 
     /**
+     * The region whose range in {@link #RANGES_BY_REGION} contains the postcode.
+     *
+     * @param postcode the postcode, may be {@code null}
+     * @return the region, or {@code null} when the postcode is absent, not 4 digits or in no known range
+     */
+    public static String regionOf(String postcode) {
+        if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : RANGES_BY_REGION.entrySet()) {
+            if (value >= entry.getValue()[0] && value <= entry.getValue()[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Checks a postcode for the given city. An absent postcode is accepted; a present one must be
      * 4 digits and, when the city has a known region, lie within that region's range.
      *
