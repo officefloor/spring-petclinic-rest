@@ -1,0 +1,160 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index afc2212a0..e20afd993 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+@@ -83,41 +84,72 @@ public interface OwnerMapper {
+         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+     }
+ 
+-    /** The highest membership level reachable without tenure; level 4 is reserved for tenure. */
+-    int MAX_CREATE_MEMBERSHIP_LEVEL = 3;
++    /** Membership points for an owner with an email address. */
++    int EMAIL_MEMBERSHIP_POINTS = 2;
+ 
+-    /** The tenure membership level. */
+-    int TENURE_MEMBERSHIP_LEVEL = 4;
++    /** Membership points for an owner without namesakes. */
++    int NO_NAMESAKE_MEMBERSHIP_POINTS = 1;
+ 
+-    /** {@link #TENURE_MEMBERSHIP_LEVEL} requires a tenure of more than this many days. */
+-    int TENURE_MEMBERSHIP_LEVEL_DAYS = 365;
++    /** Membership points for a household of at least {@link #HOUSEHOLD_MEMBERSHIP_SIZE} members. */
++    int HOUSEHOLD_MEMBERSHIP_POINTS = 2;
++
++    /** The household size earning {@link #HOUSEHOLD_MEMBERSHIP_POINTS}. */
++    int HOUSEHOLD_MEMBERSHIP_SIZE = 3;
++
++    /** Membership points for a tenure of more than {@link #TENURE_MEMBERSHIP_DAYS} days. */
++    int TENURE_MEMBERSHIP_POINTS = 3;
++
++    /** {@link #TENURE_MEMBERSHIP_POINTS} requires a tenure of more than this many days. */
++    int TENURE_MEMBERSHIP_DAYS = 365;
++
++    /** The highest membership level. */
++    int MAX_MEMBERSHIP_LEVEL = 4;
+ 
+     /**
+-     * The membership level of a newly created owner. A new owner has zero tenure, so this never
+-     * exceeds {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
++     * The membership points of a newly created owner. A new owner has zero tenure, so this never
++     * includes {@link #TENURE_MEMBERSHIP_POINTS}.
++     */
++    default Integer toMembershipPoints(Owner owner) {
++        return membershipPoints(owner, 0);
++    }
++
++    /**
++     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}.
+      */
+     default Integer toMembershipLevel(Owner owner) {
+-        return membershipLevel(owner, 0);
++        return membershipLevel(toMembershipPoints(owner));
+     }
+ 
+     /**
+-     * Starts at 1, adds 1 when an email is present and 1 when the owner has no namesakes, capped at
+-     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}. An owner at that cap whose tenure is more than
+-     * {@link #TENURE_MEMBERSHIP_LEVEL_DAYS} days is at {@link #TENURE_MEMBERSHIP_LEVEL}.
++     * Starts at 0, adds {@link #EMAIL_MEMBERSHIP_POINTS} when an email is present,
++     * {@link #NO_NAMESAKE_MEMBERSHIP_POINTS} when the owner has no namesakes,
++     * {@link #HOUSEHOLD_MEMBERSHIP_POINTS} for a household of {@link #HOUSEHOLD_MEMBERSHIP_SIZE} or more
++     * members and {@link #TENURE_MEMBERSHIP_POINTS} for a tenure of more than
++     * {@link #TENURE_MEMBERSHIP_DAYS} days.
+      */
+-    default int membershipLevel(Owner owner, long tenureDays) {
+-        int level = 1;
++    default int membershipPoints(Owner owner, long tenureDays) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+-            level++;
++            points += EMAIL_MEMBERSHIP_POINTS;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += NO_NAMESAKE_MEMBERSHIP_POINTS;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_MEMBERSHIP_SIZE) {
++            points += HOUSEHOLD_MEMBERSHIP_POINTS;
+         }
+-        level = Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
+-        if (level == MAX_CREATE_MEMBERSHIP_LEVEL && tenureDays > TENURE_MEMBERSHIP_LEVEL_DAYS) {
+-            level = TENURE_MEMBERSHIP_LEVEL;
++        if (tenureDays > TENURE_MEMBERSHIP_DAYS) {
++            points += TENURE_MEMBERSHIP_POINTS;
+         }
+-        return level;
++        return points;
++    }
++
++    /**
++     * Maps membership points to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and
++     * {@link #MAX_MEMBERSHIP_LEVEL} for 6 or more.
++     */
++    default int membershipLevel(int points) {
++        return Math.min(points / 2 + 1, MAX_MEMBERSHIP_LEVEL);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6434682a9..4c9afec00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -164,10 +164,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
+-                + "registrationDate={}, membershipLevel={}",
++                + "registrationDate={}, membershipPoints={}, membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
+             ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
+-            owner.getRegistrationDate(), ownerMapper.toMembershipLevel(owner));
++            owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 10227070e..4d19609c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2205,17 +2205,28 @@ components:
+               type: string
+               example: 'NSW-3FA9C27B-M20'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                Assigned on create: starts at 0, plus 2 when an email is present, plus 1 when
++                'namesakeCount' is 0, plus 2 when the owner's household has 3 or more members
++                (including the owner), plus 3 for a tenure of more than 365 days. A newly created
++                owner has zero tenure, so it never earns the tenure points.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                Assigned on create: starts at 1, plus 1 when an email is present, plus 1 when
+-                'namesakeCount' is 0, capped at 3. Level 4 requires a tenure of more than 365 days;
+-                a newly created owner has zero tenure, so it never exceeds level 3.
++                Derived from 'membershipPoints': 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5
++                points, 4 for 6 or more points.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
