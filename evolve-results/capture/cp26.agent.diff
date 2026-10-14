@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+index fdc12837b..384875711 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+@@ -8,8 +8,12 @@ public class InvalidTelephoneException extends RuntimeException {
+     private final String rejectedValue;
+ 
+     public InvalidTelephoneException(String rejectedValue) {
+-        super("Telephone number must form a valid E.164 number with " + OwnerTelephone.MIN_DIGITS
++        this(rejectedValue, "Telephone number must form a valid E.164 number with " + OwnerTelephone.MIN_DIGITS
+             + " to " + OwnerTelephone.MAX_DIGITS + " digits after the '+'");
++    }
++
++    public InvalidTelephoneException(String rejectedValue, String message) {
++        super(message);
+         this.rejectedValue = rejectedValue;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+index d78ca7ee8..a65e24fc3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+@@ -1,5 +1,6 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ /**
+@@ -18,6 +19,11 @@ public final class OwnerTelephone {
+ 
+     private static final Pattern E164 = Pattern.compile(E164_REGEXP);
+ 
++    /** Required national-number length (digits after the country code) for known country codes. */
++    public static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE = Map.of(
++        "61", 9,
++        "1", 10);
++
+     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()\\[\\]]");
+ 
+     private OwnerTelephone() {
+@@ -26,7 +32,8 @@ public final class OwnerTelephone {
+     /**
+      * Converts a telephone number to E.164 form. Spaces, dashes and brackets are removed. A number
+      * with a leading '+' keeps its country code; otherwise a single leading '0' is dropped and the
+-     * default country code '+{@value #DEFAULT_COUNTRY_CODE}' is prepended.
++     * default country code '+{@value #DEFAULT_COUNTRY_CODE}' is prepended. For country codes listed in
++     * {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE} the national number must have exactly the required length.
+      *
+      * @param telephone the telephone number as supplied in the request
+      * @return the E.164 telephone number, e.g. {@code +61412345678}
+@@ -47,6 +54,22 @@ public final class OwnerTelephone {
+         if (!E164.matcher(e164).matches()) {
+             throw new InvalidTelephoneException(telephone);
+         }
++        checkNationalLength(e164, telephone);
+         return e164;
+     }
++
++    private static void checkNationalLength(String e164, String telephone) {
++        String digits = e164.substring(1);
++        for (Map.Entry<String, Integer> entry : NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet()) {
++            String countryCode = entry.getKey();
++            if (digits.startsWith(countryCode)) {
++                int required = entry.getValue();
++                if (digits.length() - countryCode.length() != required) {
++                    throw new InvalidTelephoneException(telephone, "Telephone number with country code '+"
++                        + countryCode + "' must have exactly " + required + " national digits");
++                }
++                return;
++            }
++        }
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f7b2a57d8..a3084a6f2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2043,7 +2043,9 @@ components:
+             The telephone number of the pet owner, stored and returned in E.164 form. Spaces,
+             dashes and brackets are removed. A leading '+' and country code are kept; otherwise
+             a single leading '0' is dropped and country code '+61' is assumed. Between 8 and 15
+-            digits must follow the '+', e.g. '0412 345 678' is stored as '+61412345678'.
++            digits must follow the '+', e.g. '0412 345 678' is stored as '+61412345678'. Numbers
++            with country code '+61' must have exactly 9 national digits and numbers with country
++            code '+1' exactly 10.
+           type: string
+           minLength: 1
+           maxLength: 20
