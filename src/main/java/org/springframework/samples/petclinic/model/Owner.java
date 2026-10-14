@@ -75,6 +75,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
@@ -181,6 +184,18 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * The id of an existing owner this owner may duplicate (same last name and postcode, different
+     * telephone), assigned on create; null when there is no such owner.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
     public LocalDate getBirthDate() {
         return this.birthDate;
     }
@@ -268,6 +283,7 @@ public class Owner extends Person {
             .append("namesakeCount", this.namesakeCount)
             .append("householdSize", this.householdSize)
             .append("bulkSignupWarning", this.bulkSignupWarning)
+            .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("birthDate", this.birthDate)
             .toString();
     }

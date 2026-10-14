@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -259,6 +260,21 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findByTelephone(owner.getTelephone()).stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
                 && existing.getIdentityKey().equals(identityKey));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException {
+        if (owner.getLastName() == null || owner.getPostcode() == null) {
+            return null;
+        }
+        return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
+            .filter(existing -> !existing.getId().equals(owner.getId())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compare)
+            .orElse(null);
     }
 
     @Override

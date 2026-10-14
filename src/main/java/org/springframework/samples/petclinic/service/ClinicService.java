@@ -63,6 +63,11 @@ public interface ClinicService {
 	 */
 	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
 	/**
+	 * Finds the id of the earliest other owner with the same last name (compared case-insensitively) and postcode
+	 * as the given owner but a different telephone, or null when there is none.
+	 */
+	Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException;
+	/**
 	 * Counts the owners whose city equals the given city, compared case-insensitively.
 	 */
 	long countOwnersInCity(String city) throws DataAccessException;

@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -148,6 +149,7 @@ public interface OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);

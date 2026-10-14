@@ -155,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(registrationDate);
         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
+        owner.setPossibleDuplicateOf(this.clinicService.findPossibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
                 + "registrationDate={}, membershipLevel={}",
