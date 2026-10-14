@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 2d2362a42..289bfcae6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+@@ -245,4 +246,21 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityCapacityExceededException} thrown when the owner's city is already at capacity.
++     *
++     * @param e The {@link CityCapacityExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} describing the full city, with a 409 Conflict status.
++     */
++    @ExceptionHandler(CityCapacityExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        detail.setProperty("city", e.getCity());
++        detail.setProperty("capacity", e.getCapacity());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ada2519cc..643482680 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+@@ -61,6 +62,9 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
++    static final int CITY_CAPACITY = 50;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -124,6 +128,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), address)) {
+             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+         }
++        if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
++            throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
++        }
+         if (sharesHousehold) {
+             this.clinicService.joinHousehold(owner);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityExceededException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityExceededException.java
+new file mode 100644
+index 000000000..a39c5aecc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityExceededException.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when a new owner's city already contains the maximum number of owners.
++ */
++public class CityCapacityExceededException extends RuntimeException {
++
++    private final String city;
++
++    private final int capacity;
++
++    public CityCapacityExceededException(String city, int capacity) {
++        super("The owner's city already contains the maximum number of owners");
++        this.city = city;
++        this.capacity = capacity;
++    }
++
++    public String getCity() {
++        return city;
++    }
++
++    public int getCapacity() {
++        return capacity;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 365438fec..953079bf8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,10 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
+ 	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
++	/**
++	 * Counts the owners whose city equals the given city, compared case-insensitively.
++	 */
++	long countOwnersInCity(String city) throws DataAccessException;
+ 	/**
+ 	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
+ 	 * giving them all the same household ID. Does nothing when there are no such owners.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4632783e1..05f959129 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -257,6 +257,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return !findHouseholdMembers(lastName, address).isEmpty();
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public long countOwnersInCity(String city) throws DataAccessException {
++        return ownerRepository.countByCityIgnoringCase(lowerCase(city));
++    }
++
+     @Override
+     @Transactional
+     public void joinHousehold(Owner owner) throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f1e42c462..4cd5875e2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -89,6 +89,14 @@ paths:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ProblemDetail'
++        409:
++          description: >-
++            Conflict: the telephone number or household is already in use, or the owner's city
++            already contains 50 or more owners.
++          content:
++            application/json:
++              schema:
++                $ref: '#/components/schemas/ProblemDetail'
+         500:
+           description: Server error.
+           content:
