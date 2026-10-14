@@ -83,6 +83,14 @@ public interface OwnerRepository {
     long countByFirstNameAndLastNameIgnoringCase(String firstName, String lastName) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s whose city, compared case-insensitively, equals the given city.
+     *
+     * @param city the lower-cased city to search for
+     * @return the number of matching owners
+     */
+    long countByCityIgnoringCase(String city) throws DataAccessException;
+
+    /**
      * Count all <code>Owner</code>s in the data store.
      *
      * @return the number of owners

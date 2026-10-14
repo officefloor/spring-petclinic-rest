@@ -236,7 +236,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
-            owner.setCustomerCode(customerCode(owner.getLastName(), ownerRepository.count() + 1));
+            owner.setCustomerCode(customerCode(owner.getCity(), owner.getLastName(),
+                ownerRepository.countByCityIgnoringCase(lowerCase(owner.getCity())) + 1));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
         }
@@ -316,16 +317,21 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds a customer code '&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of the
-     * last name followed by the zero-padded sequence number.
+     * Builds a customer code '&lt;CITY3&gt;-&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of
+     * the city, the upper-cased first three letters of the last name and the zero-padded per-city
+     * sequence number.
      */
-    private static String customerCode(String lastName, long sequence) {
-        String letters = lastName == null ? "" : lastName.codePoints()
+    private static String customerCode(String city, String lastName, long sequence) {
+        return String.format("%s-%s-%04d", firstThreeLetters(city), firstThreeLetters(lastName), sequence);
+    }
+
+    private static String firstThreeLetters(String value) {
+        String letters = value == null ? "" : value.codePoints()
             .filter(Character::isLetter)
             .limit(3)
             .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
             .toString();
-        return String.format("%s-%04d", letters.toUpperCase(Locale.ROOT), sequence);
+        return letters.toUpperCase(Locale.ROOT);
     }
 
     private <T> T findEntityById(Supplier<T> supplier) {

@@ -164,6 +164,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByCityIgnoringCase(String city) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("city", city);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE LOWER(city) = :city", params, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Long count = this.namedParameterJdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM owners", new HashMap<String, Object>(), Long.class);

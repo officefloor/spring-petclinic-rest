@@ -114,6 +114,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByCityIgnoringCase(String city) {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = :city");
+        query.setParameter("city", city);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public long count() {
         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
     }
