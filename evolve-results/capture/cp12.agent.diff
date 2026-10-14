@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 792370def..ada2519cc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFiel
+ import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+ import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -116,10 +117,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.ownerTelephoneExists(telephone)) {
+             throw new DuplicateTelephoneException(telephone);
+         }
++        String address = AddressNormalizer.normalize(ownerFieldsDto.getAddress());
++        owner.setAddress(address);
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         if (!sharesHousehold
+-            && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
+-            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
++            && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), address)) {
++            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+         }
+         if (sharesHousehold) {
+             this.clinicService.joinHousehold(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/RequiredOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/RequiredOwnerFields.java
+index a9290ccb8..76e552bea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/RequiredOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/RequiredOwnerFields.java
+@@ -6,9 +6,11 @@ import java.util.List;
+ import java.util.Map;
+ 
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ 
+ /**
+- * Determines which of the fields required to create an owner are missing or blank.
++ * Determines which of the fields required to create an owner are missing or blank. The address is
++ * checked in its normalized form, so an address that is blank after normalization counts as missing.
+  */
+ public final class RequiredOwnerFields {
+ 
+@@ -23,7 +25,7 @@ public final class RequiredOwnerFields {
+         Map<String, String> required = new LinkedHashMap<>();
+         required.put("firstName", owner.getFirstName());
+         required.put("lastName", owner.getLastName());
+-        required.put("address", owner.getAddress());
++        required.put("address", AddressNormalizer.normalize(owner.getAddress()));
+         required.put("city", owner.getCity());
+         required.put("telephone", owner.getTelephone());
+         List<String> missing = new ArrayList<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 09e87555b..be9f669a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -274,11 +275,14 @@ public class ClinicServiceImpl implements ClinicService {
+         owner.setHouseholdId(householdId);
+     }
+ 
+-    /** Finds the owners with the same last name and address, ignoring case and runs of whitespace. */
++    /**
++     * Finds the owners with the same last name (ignoring case and runs of whitespace) and the same
++     * normalized address.
++     */
+     private List<Owner> findHouseholdMembers(String lastName, String address) {
+-        String normalizedAddress = normalizeForComparison(address);
++        String normalizedAddress = AddressNormalizer.normalize(address);
+         return ownerRepository.findByLastNameIgnoringCase(normalizeForComparison(lastName)).stream()
+-            .filter(existing -> normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
++            .filter(existing -> AddressNormalizer.normalize(existing.getAddress()).equals(normalizedAddress))
+             .toList();
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+new file mode 100644
+index 000000000..0d89551dd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Map;
++import java.util.regex.Pattern;
++import java.util.stream.Collectors;
++
++/**
++ * Normalizes owner addresses into a canonical form, used both for storage and for comparing addresses.
++ */
++public final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Trims the address, collapses runs of whitespace into a single space, upper-cases it and expands
++     * the whole-word abbreviations ST, RD and AVE (optionally followed by a '.') to STREET, ROAD and AVENUE.
++     *
++     * @param address the address as supplied
++     * @return the normalized address, empty if the address is {@code null} or blank
++     */
++    public static String normalize(String address) {
++        if (address == null || address.isBlank()) {
++            return "";
++        }
++        return WHITESPACE.splitAsStream(address.strip().toUpperCase(Locale.ROOT))
++            .map(AddressNormalizer::expand)
++            .collect(Collectors.joining(" "));
++    }
++
++    private static String expand(String word) {
++        String bare = word.endsWith(".") ? word.substring(0, word.length() - 1) : word;
++        return ABBREVIATIONS.getOrDefault(bare, word);
++    }
++}
