@@ -29,7 +29,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -157,8 +160,30 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            if (bindingResult.getTarget() instanceof OwnerFieldsDto owner) {
+                List<String> missingFields = RequiredOwnerFields.missingFields(owner);
+                if (!missingFields.isEmpty()) {
+                    detail.setProperty("errors", missingFields);
+                }
+            }
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingRequiredFieldsException} thrown when required fields are missing or blank.
+     *
+     * @param e The {@link MissingRequiredFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} whose {@code errors} property lists the missing fields, with a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingRequiredFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleMissingRequiredFieldsException(MissingRequiredFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
         return ResponseEntity.status(status).body(detail);
     }
 
