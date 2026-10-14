@@ -1,0 +1,201 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 99f26bdc7..2459b6a3e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceede
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
++import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+@@ -238,6 +239,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidEmailException} thrown when an owner's email address is at a disposable domain.
++     *
++     * @param e The {@link InvalidEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} describing the rejected email address, with a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
++        ValidationMessageDto message = new ValidationMessageDto(
++            "Field 'email' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
++            .putAdditionalProperty("field", "email")
++            .putAdditionalProperty("rejectedValue", rejectedValue)
++            .putAdditionalProperty("defaultMessage", e.getMessage());
++        detail.setProperty("schemaValidationErrors", List.of(message));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link InvalidRegistrationDateException} thrown when an owner's supplied registration date is invalid.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5ba306892..6434682a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
++import org.springframework.samples.petclinic.rest.validation.OwnerEmail;
+ import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
+ import org.springframework.samples.petclinic.rest.validation.OwnerRegistrationDate;
+ import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+@@ -131,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new MissingRequiredFieldsException(missingFields);
+         }
+         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
++        OwnerEmail.validate(ownerFieldsDto.getEmail());
+         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+@@ -181,6 +183,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         String telephone = OwnerTelephone.normalize(ownerFieldsDto.getTelephone());
+         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
++        OwnerEmail.validate(ownerFieldsDto.getEmail());
+         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java
+new file mode 100644
+index 000000000..74f5ba7b8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's email address is not acceptable, e.g. at a disposable email domain.
++ */
++public class InvalidEmailException extends RuntimeException {
++
++    private final String rejectedValue;
++
++    public InvalidEmailException(String rejectedValue, String message) {
++        super(message);
++        this.rejectedValue = rejectedValue;
++    }
++
++    public String getRejectedValue() {
++        return rejectedValue;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerEmail.java
+new file mode 100644
+index 000000000..292656cc2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerEmail.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Validates optional owner email addresses against a blocklist of disposable email domains.
++ */
++public final class OwnerEmail {
++
++    /** Disposable email domains; addresses at these domains or any of their subdomains are rejected. */
++    public static final Set<String> DISPOSABLE_DOMAINS = Set.of(
++        "mailinator.com",
++        "tempmail.com",
++        "guerrillamail.com");
++
++    private OwnerEmail() {
++    }
++
++    /**
++     * Checks an email address. An absent address is accepted; a present one must not belong to a
++     * domain in {@link #DISPOSABLE_DOMAINS} (or a subdomain of one), compared case-insensitively.
++     *
++     * @param email the email address as supplied in the request, may be {@code null}
++     * @throws InvalidEmailException if the address is at a disposable domain
++     */
++    public static void validate(String email) {
++        if (email == null) {
++            return;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++        if (domain.endsWith(".")) {
++            domain = domain.substring(0, domain.length() - 1);
++        }
++        for (String blocked : DISPOSABLE_DOMAINS) {
++            if (domain.equals(blocked) || domain.endsWith("." + blocked)) {
++                throw new InvalidEmailException(email, "Email domain '" + domain + "' is a disposable email domain");
++            }
++        }
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d5de29ec6..4fc02219e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2055,7 +2055,9 @@ components:
+           title: Email address
+           description: >-
+             The optional email address of the pet owner. When present it must be a syntactically
+-            valid address; it is stored and returned lower-cased.
++            valid address; it is stored and returned lower-cased. An address at a disposable
++            email domain (mailinator.com, tempmail.com, guerrillamail.com, or a subdomain of one)
++            is rejected with 400 Bad Request.
+           type: string
+           format: email
+           maxLength: 255
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/validation/OwnerEmailTests.java b/src/test/java/org/springframework/samples/petclinic/rest/validation/OwnerEmailTests.java
+new file mode 100644
+index 000000000..c90fff0eb
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/rest/validation/OwnerEmailTests.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import static org.assertj.core.api.Assertions.assertThatCode;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import org.junit.jupiter.api.Test;
++
++class OwnerEmailTests {
++
++    @Test
++    void acceptsAbsentEmail() {
++        assertThatCode(() -> OwnerEmail.validate(null)).doesNotThrowAnyException();
++    }
++
++    @Test
++    void acceptsNonDisposableDomains() {
++        assertThatCode(() -> {
++            OwnerEmail.validate("george.franklin@example.com");
++            OwnerEmail.validate("someone@notmailinator.com");
++            OwnerEmail.validate("someone@mailinator.com.au");
++        }).doesNotThrowAnyException();
++    }
++
++    @Test
++    void rejectsDisposableDomains() {
++        assertThatThrownBy(() -> OwnerEmail.validate("x@mailinator.com")).isInstanceOf(InvalidEmailException.class);
++        assertThatThrownBy(() -> OwnerEmail.validate("x@tempmail.com")).isInstanceOf(InvalidEmailException.class);
++        assertThatThrownBy(() -> OwnerEmail.validate("x@guerrillamail.com")).isInstanceOf(InvalidEmailException.class);
++    }
++
++    @Test
++    void rejectsDisposableDomainsCaseInsensitivelyAndSubdomains() {
++        assertThatThrownBy(() -> OwnerEmail.validate("X@MailInator.COM")).isInstanceOf(InvalidEmailException.class);
++        assertThatThrownBy(() -> OwnerEmail.validate("x@eu.mailinator.com")).isInstanceOf(InvalidEmailException.class);
++    }
++}
