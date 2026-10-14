@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 3a8af775c..30db4a219 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -82,6 +82,14 @@ public interface OwnerRepository {
+      */
+     long countByFirstNameAndLastNameIgnoringCase(String firstName, String lastName) throws DataAccessException;
+ 
++    /**
++     * Count the <code>Owner</code>s whose city, compared case-insensitively, equals the given city.
++     *
++     * @param city the lower-cased city to search for
++     * @return the number of matching owners
++     */
++    long countByCityIgnoringCase(String city) throws DataAccessException;
++
+     /**
+      * Count all <code>Owner</code>s in the data store.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a6d094214..a3f615ddb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -163,6 +163,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return count == null ? 0 : count;
+     }
+ 
++    @Override
++    public long countByCityIgnoringCase(String city) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("city", city);
++        Long count = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE LOWER(city) = :city", params, Long.class);
++        return count == null ? 0 : count;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Long count = this.namedParameterJdbcTemplate.queryForObject(
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 9d3d26b11..ab2313815 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -113,6 +113,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult();
+     }
+ 
++    @Override
++    public long countByCityIgnoringCase(String city) {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = :city");
++        query.setParameter("city", city);
++        return (long) query.getSingleResult();
++    }
++
+     @Override
+     public long count() {
+         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 9ee317ebf..7deb0f853 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -69,6 +69,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Query("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.firstName) = :firstName AND LOWER(owner.lastName) = :lastName")
+     long countByFirstNameAndLastNameIgnoringCase(@Param("firstName") String firstName, @Param("lastName") String lastName);
+ 
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = :city")
++    long countByCityIgnoringCase(@Param("city") String city);
++
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index ee53f8dd0..4632783e1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -236,7 +236,8 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+         if (owner.isNew()) {
+-            owner.setCustomerCode(customerCode(owner.getLastName(), ownerRepository.count() + 1));
++            owner.setCustomerCode(customerCode(owner.getCity(), owner.getLastName(),
++                ownerRepository.countByCityIgnoringCase(lowerCase(owner.getCity())) + 1));
+             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
+                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
+         }
+@@ -316,16 +317,21 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Builds a customer code '&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of the
+-     * last name followed by the zero-padded sequence number.
++     * Builds a customer code '&lt;CITY3&gt;-&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of
++     * the city, the upper-cased first three letters of the last name and the zero-padded per-city
++     * sequence number.
+      */
+-    private static String customerCode(String lastName, long sequence) {
+-        String letters = lastName == null ? "" : lastName.codePoints()
++    private static String customerCode(String city, String lastName, long sequence) {
++        return String.format("%s-%s-%04d", firstThreeLetters(city), firstThreeLetters(lastName), sequence);
++    }
++
++    private static String firstThreeLetters(String value) {
++        String letters = value == null ? "" : value.codePoints()
+             .filter(Character::isLetter)
+             .limit(3)
+             .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+             .toString();
+-        return String.format("%s-%04d", letters.toUpperCase(Locale.ROOT), sequence);
++        return letters.toUpperCase(Locale.ROOT);
+     }
+ 
+     private <T> T findEntityById(Supplier<T> supplier) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a089cd929..9375c81da 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2105,11 +2105,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                Assigned on create as '<LAST3>-<NNNN>': the upper-cased first three letters of the
+-                last name, a dash, and a global 4-digit zero-padded sequence equal to one more than
+-                the number of owners existing at creation time.
++                Assigned on create as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three letters
++                of the city, a dash, the upper-cased first three letters of the last name, a dash, and
++                a per-city 4-digit zero-padded sequence equal to one more than the number of owners
++                already in that city (compared case-insensitively) at creation time.
+               type: string
+-              example: 'FRA-0011'
++              example: 'MAD-FRA-0002'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2135,10 +2136,10 @@ components:
+               title: Membership number
+               description: >-
+                 Formatted as '<customerCode>-M<YY>' where YY is the last two digits of the
+-                registration date's year, e.g. 'SMI-0007-M26'. Absent when the owner has no
++                registration date's year, e.g. 'SYD-SMI-0007-M26'. Absent when the owner has no
+                 customer code or registration date.
+               type: string
+-              example: 'FRA-0011-M20'
++              example: 'MAD-FRA-0002-M20'
+               readOnly: true
+             membershipTier:
+               title: Membership tier
