@@ -1,0 +1,239 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2c17b7a4d..bec1bc674 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -45,9 +45,17 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
++    @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * '&lt;title&gt; &lt;lastName&gt;', or just the last name when the owner has no title.
++     */
++    default String toSalutation(Owner owner) {
++        return owner.getTitle() == null ? owner.getLastName() : owner.getTitle() + " " + owner.getLastName();
++    }
++
+     /**
+      * The stored E.164 telephone formatted for humans, e.g. '+61 412 345 678'.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 18a96b27a..28cbb2a44 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,10 @@ public class Owner extends Person {
+     @Column(name = "birth_date", columnDefinition = "DATE")
+     private LocalDate birthDate;
+ 
++    @Column(name = "title")
++    @Pattern(regexp = "^(MR|MRS|MS|DR)$", message = "Title must be one of MR, MRS, MS, DR")
++    private String title;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -226,6 +230,14 @@ public class Owner extends Person {
+         this.birthDate = birthDate;
+     }
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+@@ -309,6 +321,7 @@ public class Owner extends Person {
+             .append("bulkSignupWarning", this.bulkSignupWarning)
+             .append("possibleDuplicateOf", this.possibleDuplicateOf)
+             .append("birthDate", this.birthDate)
++            .append("title", this.title)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index ecd32a5b6..dad8fddeb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -84,7 +84,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -99,7 +99,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -123,7 +123,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -139,7 +139,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("telephone", telephone);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners WHERE telephone = :telephone",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners WHERE telephone = :telephone",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+@@ -149,7 +149,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName);
+         return this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners WHERE LOWER(last_name) = :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners WHERE LOWER(last_name) = :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+@@ -232,7 +232,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email, postcode=:postcode, address_line1=:addressLine1, address_line2=:addressLine2, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning, possible_duplicate_of=:possibleDuplicateOf, birth_date=:birthDate, title=:title WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -258,7 +258,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -273,7 +273,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, address_line1 AS addressLine1, address_line2 AS addressLine2, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning, possible_duplicate_of, birth_date, title FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ca94a5e30..9ec5a0f2c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -198,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (ownerFieldsDto.getBirthDate() != null) {
+             currentOwner.setBirthDate(ownerFieldsDto.getBirthDate());
+         }
++        currentOwner.setTitle(ownerFieldsDto.getTitle() == null ? null : ownerFieldsDto.getTitle().getValue());
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 3758832ec..4923c78f9 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  birth_date DATE
++  birth_date DATE,
++  title VARCHAR(3)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0745d0b79..44bbc6019 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,7 +53,8 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  birth_date DATE
++  birth_date DATE,
++  title VARCHAR(3)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 5f1656b1a..7cdd54086 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
++  title VARCHAR(3),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a9ef51873..88b2a8a8c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+-                                      birth_date DATE
++                                      birth_date DATE,
++                                      title VARCHAR(3)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3d3d7a4ea..126ffb517 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,17 @@ components:
+           type: string
+           format: date
+           example: '1990-01-01'
++        title:
++          title: Title
++          description: >-
++            The optional honorific of the pet owner, used to compose 'salutation'.
++          type: string
++          enum:
++            - MR
++            - MRS
++            - MS
++            - DR
++          example: 'DR'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2258,6 +2269,14 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's title followed by a space and the last name, e.g. 'DR Franklin'; just
++                the last name when the owner has no title.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
