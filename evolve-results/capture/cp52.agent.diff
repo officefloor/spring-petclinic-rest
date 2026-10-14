@@ -1,0 +1,423 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b2771fa5f..e2c4983ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,12 +16,16 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.Soundex;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.*;
+ 
+@@ -212,15 +216,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The derived identity used for duplicate detection on create:
+-     * '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;householdId or empty&gt;', with the email lower-cased.
+-     * Two owners are duplicates only when their whole identity keys are equal.
++     * The derived identity used for duplicate detection on create: the lower-case hex SHA-256 of the
++     * UTF-8 bytes of '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;soundex(lastName)&gt;', with the
++     * email lower-cased. Two owners are duplicates only when their identity keys are equal.
+      */
+     @Transient
+     public String getIdentityKey() {
+-        return (this.telephone == null ? "" : this.telephone)
++        String identity = (this.telephone == null ? "" : this.telephone)
+             + "|" + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT))
+-            + "|" + (this.householdId == null ? "" : this.householdId);
++            + "|" + Soundex.of(getLastName());
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest);
++        } catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 is not available", e);
++        }
+     }
+ 
+     public Boolean getBulkSignupWarning() {
+@@ -232,8 +242,8 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The id of an existing owner this owner may duplicate (same last name and postcode, different
+-     * telephone), assigned on create; null when there is no such owner.
++     * The id of an existing owner this owner may duplicate (same soundex of the last name and same
++     * postcode, different identity key), assigned on create; null when there is no such owner.
+      */
+     public Integer getPossibleDuplicateOf() {
+         return this.possibleDuplicateOf;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 2459b6a3e..db30196d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -33,7 +33,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
+@@ -299,23 +298,6 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
+-    /**
+-     * Handles {@link DuplicateHouseholdException} thrown when an owner of the same household already exists
+-     * and the new owner does not declare that it shares the household.
+-     *
+-     * @param e The {@link DuplicateHouseholdException} to be handled
+-     * @param request {@link HttpServletRequest} object referring to the current request.
+-     * @return A {@link ResponseEntity} describing the conflicting household, with a 409 Conflict status.
+-     */
+-    @ExceptionHandler(DuplicateHouseholdException.class)
+-    @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+-        HttpStatus status = HttpStatus.CONFLICT;
+-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+-        detail.setProperty("householdId", e.getHouseholdId());
+-        return ResponseEntity.status(status).body(detail);
+-    }
+-
+     /**
+      * Handles {@link CityCapacityExceededException} thrown when the owner's city is already at capacity.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d05b0e833..af9df726e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,7 +42,6 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+ import org.springframework.samples.petclinic.rest.validation.OwnerEmail;
+@@ -146,13 +145,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         applyAddress(owner, ownerFieldsDto);
+-        // The householdId is derived from (lastName, postcode) and is part of the identity key. An
+-        // existing household blocks the create unless the new owner declares it shares the household.
++        // Duplicate detection uses the identity key alone (telephone, email, soundex of the last name).
+         owner.setHouseholdId(this.clinicService.householdIdOf(owner));
+         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (!declaredHouseholdMember && this.clinicService.householdExists(owner)) {
+-            throw new DuplicateHouseholdException(owner.getHouseholdId());
+-        }
+         if (this.clinicService.ownerIdentityKeyExists(owner)) {
+             throw new DuplicateIdentityException(owner.getIdentityKey());
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateHouseholdException.java
+deleted file mode 100644
+index 8486b5056..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateHouseholdException.java
++++ /dev/null
+@@ -1,19 +0,0 @@
+-package org.springframework.samples.petclinic.rest.validation;
+-
+-/**
+- * Thrown when a new owner belongs to the household of an existing owner (same last name and postcode)
+- * without declaring that it shares the household.
+- */
+-public class DuplicateHouseholdException extends RuntimeException {
+-
+-    private final String householdId;
+-
+-    public DuplicateHouseholdException(String householdId) {
+-        super("An owner with the same last name and postcode already exists; set 'sharesHousehold' to join the household");
+-        this.householdId = householdId;
+-    }
+-
+-    public String getHouseholdId() {
+-        return householdId;
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateIdentityException.java
+index 9852f507c..be68ab0aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateIdentityException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateIdentityException.java
+@@ -1,14 +1,14 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ /**
+- * Thrown when a new owner's identity key (telephone, email and household) equals an existing owner's.
++ * Thrown when a new owner's identity key (telephone, email and soundex of the last name) equals an existing owner's.
+  */
+ public class DuplicateIdentityException extends RuntimeException {
+ 
+     private final String identityKey;
+ 
+     public DuplicateIdentityException(String identityKey) {
+-        super("An owner with the same telephone number, email and household already exists");
++        super("An owner with the same telephone number, email and last name already exists");
+         this.identityKey = identityKey;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index f43e31259..6d6550b0b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -65,12 +65,12 @@ public interface ClinicService {
+ 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	/**
+-	 * Checks whether another non-deleted owner has the same identity key (telephone, email and household ID) as the given owner.
++	 * Checks whether another non-deleted owner has the same identity key (see {@link Owner#getIdentityKey()}) as the given owner.
+ 	 */
+ 	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
+ 	/**
+-	 * Finds the id of the earliest other non-deleted owner in the given owner's household (see {@link #householdIdOf(Owner)})
+-	 * but with a different telephone, or null when there is none.
++	 * Finds the id of the earliest other non-deleted owner with the same soundex of the last name and the same postcode
++	 * but a different identity key, or null when there is none.
+ 	 */
+ 	Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException;
+ 	/**
+@@ -81,10 +81,6 @@ public interface ClinicService {
+ 	 * Counts the owners whose registration date equals the given date.
+ 	 */
+ 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
+-	/**
+-	 * Checks whether an existing non-deleted owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
+-	 */
+-	boolean householdExists(Owner owner) throws DataAccessException;
+ 	/**
+ 	 * Finds the non-deleted owners, other than the given owner, that belong to the given owner's household
+ 	 * (see {@link #householdIdOf(Owner)}); empty when the owner has no household ID.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4012a1fe3..31006b058 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
++import org.springframework.samples.petclinic.util.Soundex;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -34,7 +35,6 @@ import java.util.Collection;
+ import java.util.HexFormat;
+ import java.util.List;
+ import java.util.Locale;
+-import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
+ 
+@@ -272,15 +272,17 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional(readOnly = true)
+     public Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException {
+-        String householdId = householdIdOf(owner);
+-        if (householdId == null) {
++        String soundex = Soundex.of(owner.getLastName());
++        if (soundex.isEmpty() || owner.getPostcode() == null) {
+             return null;
+         }
+-        return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
++        String identityKey = owner.getIdentityKey();
++        return ownerRepository.findAll().stream()
+             .filter(existing -> !existing.getId().equals(owner.getId())
+                 && !existing.isDeleted()
+-                && householdId.equals(existing.getHouseholdId())
+-                && !Objects.equals(owner.getTelephone(), existing.getTelephone()))
++                && owner.getPostcode().equals(existing.getPostcode())
++                && soundex.equals(Soundex.of(existing.getLastName()))
++                && !identityKey.equals(existing.getIdentityKey()))
+             .map(Owner::getId)
+             .min(Integer::compare)
+             .orElse(null);
+@@ -298,13 +300,6 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.countByRegistrationDate(registrationDate);
+     }
+ 
+-    @Override
+-    @Transactional(readOnly = true)
+-    public boolean householdExists(Owner owner) throws DataAccessException {
+-        String householdId = householdIdOf(owner);
+-        return householdId != null && ownerRepository.countNotDeletedByHouseholdId(householdId) > 0;
+-    }
+-
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findHouseholdMembers(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..b8fa662cf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,53 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++
++/**
++ * American Soundex phonetic codes, e.g. 'Robert' and 'Rupert' both become 'R163'.
++ */
++public final class Soundex {
++
++    /** Soundex digit for each letter A-Z; '0' marks vowels and 'Y', '-' marks 'H' and 'W'. */
++    private static final String CODES = "0123012-02245501262301-202";
++
++    private Soundex() {
++    }
++
++    /**
++     * The Soundex code of a name: its first letter followed by three digits for the following
++     * consonants, padded with zeros. Non-letters are ignored; adjacent letters with the same digit,
++     * including those separated only by 'H' or 'W', are coded once, while vowels separate them.
++     *
++     * @param name the name, may be {@code null}
++     * @return the four-character code, or the empty string when the name contains no letter A-Z
++     */
++    public static String of(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char previous = codeOf(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char digit = codeOf(letters.charAt(i));
++            if (digit == '-') {
++                continue;
++            }
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            previous = digit;
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static char codeOf(char letter) {
++        return CODES.charAt(letter - 'A');
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 437beb825..c492db4c4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -109,9 +109,8 @@ paths:
+                 $ref: '#/components/schemas/ProblemDetail'
+         409:
+           description: >-
+-            Conflict: an owner with the same 'identityKey' (telephone, email and household ID)
+-            already exists, an owner of the same household (last name and postcode) already exists
+-            and 'sharesHousehold' is not set, or the owner's city already contains 50 or more owners.
++            Conflict: a non-deleted owner with the same 'identityKey' (telephone, email and soundex
++            of the last name) already exists, or the owner's city already contains 50 or more owners.
+           content:
+             application/json:
+               schema:
+@@ -2148,10 +2147,9 @@ components:
+           title: Shares household
+           description: >-
+             Set to true on create to declare that the new owner shares the household of existing
+-            owners with the same last name and postcode (see 'householdId'). Without it, creating an
+-            owner whose household already has members is rejected with 409 Conflict; with it, the
+-            owner is created as a household member and is not flagged as a possible duplicate. It
+-            does not affect the 'householdId' itself. Not stored.
++            owners with the same last name and postcode (see 'householdId'). With it, the owner is
++            not flagged as a possible duplicate. It does not affect the 'householdId' itself or
++            duplicate detection by 'identityKey'. Not stored.
+           type: boolean
+           writeOnly: true
+           example: false
+@@ -2235,14 +2233,14 @@ components:
+             identityKey:
+               title: Identity key
+               description: >-
+-                Derived identity used for duplicate detection, formatted as
+-                '<telephone>|<email>|<householdId>' from the normalized telephone, the lower-cased
+-                email (empty when absent) and the household ID (empty when absent). Creating an owner
+-                whose whole identity key equals an existing owner's is rejected with 409 Conflict;
+-                owners differing in any part, e.g. household members with different telephones, are
+-                allowed.
++                Derived identity used for duplicate detection: the lower-case hex SHA-256 of the
++                UTF-8 bytes of '<telephone>|<email>|<soundex(lastName)>' from the normalized
++                telephone, the lower-cased email (empty when absent) and the American Soundex code of
++                the last name. Creating an owner whose identity key equals a non-deleted existing
++                owner's is rejected with 409 Conflict; owners differing in any part, e.g. household
++                members with different telephones, are allowed.
+               type: string
+-              example: '+61412345678|george.franklin@example.com|'
++              example: '83c78b3283d9be11f917bcfc3fca0261f0f27763ac18f49e229c21eacf988837'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
+@@ -2339,9 +2337,9 @@ components:
+               title: Possible duplicate
+               description: >-
+                 Assigned on create: true when the owner is not a duplicate by identity key but an
+-                existing owner has the same 'householdId' with a different telephone; the owner is
+-                still created. Always false for declared household members ('sharesHousehold'), and
+-                since an undeclared owner of an existing household is rejected, false in practice.
++                existing non-deleted owner has the same Soundex code of the last name and the same
++                postcode, e.g. a household member with a different telephone; the owner is still
++                created. Always false for declared household members ('sharesHousehold').
+               type: boolean
+               example: false
+               readOnly: true
+diff --git a/src/test/java/org/springframework/samples/petclinic/util/SoundexTests.java b/src/test/java/org/springframework/samples/petclinic/util/SoundexTests.java
+new file mode 100644
+index 000000000..38c6542c4
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/util/SoundexTests.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.util;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import org.junit.jupiter.api.Test;
++
++class SoundexTests {
++
++    @Test
++    void codesStandardExamples() {
++        assertThat(Soundex.of("Robert")).isEqualTo("R163");
++        assertThat(Soundex.of("Rupert")).isEqualTo("R163");
++        assertThat(Soundex.of("Rubin")).isEqualTo("R150");
++        assertThat(Soundex.of("Tymczak")).isEqualTo("T522");
++        assertThat(Soundex.of("Pfister")).isEqualTo("P236");
++        assertThat(Soundex.of("Honeyman")).isEqualTo("H555");
++    }
++
++    @Test
++    void lettersSeparatedByHOrWAreCodedOnce() {
++        assertThat(Soundex.of("Ashcraft")).isEqualTo("A261");
++        assertThat(Soundex.of("Ashcroft")).isEqualTo("A261");
++    }
++
++    @Test
++    void ignoresCaseAndNonLetters() {
++        assertThat(Soundex.of("o'brien")).isEqualTo(Soundex.of("OBrien"));
++        assertThat(Soundex.of("Smith")).isEqualTo(Soundex.of("Smyth"));
++    }
++
++    @Test
++    void emptyWithoutLetters() {
++        assertThat(Soundex.of(null)).isEmpty();
++        assertThat(Soundex.of("")).isEmpty();
++        assertThat(Soundex.of("123")).isEmpty();
++    }
++}
