@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 37dfd6997..98c91ac6f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
++    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+@@ -85,6 +86,34 @@ public interface OwnerMapper {
+             Math.floorMod(owner.getRegistrationDate().getYear(), 100));
+     }
+ 
++    /**
++     * The Luhn check digit over the digits of the customer code, ignoring non-digit characters.
++     */
++    default Integer toCheckDigit(Owner owner) {
++        String code = owner.getCustomerCode();
++        if (code == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean doubled = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubled) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubled = !doubled;
++        }
++        return (10 - sum % 10) % 10;
++    }
++
+     default String toInitials(Owner owner) {
+         return initial(owner.getFirstName()) + initial(owner.getLastName());
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ce32d1d50..33b3311fa 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2140,6 +2140,17 @@ components:
+               type: string
+               example: 'MAD-FRA-0002'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                The Luhn check digit (0-9) computed over the digits contained in 'customerCode',
++                ignoring all non-digit characters. Absent when the owner has no customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 6
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
