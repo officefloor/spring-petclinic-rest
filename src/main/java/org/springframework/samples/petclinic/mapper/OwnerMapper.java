@@ -27,6 +27,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
@@ -83,6 +84,34 @@ public interface OwnerMapper {
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
             Math.floorMod(owner.getRegistrationDate().getYear(), 100));
+    }
+
+    /**
+     * The Luhn check digit over the digits of the customer code, ignoring non-digit characters.
+     */
+    default Integer toCheckDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean doubled = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubled) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubled = !doubled;
+        }
+        return (10 - sum % 10) % 10;
     }
 
     default String toInitials(Owner owner) {
