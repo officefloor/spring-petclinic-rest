@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.audit.AuditEventPublisher;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -88,14 +89,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final AuditEventPublisher auditEventPublisher;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 AuditEventPublisher auditEventPublisher) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.auditEventPublisher = auditEventPublisher;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -176,6 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
             ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
+        this.auditEventPublisher.ownerCreated(owner, ownerMapper.toMembershipLevel(owner));
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);
     }
 
