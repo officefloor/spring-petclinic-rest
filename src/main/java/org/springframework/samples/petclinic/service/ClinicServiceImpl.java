@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -261,6 +262,12 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countOwnersInCity(String city) throws DataAccessException {
         return ownerRepository.countByCityIgnoringCase(lowerCase(city));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(registrationDate);
     }
 
     @Override

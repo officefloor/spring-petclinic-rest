@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
@@ -64,6 +65,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
     static final int CITY_CAPACITY = 50;
+
+    /** Maximum number of owners that may be created (by registration date) per day; further creates are rejected. */
+    static final int DAILY_OWNER_LIMIT = 100;
 
     private final ClinicService clinicService;
 
@@ -130,6 +134,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
             throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
+        }
+        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitExceededException(DAILY_OWNER_LIMIT);
         }
         if (sharesHousehold) {
             this.clinicService.joinHousehold(owner);

@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -260,6 +261,22 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         detail.setProperty("city", e.getCity());
         detail.setProperty("capacity", e.getCapacity());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyOwnerLimitExceededException} thrown when the daily owner creation limit has been reached.
+     *
+     * @param e The {@link DailyOwnerLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} describing the exceeded limit, with a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitExceededException(DailyOwnerLimitExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("limit", e.getLimit());
         return ResponseEntity.status(status).body(detail);
     }
 

@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -63,6 +64,10 @@ public interface ClinicService {
 	 * Counts the owners whose city equals the given city, compared case-insensitively.
 	 */
 	long countOwnersInCity(String city) throws DataAccessException;
+	/**
+	 * Counts the owners whose registration date equals the given date.
+	 */
+	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 	/**
 	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
 	 * giving them all the same household ID. Does nothing when there are no such owners.

@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -89,6 +90,14 @@ public interface OwnerRepository {
      * @return the number of matching owners
      */
     long countByCityIgnoringCase(String city) throws DataAccessException;
+
+    /**
+     * Count the <code>Owner</code>s whose registration date equals the given date.
+     *
+     * @param registrationDate the registration date to search for
+     * @return the number of matching owners
+     */
+    long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 
     /**
      * Count all <code>Owner</code>s in the data store.
