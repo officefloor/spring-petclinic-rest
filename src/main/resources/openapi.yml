@@ -92,7 +92,8 @@ paths:
         409:
           description: >-
             Conflict: an owner with the same 'identityKey' (telephone, email and household ID)
-            already exists, or the owner's city already contains 50 or more owners.
+            already exists, an owner of the same household (last name and postcode) already exists
+            and 'sharesHousehold' is not set, or the owner's city already contains 50 or more owners.
           content:
             application/json:
               schema:
@@ -2091,10 +2092,11 @@ components:
         sharesHousehold:
           title: Shares household
           description: >-
-            Set to true on create to join the household of existing owners with the same last name
-            and address (compared case-insensitively with collapsed whitespace). When such owners
-            exist, the new owner joins their household and all of them share the same 'householdId'.
-            Not stored.
+            Set to true on create to declare that the new owner shares the household of existing
+            owners with the same last name and postcode (see 'householdId'). Without it, creating an
+            owner whose household already has members is rejected with 409 Conflict; with it, the
+            owner is created as a household member and is not flagged as a possible duplicate. It
+            does not affect the 'householdId' itself. Not stored.
           type: boolean
           writeOnly: true
           example: false
@@ -2163,12 +2165,12 @@ components:
             householdId:
               title: Household ID
               description: >-
-                Stable identifier shared by owners in the same household. Assigned when an owner is
-                created with 'sharesHousehold' set to true at the address of an existing owner with the
-                same last name; the existing household's ID is reused, or a new one is generated and
-                also given to the existing owners. Absent for owners not in a shared household.
+                Deterministic identifier shared by owners in the same household: the first 12
+                lower-case hex characters of the SHA-256 of '<lastName>|<postcode>', with the last
+                name trimmed, whitespace-collapsed and lower-cased. Owners with the same last name and
+                postcode therefore always share it. Absent for owners without a postcode.
               type: string
-              example: '3f2b8c1e-7a4d-4e8b-9c1a-2d5e6f7a8b9c'
+              example: '3f2b8c1e7a4d'
               readOnly: true
             identityKey:
               title: Identity key
@@ -2241,8 +2243,9 @@ components:
               title: Possible duplicate
               description: >-
                 Assigned on create: true when the owner is not a duplicate by identity key but an
-                existing owner has the same last name (compared case-insensitively) and postcode with a
-                different telephone; the owner is still created. Otherwise false.
+                existing owner has the same 'householdId' with a different telephone; the owner is
+                still created. Always false for declared household members ('sharesHousehold'), and
+                since an undeclared owner of an existing household is rejected, false in practice.
               type: boolean
               example: false
               readOnly: true

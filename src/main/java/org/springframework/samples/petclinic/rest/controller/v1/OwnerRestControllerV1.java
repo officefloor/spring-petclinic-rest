@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
@@ -136,10 +137,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
-        // Joining a household assigns the householdId that is part of the identity key; this
-        // method is transactional, so a later rejection rolls the household change back.
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            this.clinicService.joinHousehold(owner);
+        // The householdId is derived from (lastName, postcode) and is part of the identity key. An
+        // existing household blocks the create unless the new owner declares it shares the household.
+        owner.setHouseholdId(this.clinicService.householdIdOf(owner));
+        boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!declaredHouseholdMember && this.clinicService.householdExists(owner)) {
+            throw new DuplicateHouseholdException(owner.getHouseholdId());
         }
         if (this.clinicService.ownerIdentityKeyExists(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
@@ -155,7 +158,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(registrationDate);
         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
-        owner.setPossibleDuplicateOf(this.clinicService.findPossibleDuplicateOf(owner));
+        // A declared household member is not a suspected duplicate.
+        owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
                 + "registrationDate={}, membershipLevel={}",

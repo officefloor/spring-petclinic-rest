@@ -23,7 +23,6 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
-import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +36,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -242,6 +240,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        owner.setHouseholdId(householdIdOf(owner));
         if (owner.isNew()) {
             owner.setCustomerCode(customerCode(owner));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
@@ -265,12 +264,13 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException {
-        if (owner.getLastName() == null || owner.getPostcode() == null) {
+        String householdId = householdIdOf(owner);
+        if (householdId == null) {
             return null;
         }
         return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
             .filter(existing -> !existing.getId().equals(owner.getId())
-                && owner.getPostcode().equals(existing.getPostcode())
+                && householdId.equals(existing.getHouseholdId())
                 && !Objects.equals(owner.getTelephone(), existing.getTelephone()))
             .map(Owner::getId)
             .min(Integer::compare)
@@ -290,35 +290,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
-    @Transactional
-    public void joinHousehold(Owner owner) throws DataAccessException {
-        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        if (members.isEmpty()) {
-            return;
-        }
-        String householdId = members.stream()
-            .map(Owner::getHouseholdId)
-            .filter(id -> id != null && !id.isBlank())
-            .findFirst()
-            .orElseGet(() -> UUID.randomUUID().toString());
-        for (Owner member : members) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
-        owner.setHouseholdId(householdId);
+    @Transactional(readOnly = true)
+    public boolean householdExists(Owner owner) throws DataAccessException {
+        String householdId = householdIdOf(owner);
+        return householdId != null && ownerRepository.countByHouseholdId(householdId) > 0;
     }
 
-    /**
-     * Finds the owners with the same last name (ignoring case and runs of whitespace) and the same
-     * normalized address.
-     */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedAddress = AddressNormalizer.normalize(address);
-        return ownerRepository.findByLastNameIgnoringCase(normalizeForComparison(lastName)).stream()
-            .filter(existing -> AddressNormalizer.normalize(existing.getAddress()).equals(normalizedAddress))
-            .toList();
+    @Override
+    public String householdIdOf(Owner owner) {
+        if (owner.getLastName() == null || owner.getPostcode() == null) {
+            return null;
+        }
+        return sha256Hex(normalizeForComparison(owner.getLastName()) + "|" + owner.getPostcode()).substring(0, 12);
     }
 
     /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */

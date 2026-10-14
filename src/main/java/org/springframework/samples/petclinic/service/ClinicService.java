@@ -63,8 +63,8 @@ public interface ClinicService {
 	 */
 	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
 	/**
-	 * Finds the id of the earliest other owner with the same last name (compared case-insensitively) and postcode
-	 * as the given owner but a different telephone, or null when there is none.
+	 * Finds the id of the earliest other owner in the given owner's household (see {@link #householdIdOf(Owner)})
+	 * but with a different telephone, or null when there is none.
 	 */
 	Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException;
 	/**
@@ -76,10 +76,15 @@ public interface ClinicService {
 	 */
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 	/**
-	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
-	 * giving them all the same household ID. Does nothing when there are no such owners.
+	 * Checks whether an existing owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
 	 */
-	void joinHousehold(Owner owner) throws DataAccessException;
+	boolean householdExists(Owner owner) throws DataAccessException;
+	/**
+	 * Computes the owner's household ID: the first 12 lower-case hex characters of the SHA-256 of the UTF-8 bytes of
+	 * '&lt;normalizedLastName&gt;|&lt;postcode&gt;', where the last name is trimmed, whitespace-collapsed and
+	 * lower-cased. Null when the owner has no last name or no postcode.
+	 */
+	String householdIdOf(Owner owner);
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
