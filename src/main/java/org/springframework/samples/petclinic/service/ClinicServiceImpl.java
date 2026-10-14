@@ -258,6 +258,12 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public long countOwnersInCity(String city) throws DataAccessException {
+        return ownerRepository.countByCityIgnoringCase(lowerCase(city));
+    }
+
+    @Override
     @Transactional
     public void joinHousehold(Owner owner) throws DataAccessException {
         List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());

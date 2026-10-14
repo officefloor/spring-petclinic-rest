@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
@@ -60,6 +61,9 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
+    static final int CITY_CAPACITY = 50;
 
     private final ClinicService clinicService;
 
@@ -123,6 +127,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!sharesHousehold
             && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), address)) {
             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+        }
+        if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
+            throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
         }
         if (sharesHousehold) {
             this.clinicService.joinHousehold(owner);

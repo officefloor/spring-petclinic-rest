@@ -60,6 +60,10 @@ public interface ClinicService {
 	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
 	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
 	/**
+	 * Counts the owners whose city equals the given city, compared case-insensitively.
+	 */
+	long countOwnersInCity(String city) throws DataAccessException;
+	/**
 	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
 	 * giving them all the same household ID. Does nothing when there are no such owners.
 	 */
