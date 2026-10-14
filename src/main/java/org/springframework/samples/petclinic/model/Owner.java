@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
@@ -220,12 +221,14 @@ public class Owner extends Person {
 
     /**
      * The derived identity used for duplicate detection on create: the lower-case hex SHA-256 of the
-     * UTF-8 bytes of '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;soundex(lastName)&gt;', with the
+     * UTF-8 bytes of '&lt;regionCode&gt;|&lt;telephone&gt;|&lt;email or empty&gt;|&lt;soundex(lastName)&gt;',
+     * with the version-2 region code (see {@link OwnerIdentityVersion#regionCode(String, String)}) and the
      * email lower-cased. Two owners are duplicates only when their identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
-        String identity = (this.telephone == null ? "" : this.telephone)
+        String identity = OwnerIdentityVersion.regionCode(this.postcode, this.city)
+            + "|" + (this.telephone == null ? "" : this.telephone)
             + "|" + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT))
             + "|" + Soundex.of(getLastName());
         try {

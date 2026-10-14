@@ -22,8 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.util.MemberIds;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -320,7 +320,8 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getLastName() == null || owner.getPostcode() == null) {
             return null;
         }
-        return sha256Hex(normalizeForComparison(owner.getLastName()) + "|" + owner.getPostcode()).substring(0, 12);
+        return sha256Hex(OwnerIdentityVersion.regionCode(owner.getPostcode(), owner.getCity())
+            + "|" + normalizeForComparison(owner.getLastName()) + "|" + owner.getPostcode()).substring(0, 12);
     }
 
     /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */
@@ -366,17 +367,17 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds a member id '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;' (see {@link MemberIds}): the region derived
-     * from the postcode (see {@link OwnerPostcode#regionOf(String, String)}), the two-digit fiscal year of the
+     * Builds a member id '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;' (see {@link MemberIds}): the version-2 region
+     * code (see {@link OwnerIdentityVersion#regionCode(String, String)}), the two-digit fiscal year of the
      * registration date (today when absent), the first 8 upper-case hex characters of the SHA-256 of the
      * UTF-8 bytes of the normalized telephone followed by the last name, and the Luhn check digit.
      */
     private static String memberId(Owner owner) {
-        String region = OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
+        String regionCode = OwnerIdentityVersion.regionCode(owner.getPostcode(), owner.getCity());
         LocalDate registrationDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return MemberIds.of(region, registrationDate,
+        return MemberIds.of(regionCode, registrationDate,
             sha256Hex(telephone + lastName).substring(0, 8).toUpperCase(Locale.ROOT));
     }
 

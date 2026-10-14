@@ -5,14 +5,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Builds and parses member ids '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;': the upper-case region code, the
+ * Builds and parses member ids '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;': the region code, the
  * two-digit fiscal year (see {@link FiscalYears#twoDigit(LocalDate)}), the 8 upper-case hex HASH8 and a
  * Luhn check digit over the digits of '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;'. A member id may carry a
- * '-&lt;n&gt;' de-duplication suffix.
+ * '-&lt;n&gt;' de-duplication suffix. The region code is either a plain upper-case region (version 1) or a
+ * version-2 region code (see {@link OwnerIdentityVersion#regionCode(String)}); parsing always yields the
+ * plain region.
  */
 public final class MemberIds {
 
-    private static final Pattern MEMBER_ID = Pattern.compile("^([A-Z]+)([0-9]{2})([0-9A-F]{8})([0-9])(-[0-9]+)?$");
+    private static final Pattern MEMBER_ID = Pattern.compile("^(?:" + OwnerIdentityVersion.VERSION_TAG + ")?([A-Z]+)([0-9]{2})([0-9A-F]{8})([0-9])(-[0-9]+)?$");
 
     private MemberIds() {
     }
@@ -20,10 +22,10 @@ public final class MemberIds {
     /**
      * Builds the member id '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;'.
      *
-     * @param region           the region code, e.g. 'NSW'
+     * @param region           the region code, e.g. 'V2NSW'
      * @param registrationDate the date whose fiscal year forms the FY segment
      * @param hash8            the 8 upper-case hex characters
-     * @return the member id, e.g. 'NSW273FA9C27B4'
+     * @return the member id, e.g. 'V2NSW273FA9C27B0'
      */
     public static String of(String region, LocalDate registrationDate, String hash8) {
         String body = region + String.format("%02d", FiscalYears.twoDigit(registrationDate)) + hash8;
@@ -31,7 +33,8 @@ public final class MemberIds {
     }
 
     /**
-     * The REGION segment of a member id, or {@code null} when it is not a member id.
+     * The plain region of a member id's REGION segment, without any version tag, or {@code null} when it is
+     * not a member id.
      */
     public static String regionOf(String memberId) {
         Matcher m = match(memberId);

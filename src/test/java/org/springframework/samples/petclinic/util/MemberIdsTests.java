@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class MemberIdsTests {
@@ -25,9 +26,21 @@ class MemberIdsTests {
     }
 
     @Test
+    void buildsAndParsesVersionTwoRegionCode() {
+        // Luhn over the digits 2,2,7,3,9,2,7 of "V2NSW273FA9C27B" is 0.
+        String memberId = MemberIds.of(OwnerIdentityVersion.regionCode("NSW"), LocalDate.parse("2026-10-14"), "3FA9C27B");
+        assertEquals("V2NSW273FA9C27B0", memberId);
+        assertEquals("NSW", MemberIds.regionOf(memberId));
+        assertEquals("NSW", MemberIds.regionOf(memberId + "-3"));
+        assertEquals(27, MemberIds.fiscalYearOf(memberId));
+        assertNotEquals(MemberIds.of("NSW", LocalDate.parse("2026-10-14"), "3FA9C27B"), memberId);
+    }
+
+    @Test
     void rejectsOtherValues() {
         assertNull(MemberIds.regionOf(null));
         assertNull(MemberIds.regionOf("NSW-3FA9C27B"));
         assertNull(MemberIds.fiscalYearOf("NSW273FA9C27B"));
+        assertNull(MemberIds.regionOf("V3NSW273FA9C27B0"));
     }
 }

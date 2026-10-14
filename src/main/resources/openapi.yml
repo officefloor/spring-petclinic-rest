@@ -109,8 +109,8 @@ paths:
                 $ref: '#/components/schemas/ProblemDetail'
         409:
           description: >-
-            Conflict: a non-deleted owner with the same 'identityKey' (telephone, email and soundex
-            of the last name) already exists, or the owner's city already contains 50 or more owners.
+            Conflict: a non-deleted owner with the same 'identity.identityKey' (region code, telephone, email
+            and soundex of the last name) already exists, or the owner's city already contains 50 or more owners.
           content:
             application/json:
               schema:
@@ -2198,43 +2198,15 @@ components:
               type: string
               example: '/api/owners/1'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: >-
-                Assigned on create as '<REGION><FY><HASH8><CHK>': the region whose postcode range
-                contains the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099; when the postcode
-                is absent or in no range, the region of the city as for 'locality', otherwise
-                'UNKNOWN'); the last two digits of the fiscal year (see 'fiscalYear') containing the
-                registration date; the first 8 upper-case hex characters of SHA-256 over the UTF-8
-                bytes of the normalized telephone followed by the last name; and the Luhn check digit
-                (0-9) computed over the digits contained in '<REGION><FY><HASH8>'. When another owner
-                already has the computed member id, '-<n>' is appended with the smallest n >= 2 that
-                makes it unique.
-              type: string
-              example: 'NSW273FA9C27B4'
+            apiVersion:
+              title: API version
+              description: The version of the owner representation; always 2.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                Deterministic identifier shared by owners in the same household: the first 12
-                lower-case hex characters of the SHA-256 of '<lastName>|<postcode>', with the last
-                name trimmed, whitespace-collapsed and lower-cased. Owners with the same last name and
-                postcode therefore always share it. Absent for owners without a postcode.
-              type: string
-              example: '3f2b8c1e7a4d'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                Derived identity used for duplicate detection: the lower-case hex SHA-256 of the
-                UTF-8 bytes of '<telephone>|<email>|<soundex(lastName)>' from the normalized
-                telephone, the lower-cased email (empty when absent) and the American Soundex code of
-                the last name. Creating an owner whose identity key equals a non-deleted existing
-                owner's is rejected with 409 Conflict; owners differing in any part, e.g. household
-                members with different telephones, are allowed.
-              type: string
-              example: '83c78b3283d9be11f917bcfc3fca0261f0f27763ac18f49e229c21eacf988837'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: >-
@@ -2248,7 +2220,7 @@ components:
             fiscalYear:
               title: Fiscal year
               description: >-
-                'FY<YY>' where YY is the FY part of 'memberId'. For owners without a member id, the
+                'FY<YY>' where YY is the FY part of 'identity.memberId'. For owners without a member id, the
                 fiscal year containing the (business-day adjusted) registration date. A fiscal year
                 starts on 1 July and is named after the calendar year in which it ends, so 2026-07-01
                 through 2027-06-30 is 'FY27'. Absent when the owner has neither.
@@ -2286,7 +2258,8 @@ components:
             locality:
               title: Locality
               description: >-
-                The REGION part of 'memberId'. For owners without a member id, the region
+                The plain region (e.g. 'NSW', never carrying the version tag) of
+                'identity.memberId'. For owners without a member id, the region
                 whose postcode range contains the postcode, otherwise the region derived from the city
                 using the fixed table Sydney -> 'NSW', Melbourne -> 'VIC', Brisbane -> 'QLD';
                 'UNKNOWN' for any other city.
@@ -2377,7 +2350,7 @@ components:
               description: >-
                 '<TIER>_<AREA>': one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
                 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when 'membershipLevel' is 3 or more, otherwise
-                'STANDARD'. AREA is 'METRO' when 'locality' (the REGION part of 'memberId') is a known
+                'STANDARD'. AREA is 'METRO' when 'locality' (the plain region of the version-2 'identity.memberId') is a known
                 region ('NSW', 'VIC' or 'QLD'), otherwise 'REGIONAL'.
               type: string
               example: 'STANDARD_METRO'
@@ -2401,6 +2374,53 @@ components:
               readOnly: true
           required:
             - pets
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 identifiers. Each identifier is derived from the version-2 region code
+        'V2<REGION>': the fixed version tag 'V2' followed by the region whose postcode range contains
+        the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099; when the postcode is absent or in
+        no range, the region of the city as for 'locality', otherwise 'UNKNOWN'), e.g. 'V2NSW'. The
+        tag never appears in 'locality', 'timezone' or 'ownerSegment', which use the plain region.
+        No identifier produced under version 1 is produced again.
+      type: object
+      readOnly: true
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            Assigned on create as '<REGIONCODE><FY><HASH8><CHK>': the version-2 region code; the last
+            two digits of the fiscal year (see 'fiscalYear') containing the registration date; the
+            first 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of the normalized
+            telephone followed by the last name; and the Luhn check digit (0-9) computed over the
+            digits contained in '<REGIONCODE><FY><HASH8>'. When another owner already has the computed
+            member id, '-<n>' is appended with the smallest n >= 2 that makes it unique.
+          type: string
+          example: 'V2NSW273FA9C27B0'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            Deterministic identifier shared by owners in the same household: the first 12
+            lower-case hex characters of the SHA-256 of '<REGIONCODE>|<lastName>|<postcode>' from the
+            version-2 region code and the last name trimmed, whitespace-collapsed and lower-cased.
+            Owners with the same last name and postcode therefore always share it. Absent for owners
+            without a postcode.
+          type: string
+          example: '3f2b8c1e7a4d'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            Derived identity used for duplicate detection: the lower-case hex SHA-256 of the
+            UTF-8 bytes of '<REGIONCODE>|<telephone>|<email>|<soundex(lastName)>' from the version-2
+            region code, the normalized telephone, the lower-cased email (empty when absent) and the
+            American Soundex code of the last name. Creating an owner whose identity key equals a
+            non-deleted existing owner's is rejected with 409 Conflict; owners differing in any part,
+            e.g. household members with different telephones, are allowed.
+          type: string
+          example: '83c78b3283d9be11f917bcfc3fca0261f0f27763ac18f49e229c21eacf988837'
+          readOnly: true
     OwnerPage:
       title: Owner page
       description: A page of pet owners.

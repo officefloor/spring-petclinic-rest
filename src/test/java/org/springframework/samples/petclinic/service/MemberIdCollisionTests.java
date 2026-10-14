@@ -31,7 +31,7 @@ class MemberIdCollisionTests {
     void keepsComputedCodeWhenUnique() {
         Owner owner = newOwner();
         service.saveOwner(owner);
-        assertTrue(owner.getMemberId().matches("NSW[0-9]{2}[0-9A-F]{8}[0-9]"), owner.getMemberId());
+        assertTrue(owner.getMemberId().matches("V2NSW[0-9]{2}[0-9A-F]{8}[0-9]"), owner.getMemberId());
     }
 
     @Test

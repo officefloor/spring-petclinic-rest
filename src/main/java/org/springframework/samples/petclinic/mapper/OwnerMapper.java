@@ -7,11 +7,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.util.FiscalYears;
 import org.springframework.samples.petclinic.util.MemberIds;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
@@ -21,7 +23,7 @@ import java.util.Map;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class)
+@Mapper(uses = PetMapper.class, imports = OwnerIdentityVersion.class)
 public interface OwnerMapper {
 
     Map<String, String> CITY_REGIONS = Map.of(
@@ -34,6 +36,8 @@ public interface OwnerMapper {
         "VIC", "Australia/Melbourne",
         "QLD", "Australia/Brisbane");
 
+    @Mapping(target = "apiVersion", expression = "java(OwnerIdentityVersion.VERSION)")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
@@ -53,6 +57,16 @@ public interface OwnerMapper {
     @Mapping(target = "riskFlag", expression = "java(toRiskFlag(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's version-2 identifiers: member id, identity key and household id.
+     */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        return new OwnerIdentityDto()
+            .memberId(owner.getMemberId())
+            .identityKey(owner.getIdentityKey())
+            .householdId(owner.getHouseholdId());
+    }
 
     /**
      * True when the owner is a possible duplicate or its city was over its soft capacity on create.
@@ -91,8 +105,8 @@ public interface OwnerMapper {
     }
 
     /**
-     * The REGION part of the owner's {@link MemberIds member id}; for owners without a member id, the
-     * region derived by {@link OwnerPostcode#regionOf(String, String)}.
+     * The plain region (e.g. 'NSW', without the version tag) of the owner's {@link MemberIds member id};
+     * for owners without a member id, the region derived by {@link OwnerPostcode#regionOf(String, String)}.
      */
     default String toLocality(Owner owner) {
         String region = MemberIds.regionOf(owner.getMemberId());
@@ -116,7 +130,7 @@ public interface OwnerMapper {
     /**
      * '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' when the {@link #toMembershipLevel(Owner) membership level}
      * is at least {@link #PREMIUM_MEMBERSHIP_LEVEL}, otherwise 'STANDARD'; AREA is 'METRO' when the
-     * {@link #toLocality(Owner) locality} (the REGION part of the member id) is a known region of
+     * {@link #toLocality(Owner) locality} (the plain region of the version-2 member id) is a known region of
      * {@link #CITY_REGIONS}, otherwise 'REGIONAL'.
      */
     default String toOwnerSegment(Owner owner) {
@@ -230,6 +244,8 @@ public interface OwnerMapper {
         return name == null || name.isEmpty() ? "" : Character.toUpperCase(name.charAt(0)) + ".";
     }
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
