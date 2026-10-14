@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/audit/AuditEventPublisher.java b/src/main/java/org/springframework/samples/petclinic/audit/AuditEventPublisher.java
+new file mode 100644
+index 000000000..5bd62b971
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/audit/AuditEventPublisher.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.audit;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++import tools.jackson.databind.ObjectMapper;
++
++/**
++ * Publishes structured audit events as single-line JSON to the {@code AUDIT} logger.
++ */
++@Component
++public class AuditEventPublisher {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    private final AtomicLong ownerCreatedSeq = new AtomicLong();
++
++    private final ObjectMapper objectMapper;
++
++    public AuditEventPublisher(ObjectMapper objectMapper) {
++        this.objectMapper = objectMapper;
++    }
++
++    /**
++     * Publishes an {@link OwnerCreatedEvent} for a saved owner, assigning it the next sequence number.
++     */
++    public OwnerCreatedEvent ownerCreated(Owner owner, Integer membershipLevel) {
++        OwnerCreatedEvent event = OwnerCreatedEvent.of(ownerCreatedSeq.incrementAndGet(), owner, membershipLevel);
++        AUDIT.info("{}", objectMapper.writeValueAsString(event));
++        return event;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/audit/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/audit/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..a55f79c99
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/audit/OwnerCreatedEvent.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.audit;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured audit event published to the {@code AUDIT} logger when an owner is created.
++ *
++ * @param seq             monotonically increasing sequence number across creates
++ * @param ownerId         the id of the created owner
++ * @param customerCode    the owner's current primary identifier
++ * @param membershipLevel the owner's membership level at creation
++ * @param event           always {@link #OWNER_CREATED}
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++                                String event) {
++
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    /**
++     * Builds the event for a saved owner. The owner's primary identifier is read here and only here,
++     * so a change of identifier (e.g. to a member id) is made in this one place.
++     */
++    public static OwnerCreatedEvent of(long seq, Owner owner, Integer membershipLevel) {
++        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(), membershipLevel, OWNER_CREATED);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index af9df726e..2cb1bfa86 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.audit.AuditEventPublisher;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -88,14 +89,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final AuditEventPublisher auditEventPublisher;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 AuditEventPublisher auditEventPublisher) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.auditEventPublisher = auditEventPublisher;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -176,6 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
+             ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
+             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
++        this.auditEventPublisher.ownerCreated(owner, ownerMapper.toMembershipLevel(owner));
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);
+     }
+ 
