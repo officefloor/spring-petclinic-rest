@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
+import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
@@ -36,8 +37,16 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The stored E.164 telephone formatted for humans, e.g. '+61 412 345 678'.
+     */
+    default String toTelephoneDisplay(Owner owner) {
+        return OwnerTelephone.format(owner.getTelephone());
+    }
 
     /**
      * The owner's age in completed years on the registration date: 'MINOR' under 18, 'ADULT' 18-64,

@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -23,6 +24,12 @@ public final class OwnerTelephone {
     public static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE = Map.of(
         "61", 9,
         "1", 10);
+
+    /** Two-digit ITU-T E.164 country codes; '1' and '7' are single-digit, every other code has three digits. */
+    private static final Set<String> TWO_DIGIT_COUNTRY_CODES = Set.of(
+        "20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46", "47",
+        "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63", "64", "65",
+        "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98");
 
     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()\\[\\]]");
 
@@ -71,5 +78,40 @@ public final class OwnerTelephone {
                 return;
             }
         }
+    }
+
+    /**
+     * Formats a stored E.164 telephone number for humans: '+', the country code, a space and the
+     * national digits grouped in threes separated by spaces, where a trailing single digit joins the
+     * preceding group, e.g. {@code +61412345678} becomes {@code +61 412 345 678} and
+     * {@code +16085552654} becomes {@code +1 608 555 2654}.
+     *
+     * @param e164 the stored E.164 telephone number
+     * @return the formatted number, or the input unchanged when it is not in E.164 form
+     */
+    public static String format(String e164) {
+        if (e164 == null || !E164.matcher(e164).matches()) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        String countryCode = digits.substring(0, countryCodeLength(digits));
+        String national = digits.substring(countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        int start = 0;
+        while (start < national.length()) {
+            int remaining = national.length() - start;
+            int end = remaining == 4 ? national.length() : start + Math.min(3, remaining);
+            display.append(' ').append(national, start, end);
+            start = end;
+        }
+        return display.toString();
+    }
+
+    private static int countryCodeLength(String digits) {
+        char first = digits.charAt(0);
+        if (first == '1' || first == '7') {
+            return 1;
+        }
+        return TWO_DIGIT_COUNTRY_CODES.contains(digits.substring(0, 2)) ? 2 : 3;
     }
 }
