@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceede
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -127,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
         }
+        OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
@@ -169,12 +171,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         String telephone = OwnerTelephone.normalize(ownerFieldsDto.getTelephone());
+        OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(telephone);
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        currentOwner.setPostcode(ownerFieldsDto.getPostcode());
         if (ownerFieldsDto.getRegistrationDate() != null) {
             currentOwner.setRegistrationDate(BusinessDays.rollForward(ownerFieldsDto.getRegistrationDate()));
         }
