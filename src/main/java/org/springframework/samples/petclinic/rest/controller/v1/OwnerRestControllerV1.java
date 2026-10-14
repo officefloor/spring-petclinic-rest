@@ -21,6 +21,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -69,6 +71,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners that may be created per (business-day adjusted) registration date; further creates are rejected. */
     static final int DAILY_OWNER_LIMIT = 100;
+
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -148,6 +152,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setRegistrationDate(registrationDate);
         this.clinicService.saveOwner(owner);
+        AUDIT.info("Owner created: id={}, customerCode={}, registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
