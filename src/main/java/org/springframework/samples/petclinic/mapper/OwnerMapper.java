@@ -50,6 +50,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -102,6 +103,20 @@ public interface OwnerMapper {
      */
     default String toTimezone(Owner owner) {
         return REGION_TIMEZONES.get(toLocality(owner));
+    }
+
+    /** The lowest {@link #toMembershipLevel(Owner) membership level} of the 'PREMIUM' segment tier. */
+    int PREMIUM_MEMBERSHIP_LEVEL = 3;
+
+    /**
+     * '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' when the {@link #toMembershipLevel(Owner) membership level}
+     * is at least {@link #PREMIUM_MEMBERSHIP_LEVEL}, otherwise 'STANDARD'; AREA is 'METRO' when the
+     * {@link #toLocality(Owner) locality} is a known region of {@link #CITY_REGIONS}, otherwise 'REGIONAL'.
+     */
+    default String toOwnerSegment(Owner owner) {
+        String tier = toMembershipLevel(owner) >= PREMIUM_MEMBERSHIP_LEVEL ? "PREMIUM" : "STANDARD";
+        String area = CITY_REGIONS.containsValue(toLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
