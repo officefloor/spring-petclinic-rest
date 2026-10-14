@@ -129,6 +129,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByHouseholdId(String householdId) {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId");
+        query.setParameter("householdId", householdId);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public long count() {
         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
     }

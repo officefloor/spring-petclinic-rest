@@ -241,6 +241,8 @@ public class ClinicServiceImpl implements ClinicService {
                 ownerRepository.countByCityIgnoringCase(lowerCase(owner.getCity())) + 1));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
+            owner.setHouseholdSize(owner.getHouseholdId() == null ? 1
+                : (int) ownerRepository.countByHouseholdId(owner.getHouseholdId()) + 1);
         }
         ownerRepository.save(owner);
 

@@ -40,10 +40,17 @@ public interface OwnerMapper {
         return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
+    /** The household size at or above which an owner's membership tier is 'GOLD'. */
+    int GOLD_HOUSEHOLD_SIZE = 3;
+
     /**
-     * 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'.
+     * 'GOLD' when the owner's household had at least {@link #GOLD_HOUSEHOLD_SIZE} members once the owner was
+     * created; otherwise 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'.
      */
     default String toMembershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= GOLD_HOUSEHOLD_SIZE) {
+            return "GOLD";
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return hasEmail && noNamesakes ? "SILVER" : "BRONZE";
@@ -76,6 +83,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 

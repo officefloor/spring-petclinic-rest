@@ -100,6 +100,14 @@ public interface OwnerRepository {
     long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s that belong to the household with the given ID.
+     *
+     * @param householdId the household ID to search for
+     * @return the number of matching owners
+     */
+    long countByHouseholdId(String householdId) throws DataAccessException;
+
+    /**
      * Count all <code>Owner</code>s in the data store.
      *
      * @return the number of owners

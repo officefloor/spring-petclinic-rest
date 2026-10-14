@@ -84,7 +84,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName + "%");
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners WHERE last_name like :lastName",
+            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners WHERE last_name like :lastName",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );
@@ -99,7 +99,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         params.put("size", pageable.getPageSize());
         params.put("offset", pageable.getOffset());
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );
@@ -123,7 +123,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
             Map<String, Object> params = new HashMap<>();
             params.put("id", id);
             owner = this.namedParameterJdbcTemplate.queryForObject(
-                "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners WHERE id= :id",
+                "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners WHERE id= :id",
                 params,
                 BeanPropertyRowMapper.newInstance(Owner.class)
             );
@@ -148,7 +148,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName);
         return this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners WHERE LOWER(last_name) = :lastName",
+            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners WHERE LOWER(last_name) = :lastName",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
     }
@@ -183,6 +183,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByHouseholdId(String householdId) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("householdId", householdId);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId", params, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Long count = this.namedParameterJdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM owners", new HashMap<String, Object>(), Long.class);
@@ -213,7 +222,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         } else {
             this.namedParameterJdbcTemplate.update(
                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
-                    "city=:city, telephone=:telephone, email=:email, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, bulk_signup_warning=:bulkSignupWarning WHERE id=:id",
+                    "city=:city, telephone=:telephone, email=:email, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId, namesake_count=:namesakeCount, household_size=:householdSize, bulk_signup_warning=:bulkSignupWarning WHERE id=:id",
                 parameterSource);
         }
     }
@@ -239,7 +248,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
 	@Override
 	public Collection<Owner> findAll() throws DataAccessException {
 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
-	            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners",
+	            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners",
 	            new HashMap<String, Object>(),
 	            BeanPropertyRowMapper.newInstance(Owner.class));
 		for (Owner owner : owners) {
@@ -254,7 +263,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         params.put("size", pageable.getPageSize());
         params.put("offset", pageable.getOffset());
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, bulk_signup_warning FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id, namesake_count, household_size, bulk_signup_warning FROM owners ORDER BY id LIMIT :size OFFSET :offset",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class));
         loadOwnersPetsAndVisits(owners);

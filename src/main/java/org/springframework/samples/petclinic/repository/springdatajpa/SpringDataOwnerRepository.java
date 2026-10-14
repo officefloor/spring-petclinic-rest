@@ -79,6 +79,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
 
     @Override
+    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId")
+    long countByHouseholdId(@Param("householdId") String householdId);
+
+    @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")
     long count();
 }
