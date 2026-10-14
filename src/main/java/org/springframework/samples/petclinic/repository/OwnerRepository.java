@@ -124,12 +124,12 @@ public interface OwnerRepository {
     long countNotDeletedByHouseholdId(String householdId) throws DataAccessException;
 
     /**
-     * Count the <code>Owner</code>s that have the given customer code.
+     * Count the <code>Owner</code>s that have the given member id.
      *
-     * @param customerCode the customer code to search for
+     * @param memberId the member id to search for
      * @return the number of matching owners
      */
-    long countByCustomerCode(String customerCode) throws DataAccessException;
+    long countByMemberId(String memberId) throws DataAccessException;
 
     /**
      * Count all <code>Owner</code>s in the data store.

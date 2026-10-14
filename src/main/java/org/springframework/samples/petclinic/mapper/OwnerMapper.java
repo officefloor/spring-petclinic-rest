@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
 import org.springframework.samples.petclinic.util.FiscalYears;
+import org.springframework.samples.petclinic.util.MemberIds;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
@@ -36,8 +37,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
-    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
@@ -84,15 +83,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The REGION part of the owner's customer code ('&lt;REGION&gt;-&lt;HASH8&gt;', optionally followed by a
-     * '-&lt;n&gt;' de-duplication suffix); for owners without a
-     * customer code, the region derived by {@link OwnerPostcode#regionOf(String, String)}.
+     * The REGION part of the owner's {@link MemberIds member id}; for owners without a member id, the
+     * region derived by {@link OwnerPostcode#regionOf(String, String)}.
      */
     default String toLocality(Owner owner) {
-        String code = owner.getCustomerCode();
-        int dash = code == null ? -1 : code.indexOf('-');
-        if (dash > 0) {
-            return code.substring(0, dash);
+        String region = MemberIds.regionOf(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
     }
@@ -111,7 +108,8 @@ public interface OwnerMapper {
     /**
      * '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' when the {@link #toMembershipLevel(Owner) membership level}
      * is at least {@link #PREMIUM_MEMBERSHIP_LEVEL}, otherwise 'STANDARD'; AREA is 'METRO' when the
-     * {@link #toLocality(Owner) locality} is a known region of {@link #CITY_REGIONS}, otherwise 'REGIONAL'.
+     * {@link #toLocality(Owner) locality} (the REGION part of the member id) is a known region of
+     * {@link #CITY_REGIONS}, otherwise 'REGIONAL'.
      */
     default String toOwnerSegment(Owner owner) {
         String tier = toMembershipLevel(owner) >= PREMIUM_MEMBERSHIP_LEVEL ? "PREMIUM" : "STANDARD";
@@ -197,51 +195,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * 'FY&lt;YY&gt;' for the fiscal year (starting 1 July) containing the business-day adjusted
-     * registration date; absent when the owner has no registration date.
+     * 'FY&lt;YY&gt;' from the FY part of the owner's {@link MemberIds member id}; for owners without a
+     * member id, the fiscal year (starting 1 July) containing the business-day adjusted registration date.
+     * Absent when the owner has neither.
      */
     default String toFiscalYear(Owner owner) {
+        Integer fiscalYear = MemberIds.fiscalYearOf(owner.getMemberId());
+        if (fiscalYear != null) {
+            return String.format("FY%02d", fiscalYear);
+        }
         return FiscalYears.label(owner.getRegistrationDate());
-    }
-
-    /**
-     * Builds the membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
-     * the fiscal year containing the registration date.
-     */
-    default String toMembershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            FiscalYears.twoDigit(owner.getRegistrationDate()));
-    }
-
-    /**
-     * The Luhn check digit over the digits of the customer code, ignoring non-digit characters.
-     */
-    default Integer toCheckDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean doubled = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int digit = c - '0';
-            if (doubled) {
-                digit *= 2;
-                if (digit > 9) {
-                    digit -= 9;
-                }
-            }
-            sum += digit;
-            doubled = !doubled;
-        }
-        return (10 - sum % 10) % 10;
     }
 
     /**
@@ -263,7 +226,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)

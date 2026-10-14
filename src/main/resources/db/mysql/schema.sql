@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(30),
   household_id VARCHAR(36),
   namesake_count INTEGER,
   household_size INTEGER,

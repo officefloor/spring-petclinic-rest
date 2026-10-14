@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
+import org.springframework.samples.petclinic.util.MemberIds;
 import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -249,7 +250,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         owner.setHouseholdId(householdIdOf(owner));
         if (owner.isNew()) {
-            owner.setCustomerCode(uniqueCustomerCode(customerCode(owner)));
+            owner.setMemberId(uniqueMemberId(memberId(owner)));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
             owner.setHouseholdSize(owner.getHouseholdId() == null ? 1
@@ -350,30 +351,33 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * De-duplicates a computed customer code: returns it unchanged when no existing owner has it, otherwise
+     * De-duplicates a computed member id: returns it unchanged when no existing owner has it, otherwise
      * appends '-&lt;n&gt;' with the smallest n &gt;= 2 that makes it unique.
      */
-    private String uniqueCustomerCode(String code) {
-        if (ownerRepository.countByCustomerCode(code) == 0) {
-            return code;
+    private String uniqueMemberId(String memberId) {
+        if (ownerRepository.countByMemberId(memberId) == 0) {
+            return memberId;
         }
         int n = 2;
-        while (ownerRepository.countByCustomerCode(code + "-" + n) > 0) {
+        while (ownerRepository.countByMemberId(memberId + "-" + n) > 0) {
             n++;
         }
-        return code + "-" + n;
+        return memberId + "-" + n;
     }
 
     /**
-     * Builds a customer code '&lt;REGION&gt;-&lt;HASH8&gt;': the region derived from the postcode (see
-     * {@link OwnerPostcode#regionOf(String, String)}) and the first 8 upper-case hex characters of the
-     * SHA-256 of the UTF-8 bytes of the normalized telephone followed by the last name.
+     * Builds a member id '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;' (see {@link MemberIds}): the region derived
+     * from the postcode (see {@link OwnerPostcode#regionOf(String, String)}), the two-digit fiscal year of the
+     * registration date (today when absent), the first 8 upper-case hex characters of the SHA-256 of the
+     * UTF-8 bytes of the normalized telephone followed by the last name, and the Luhn check digit.
      */
-    private static String customerCode(Owner owner) {
+    private static String memberId(Owner owner) {
         String region = OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
+        LocalDate registrationDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return region + "-" + sha256Hex(telephone + lastName).substring(0, 8).toUpperCase(Locale.ROOT);
+        return MemberIds.of(region, registrationDate,
+            sha256Hex(telephone + lastName).substring(0, 8).toUpperCase(Locale.ROOT));
     }
 
     private static String sha256Hex(String value) {

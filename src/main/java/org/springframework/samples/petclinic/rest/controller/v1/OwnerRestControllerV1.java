@@ -181,10 +181,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .max();
         owner.setMembershipLevelCap(maxHouseholdLevel.isPresent() ? maxHouseholdLevel.getAsInt() + 1 : null);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
+        AUDIT.info("Owner created: id={}, memberId={}, region={}, fiscalYear={}, "
                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
-            ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
+            owner.getId(), owner.getMemberId(), ownerMapper.toLocality(owner), ownerMapper.toFiscalYear(owner),
             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
         this.auditEventPublisher.ownerCreated(owner, ownerMapper.toMembershipLevel(owner));
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);

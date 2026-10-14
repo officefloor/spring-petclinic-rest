@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-class CustomerCodeCollisionTests {
+class MemberIdCollisionTests {
 
     private final OwnerRepository ownerRepository = mock(OwnerRepository.class);
 
@@ -31,34 +31,34 @@ class CustomerCodeCollisionTests {
     void keepsComputedCodeWhenUnique() {
         Owner owner = newOwner();
         service.saveOwner(owner);
-        assertTrue(owner.getCustomerCode().matches("NSW-[0-9A-F]{8}"), owner.getCustomerCode());
+        assertTrue(owner.getMemberId().matches("NSW[0-9]{2}[0-9A-F]{8}[0-9]"), owner.getMemberId());
     }
 
     @Test
     void appendsTwoOnFirstCollision() {
         Owner probe = newOwner();
         service.saveOwner(probe);
-        String base = probe.getCustomerCode();
+        String base = probe.getMemberId();
 
-        when(ownerRepository.countByCustomerCode(anyString())).thenReturn(0L);
-        when(ownerRepository.countByCustomerCode(base)).thenReturn(1L);
+        when(ownerRepository.countByMemberId(anyString())).thenReturn(0L);
+        when(ownerRepository.countByMemberId(base)).thenReturn(1L);
         Owner owner = newOwner();
         service.saveOwner(owner);
-        assertEquals(base + "-2", owner.getCustomerCode());
+        assertEquals(base + "-2", owner.getMemberId());
     }
 
     @Test
     void appendsSmallestFreeSuffix() {
         Owner probe = newOwner();
         service.saveOwner(probe);
-        String base = probe.getCustomerCode();
+        String base = probe.getMemberId();
 
-        when(ownerRepository.countByCustomerCode(anyString())).thenReturn(0L);
-        when(ownerRepository.countByCustomerCode(base)).thenReturn(1L);
-        when(ownerRepository.countByCustomerCode(base + "-2")).thenReturn(1L);
-        when(ownerRepository.countByCustomerCode(base + "-3")).thenReturn(1L);
+        when(ownerRepository.countByMemberId(anyString())).thenReturn(0L);
+        when(ownerRepository.countByMemberId(base)).thenReturn(1L);
+        when(ownerRepository.countByMemberId(base + "-2")).thenReturn(1L);
+        when(ownerRepository.countByMemberId(base + "-3")).thenReturn(1L);
         Owner owner = newOwner();
         service.saveOwner(owner);
-        assertEquals(base + "-4", owner.getCustomerCode());
+        assertEquals(base + "-4", owner.getMemberId());
     }
 }
