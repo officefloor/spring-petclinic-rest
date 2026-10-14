@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
@@ -83,41 +84,72 @@ public interface OwnerMapper {
         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
     }
 
-    /** The highest membership level reachable without tenure; level 4 is reserved for tenure. */
-    int MAX_CREATE_MEMBERSHIP_LEVEL = 3;
+    /** Membership points for an owner with an email address. */
+    int EMAIL_MEMBERSHIP_POINTS = 2;
 
-    /** The tenure membership level. */
-    int TENURE_MEMBERSHIP_LEVEL = 4;
+    /** Membership points for an owner without namesakes. */
+    int NO_NAMESAKE_MEMBERSHIP_POINTS = 1;
 
-    /** {@link #TENURE_MEMBERSHIP_LEVEL} requires a tenure of more than this many days. */
-    int TENURE_MEMBERSHIP_LEVEL_DAYS = 365;
+    /** Membership points for a household of at least {@link #HOUSEHOLD_MEMBERSHIP_SIZE} members. */
+    int HOUSEHOLD_MEMBERSHIP_POINTS = 2;
+
+    /** The household size earning {@link #HOUSEHOLD_MEMBERSHIP_POINTS}. */
+    int HOUSEHOLD_MEMBERSHIP_SIZE = 3;
+
+    /** Membership points for a tenure of more than {@link #TENURE_MEMBERSHIP_DAYS} days. */
+    int TENURE_MEMBERSHIP_POINTS = 3;
+
+    /** {@link #TENURE_MEMBERSHIP_POINTS} requires a tenure of more than this many days. */
+    int TENURE_MEMBERSHIP_DAYS = 365;
+
+    /** The highest membership level. */
+    int MAX_MEMBERSHIP_LEVEL = 4;
 
     /**
-     * The membership level of a newly created owner. A new owner has zero tenure, so this never
-     * exceeds {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
+     * The membership points of a newly created owner. A new owner has zero tenure, so this never
+     * includes {@link #TENURE_MEMBERSHIP_POINTS}.
      */
-    default Integer toMembershipLevel(Owner owner) {
-        return membershipLevel(owner, 0);
+    default Integer toMembershipPoints(Owner owner) {
+        return membershipPoints(owner, 0);
     }
 
     /**
-     * Starts at 1, adds 1 when an email is present and 1 when the owner has no namesakes, capped at
-     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}. An owner at that cap whose tenure is more than
-     * {@link #TENURE_MEMBERSHIP_LEVEL_DAYS} days is at {@link #TENURE_MEMBERSHIP_LEVEL}.
+     * The membership level of a newly created owner, derived from {@link #toMembershipPoints(Owner)}.
      */
-    default int membershipLevel(Owner owner, long tenureDays) {
-        int level = 1;
+    default Integer toMembershipLevel(Owner owner) {
+        return membershipLevel(toMembershipPoints(owner));
+    }
+
+    /**
+     * Starts at 0, adds {@link #EMAIL_MEMBERSHIP_POINTS} when an email is present,
+     * {@link #NO_NAMESAKE_MEMBERSHIP_POINTS} when the owner has no namesakes,
+     * {@link #HOUSEHOLD_MEMBERSHIP_POINTS} for a household of {@link #HOUSEHOLD_MEMBERSHIP_SIZE} or more
+     * members and {@link #TENURE_MEMBERSHIP_POINTS} for a tenure of more than
+     * {@link #TENURE_MEMBERSHIP_DAYS} days.
+     */
+    default int membershipPoints(Owner owner, long tenureDays) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+            points += EMAIL_MEMBERSHIP_POINTS;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += NO_NAMESAKE_MEMBERSHIP_POINTS;
         }
-        level = Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
-        if (level == MAX_CREATE_MEMBERSHIP_LEVEL && tenureDays > TENURE_MEMBERSHIP_LEVEL_DAYS) {
-            level = TENURE_MEMBERSHIP_LEVEL;
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_MEMBERSHIP_SIZE) {
+            points += HOUSEHOLD_MEMBERSHIP_POINTS;
         }
-        return level;
+        if (tenureDays > TENURE_MEMBERSHIP_DAYS) {
+            points += TENURE_MEMBERSHIP_POINTS;
+        }
+        return points;
+    }
+
+    /**
+     * Maps membership points to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and
+     * {@link #MAX_MEMBERSHIP_LEVEL} for 6 or more.
+     */
+    default int membershipLevel(int points) {
+        return Math.min(points / 2 + 1, MAX_MEMBERSHIP_LEVEL);
     }
 
     /**
