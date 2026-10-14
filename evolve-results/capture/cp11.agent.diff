@@ -1,0 +1,348 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 619f25dc4..e25dd75d3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,7 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
++    @Mapping(target = "householdId", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3ad3d44ab..14a87d510 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+@@ -184,6 +195,7 @@ public class Owner extends Person {
+             .append("email", this.email)
+             .append("registrationDate", this.registrationDate)
+             .append("customerCode", this.customerCode)
++            .append("householdId", this.householdId)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index a359489dd..70592ef02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -66,13 +66,12 @@ public interface OwnerRepository {
+     boolean existsByTelephone(String telephone) throws DataAccessException;
+ 
+     /**
+-     * Retrieve the addresses of all <code>Owner</code>s whose last name, compared case-insensitively, equals the
+-     * given name.
++     * Retrieve all <code>Owner</code>s whose last name, compared case-insensitively, equals the given name.
+      *
+      * @param lastName the lower-cased last name to search for
+-     * @return the addresses of the matching owners
++     * @return the matching owners
+      */
+-    List<String> findAddressesByLastName(String lastName) throws DataAccessException;
++    List<Owner> findByLastNameIgnoringCase(String lastName) throws DataAccessException;
+ 
+     /**
+      * Count all <code>Owner</code>s in the data store.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 4ba017a68..e0d11c247 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -83,7 +83,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -98,7 +98,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -122,7 +122,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -143,11 +143,13 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+     }
+ 
+     @Override
+-    public List<String> findAddressesByLastName(String lastName) throws DataAccessException {
++    public List<Owner> findByLastNameIgnoringCase(String lastName) throws DataAccessException {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName);
+-        return this.namedParameterJdbcTemplate.queryForList(
+-            "SELECT address FROM owners WHERE LOWER(last_name) = :lastName", params, String.class);
++        return this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners WHERE LOWER(last_name) = :lastName",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class));
+     }
+ 
+     @Override
+@@ -181,7 +183,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone, email=:email, registration_date=:registrationDate, customer_code=:customerCode WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email, registration_date=:registrationDate, customer_code=:customerCode, household_id=:householdId WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -207,7 +209,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -222,7 +224,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email, registration_date, customer_code, household_id FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 77f5b62ea..738422e3e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -98,8 +98,8 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+ 
+     @Override
+     @SuppressWarnings("unchecked")
+-    public List<String> findAddressesByLastName(String lastName) {
+-        Query query = this.em.createQuery("SELECT owner.address FROM Owner owner WHERE LOWER(owner.lastName) = :lastName");
++    public List<Owner> findByLastNameIgnoringCase(String lastName) {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName");
+         query.setParameter("lastName", lastName);
+         return query.getResultList();
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index f123598c4..fc6caedfb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -62,8 +62,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     boolean existsByTelephone(@Param("telephone") String telephone);
+ 
+     @Override
+-    @Query("SELECT owner.address FROM Owner owner WHERE LOWER(owner.lastName) = :lastName")
+-    List<String> findAddressesByLastName(@Param("lastName") String lastName);
++    @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName")
++    List<Owner> findByLastNameIgnoringCase(@Param("lastName") String lastName);
+ 
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 74226cea6..792370def 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -116,10 +116,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.ownerTelephoneExists(telephone)) {
+             throw new DuplicateTelephoneException(telephone);
+         }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        if (!sharesHousehold
+             && this.clinicService.ownerHouseholdExists(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
+             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+         }
++        if (sharesHousehold) {
++            this.clinicService.joinHousehold(owner);
++        }
+         owner.setTelephone(telephone);
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         if (owner.getRegistrationDate() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index bdcacbc5c..365438fec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,11 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
+ 	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
++	/**
++	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
++	 * giving them all the same household ID. Does nothing when there are no such owners.
++	 */
++	void joinHousehold(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 7321c0bff..09e87555b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -29,6 +29,7 @@ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Set;
++import java.util.UUID;
+ import java.util.function.Supplier;
+ 
+ /**
+@@ -249,9 +250,36 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional(readOnly = true)
+     public boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException {
++        return !findHouseholdMembers(lastName, address).isEmpty();
++    }
++
++    @Override
++    @Transactional
++    public void joinHousehold(Owner owner) throws DataAccessException {
++        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
++        if (members.isEmpty()) {
++            return;
++        }
++        String householdId = members.stream()
++            .map(Owner::getHouseholdId)
++            .filter(id -> id != null && !id.isBlank())
++            .findFirst()
++            .orElseGet(() -> UUID.randomUUID().toString());
++        for (Owner member : members) {
++            if (!householdId.equals(member.getHouseholdId())) {
++                member.setHouseholdId(householdId);
++                ownerRepository.save(member);
++            }
++        }
++        owner.setHouseholdId(householdId);
++    }
++
++    /** Finds the owners with the same last name and address, ignoring case and runs of whitespace. */
++    private List<Owner> findHouseholdMembers(String lastName, String address) {
+         String normalizedAddress = normalizeForComparison(address);
+-        return ownerRepository.findAddressesByLastName(normalizeForComparison(lastName)).stream()
+-            .anyMatch(existing -> normalizeForComparison(existing).equals(normalizedAddress));
++        return ownerRepository.findByLastNameIgnoringCase(normalizeForComparison(lastName)).stream()
++            .filter(existing -> normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
++            .toList();
+     }
+ 
+     /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..84293db7d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(36)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..cdd4d4435 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(36)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..0dd09a35c 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(36),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ad9a90802..9c2423c12 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2056,7 +2056,9 @@ components:
+           description: >-
+             Set to true on create to allow the owner even though another owner already has the
+             same last name and address (compared case-insensitively with collapsed whitespace).
+-            Otherwise such a create is rejected with 409 Conflict. Not stored.
++            Otherwise such a create is rejected with 409 Conflict. When true and such owners exist,
++            the new owner joins their household and all of them share the same 'householdId'.
++            Not stored.
+           type: boolean
+           writeOnly: true
+           example: false
+@@ -2109,6 +2111,16 @@ components:
+               type: string
+               example: 'FRA-0011'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: >-
++                Stable identifier shared by owners in the same household. Assigned when an owner is
++                created with 'sharesHousehold' set to true at the address of an existing owner with the
++                same last name; the existing household's ID is reused, or a new one is generated and
++                also given to the existing owners. Absent for owners not in a shared household.
++              type: string
++              example: '3f2b8c1e-7a4d-4e8b-9c1a-2d5e6f7a8b9c'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
