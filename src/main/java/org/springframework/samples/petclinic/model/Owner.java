@@ -16,12 +16,16 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -212,15 +216,21 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived identity used for duplicate detection on create:
-     * '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;householdId or empty&gt;', with the email lower-cased.
-     * Two owners are duplicates only when their whole identity keys are equal.
+     * The derived identity used for duplicate detection on create: the lower-case hex SHA-256 of the
+     * UTF-8 bytes of '&lt;telephone&gt;|&lt;email or empty&gt;|&lt;soundex(lastName)&gt;', with the
+     * email lower-cased. Two owners are duplicates only when their identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
-        return (this.telephone == null ? "" : this.telephone)
+        String identity = (this.telephone == null ? "" : this.telephone)
             + "|" + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT))
-            + "|" + (this.householdId == null ? "" : this.householdId);
+            + "|" + Soundex.of(getLastName());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
     public Boolean getBulkSignupWarning() {
@@ -232,8 +242,8 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of an existing owner this owner may duplicate (same last name and postcode, different
-     * telephone), assigned on create; null when there is no such owner.
+     * The id of an existing owner this owner may duplicate (same soundex of the last name and same
+     * postcode, different identity key), assigned on create; null when there is no such owner.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;

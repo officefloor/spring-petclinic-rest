@@ -65,12 +65,12 @@ public interface ClinicService {
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
 	/**
-	 * Checks whether another non-deleted owner has the same identity key (telephone, email and household ID) as the given owner.
+	 * Checks whether another non-deleted owner has the same identity key (see {@link Owner#getIdentityKey()}) as the given owner.
 	 */
 	boolean ownerIdentityKeyExists(Owner owner) throws DataAccessException;
 	/**
-	 * Finds the id of the earliest other non-deleted owner in the given owner's household (see {@link #householdIdOf(Owner)})
-	 * but with a different telephone, or null when there is none.
+	 * Finds the id of the earliest other non-deleted owner with the same soundex of the last name and the same postcode
+	 * but a different identity key, or null when there is none.
 	 */
 	Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException;
 	/**
@@ -81,10 +81,6 @@ public interface ClinicService {
 	 * Counts the owners whose registration date equals the given date.
 	 */
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
-	/**
-	 * Checks whether an existing non-deleted owner already belongs to the given owner's household (see {@link #householdIdOf(Owner)}).
-	 */
-	boolean householdExists(Owner owner) throws DataAccessException;
 	/**
 	 * Finds the non-deleted owners, other than the given owner, that belong to the given owner's household
 	 * (see {@link #householdIdOf(Owner)}); empty when the owner has no household ID.

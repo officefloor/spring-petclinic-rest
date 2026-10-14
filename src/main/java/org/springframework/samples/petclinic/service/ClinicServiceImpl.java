@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +35,6 @@ import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -272,15 +272,17 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Integer findPossibleDuplicateOf(Owner owner) throws DataAccessException {
-        String householdId = householdIdOf(owner);
-        if (householdId == null) {
+        String soundex = Soundex.of(owner.getLastName());
+        if (soundex.isEmpty() || owner.getPostcode() == null) {
             return null;
         }
-        return ownerRepository.findByLastNameIgnoringCase(lowerCase(owner.getLastName())).stream()
+        String identityKey = owner.getIdentityKey();
+        return ownerRepository.findAll().stream()
             .filter(existing -> !existing.getId().equals(owner.getId())
                 && !existing.isDeleted()
-                && householdId.equals(existing.getHouseholdId())
-                && !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+                && owner.getPostcode().equals(existing.getPostcode())
+                && soundex.equals(Soundex.of(existing.getLastName()))
+                && !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compare)
             .orElse(null);
@@ -296,13 +298,6 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException {
         return ownerRepository.countByRegistrationDate(registrationDate);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean householdExists(Owner owner) throws DataAccessException {
-        String householdId = householdIdOf(owner);
-        return householdId != null && ownerRepository.countNotDeletedByHouseholdId(householdId) > 0;
     }
 
     @Override

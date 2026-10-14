@@ -42,7 +42,6 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerEmail;
@@ -146,13 +145,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         applyAddress(owner, ownerFieldsDto);
-        // The householdId is derived from (lastName, postcode) and is part of the identity key. An
-        // existing household blocks the create unless the new owner declares it shares the household.
+        // Duplicate detection uses the identity key alone (telephone, email, soundex of the last name).
         owner.setHouseholdId(this.clinicService.householdIdOf(owner));
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!declaredHouseholdMember && this.clinicService.householdExists(owner)) {
-            throw new DuplicateHouseholdException(owner.getHouseholdId());
-        }
         if (this.clinicService.ownerIdentityKeyExists(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
