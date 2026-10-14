@@ -50,8 +50,16 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(toRiskFlag(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * True when the owner is a possible duplicate or its city was over its soft capacity on create.
+     */
+    default boolean toRiskFlag(Owner owner) {
+        return owner.getPossibleDuplicateOf() != null || Boolean.TRUE.equals(owner.getCapacityWarning());
+    }
 
     /**
      * '&lt;title&gt; &lt;lastName&gt;', or just the last name when the owner has no title.
