@@ -83,14 +83,29 @@ public interface OwnerMapper {
         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
     }
 
-    /** The highest membership level assigned on create; level 4 is reserved for tenure. */
+    /** The highest membership level reachable without tenure; level 4 is reserved for tenure. */
     int MAX_CREATE_MEMBERSHIP_LEVEL = 3;
+
+    /** The tenure membership level. */
+    int TENURE_MEMBERSHIP_LEVEL = 4;
+
+    /** {@link #TENURE_MEMBERSHIP_LEVEL} requires a tenure of more than this many days. */
+    int TENURE_MEMBERSHIP_LEVEL_DAYS = 365;
+
+    /**
+     * The membership level of a newly created owner. A new owner has zero tenure, so this never
+     * exceeds {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
+     */
+    default Integer toMembershipLevel(Owner owner) {
+        return membershipLevel(owner, 0);
+    }
 
     /**
      * Starts at 1, adds 1 when an email is present and 1 when the owner has no namesakes, capped at
-     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
+     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}. An owner at that cap whose tenure is more than
+     * {@link #TENURE_MEMBERSHIP_LEVEL_DAYS} days is at {@link #TENURE_MEMBERSHIP_LEVEL}.
      */
-    default Integer toMembershipLevel(Owner owner) {
+    default int membershipLevel(Owner owner, long tenureDays) {
         int level = 1;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
             level++;
@@ -98,7 +113,11 @@ public interface OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        return Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
+        level = Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
+        if (level == MAX_CREATE_MEMBERSHIP_LEVEL && tenureDays > TENURE_MEMBERSHIP_LEVEL_DAYS) {
+            level = TENURE_MEMBERSHIP_LEVEL;
+        }
+        return level;
     }
 
     /**
