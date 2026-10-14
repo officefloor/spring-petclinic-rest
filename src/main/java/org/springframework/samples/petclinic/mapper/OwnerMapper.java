@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +34,24 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's age in completed years on the registration date: 'MINOR' under 18, 'ADULT' 18-64,
+     * 'SENIOR' 65 or over. Absent when the owner has no birth date or registration date.
+     */
+    default String toAgeBand(Owner owner) {
+        if (owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        long age = ChronoUnit.YEARS.between(owner.getBirthDate(), owner.getRegistrationDate());
+        if (age < 18) {
+            return "MINOR";
+        }
+        return age < 65 ? "ADULT" : "SENIOR";
+    }
 
     /**
      * The REGION part of the owner's customer code ('&lt;REGION&gt;-&lt;HASH8&gt;'); for owners without a
