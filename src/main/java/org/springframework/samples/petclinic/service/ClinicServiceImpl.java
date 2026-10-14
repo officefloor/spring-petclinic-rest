@@ -29,6 +29,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -249,9 +250,36 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException {
+        return !findHouseholdMembers(lastName, address).isEmpty();
+    }
+
+    @Override
+    @Transactional
+    public void joinHousehold(Owner owner) throws DataAccessException {
+        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
+        if (members.isEmpty()) {
+            return;
+        }
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(id -> id != null && !id.isBlank())
+            .findFirst()
+            .orElseGet(() -> UUID.randomUUID().toString());
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        owner.setHouseholdId(householdId);
+    }
+
+    /** Finds the owners with the same last name and address, ignoring case and runs of whitespace. */
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedAddress = normalizeForComparison(address);
-        return ownerRepository.findAddressesByLastName(normalizeForComparison(lastName)).stream()
-            .anyMatch(existing -> normalizeForComparison(existing).equals(normalizedAddress));
+        return ownerRepository.findByLastNameIgnoringCase(normalizeForComparison(lastName)).stream()
+            .filter(existing -> normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
+            .toList();
     }
 
     /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */

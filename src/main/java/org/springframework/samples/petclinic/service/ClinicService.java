@@ -59,6 +59,11 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	boolean ownerTelephoneExists(String telephone) throws DataAccessException;
 	boolean ownerHouseholdExists(String lastName, String address) throws DataAccessException;
+	/**
+	 * Joins the (unsaved) owner to the household of existing owners with the same last name and address,
+	 * giving them all the same household ID. Does nothing when there are no such owners.
+	 */
+	void joinHousehold(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 

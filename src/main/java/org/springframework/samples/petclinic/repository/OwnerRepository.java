@@ -66,13 +66,12 @@ public interface OwnerRepository {
     boolean existsByTelephone(String telephone) throws DataAccessException;
 
     /**
-     * Retrieve the addresses of all <code>Owner</code>s whose last name, compared case-insensitively, equals the
-     * given name.
+     * Retrieve all <code>Owner</code>s whose last name, compared case-insensitively, equals the given name.
      *
      * @param lastName the lower-cased last name to search for
-     * @return the addresses of the matching owners
+     * @return the matching owners
      */
-    List<String> findAddressesByLastName(String lastName) throws DataAccessException;
+    List<Owner> findByLastNameIgnoringCase(String lastName) throws DataAccessException;
 
     /**
      * Count all <code>Owner</code>s in the data store.
