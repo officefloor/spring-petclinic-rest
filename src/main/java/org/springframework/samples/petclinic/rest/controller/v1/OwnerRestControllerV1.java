@@ -134,12 +134,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        OwnerTelephone.requireDigitsOnly(ownerFieldsDto.getTelephone());
+        String telephone = OwnerTelephone.normalize(ownerFieldsDto.getTelephone());
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(telephone);
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         if (ownerFieldsDto.getRegistrationDate() != null) {
             currentOwner.setRegistrationDate(ownerFieldsDto.getRegistrationDate());

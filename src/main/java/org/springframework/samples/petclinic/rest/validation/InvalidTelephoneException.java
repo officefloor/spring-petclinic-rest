@@ -8,7 +8,8 @@ public class InvalidTelephoneException extends RuntimeException {
     private final String rejectedValue;
 
     public InvalidTelephoneException(String rejectedValue) {
-        super("Telephone number must contain exactly " + OwnerTelephone.REQUIRED_DIGITS + " digits");
+        super("Telephone number must form a valid E.164 number with " + OwnerTelephone.MIN_DIGITS
+            + " to " + OwnerTelephone.MAX_DIGITS + " digits after the '+'");
         this.rejectedValue = rejectedValue;
     }
 
