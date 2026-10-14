@@ -27,7 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "sharesHousehold", ignore = true)
@@ -40,20 +40,22 @@ public interface OwnerMapper {
         return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
-    /** The household size at or above which an owner's membership tier is 'GOLD'. */
-    int GOLD_HOUSEHOLD_SIZE = 3;
+    /** The highest membership level assigned on create; level 4 is reserved for tenure. */
+    int MAX_CREATE_MEMBERSHIP_LEVEL = 3;
 
     /**
-     * 'GOLD' when the owner's household had at least {@link #GOLD_HOUSEHOLD_SIZE} members once the owner was
-     * created; otherwise 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'.
+     * Starts at 1, adds 1 when an email is present and 1 when the owner has no namesakes, capped at
+     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
      */
-    default String toMembershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= GOLD_HOUSEHOLD_SIZE) {
-            return "GOLD";
+    default Integer toMembershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            level++;
         }
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        return hasEmail && noNamesakes ? "SILVER" : "BRONZE";
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
+        }
+        return Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
     }
 
     /**
