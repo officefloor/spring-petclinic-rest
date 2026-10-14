@@ -67,6 +67,14 @@ public interface OwnerRepository {
     List<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Retrieve the <code>Owner</code> that was created with the given idempotency key.
+     *
+     * @param idempotencyKey the idempotency key to search for
+     * @return the matching owner, or <code>null</code> if none
+     */
+    Owner findByIdempotencyKey(String idempotencyKey) throws DataAccessException;
+
+    /**
      * Retrieve all <code>Owner</code>s whose last name, compared case-insensitively, equals the given name.
      *
      * @param lastName the lower-cased last name to search for

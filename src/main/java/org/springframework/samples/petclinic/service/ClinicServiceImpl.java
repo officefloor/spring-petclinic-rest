@@ -214,6 +214,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException {
+        return ownerRepository.findByIdempotencyKey(idempotencyKey);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Pet findPetById(int id) throws DataAccessException {
         return findEntityById(() -> petRepository.findById(id));
     }

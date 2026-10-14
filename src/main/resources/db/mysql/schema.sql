@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   birth_date DATE,
   title VARCHAR(3),
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  idempotency_key VARCHAR(255) UNIQUE,
   INDEX(last_name)
 ) engine=InnoDB;
 

@@ -55,7 +55,8 @@ CREATE TABLE owners (
   possible_duplicate_of INTEGER,
   birth_date DATE,
   title VARCHAR(3),
-  deleted BOOLEAN DEFAULT FALSE NOT NULL
+  deleted BOOLEAN DEFAULT FALSE NOT NULL,
+  idempotency_key VARCHAR(255) UNIQUE
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

@@ -55,6 +55,12 @@ public interface ClinicService {
 	void saveVet(Vet vet) throws DataAccessException;
 	void deleteVet(Vet vet) throws DataAccessException;
 	Owner findOwnerById(int id) throws DataAccessException;
+	/**
+	 * Finds the owner that was created with the given 'Idempotency-Key'.
+	 *
+	 * @return the owner, or {@code null} if no owner was created with the key
+	 */
+	Owner findOwnerByIdempotencyKey(String idempotencyKey) throws DataAccessException;
 	Collection<Owner> findAllOwners() throws DataAccessException;
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;

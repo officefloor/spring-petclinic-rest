@@ -126,7 +126,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Transactional
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        // A repeated create with an already-seen key returns the originally created owner.
+        if (idempotencyKey != null) {
+            Owner existing = this.clinicService.findOwnerByIdempotencyKey(idempotencyKey);
+            if (existing != null) {
+                return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), ownerLocation(existing), HttpStatus.OK);
+            }
+        }
         List<String> missingFields = RequiredOwnerFields.missingFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
@@ -134,7 +141,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerPostcode.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         OwnerEmail.validate(ownerFieldsDto.getEmail());
         OwnerRegistrationDate.validate(ownerFieldsDto.getRegistrationDate());
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -162,16 +168,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
         // A declared household member is not a suspected duplicate.
         owner.setPossibleDuplicateOf(declaredHouseholdMember ? null : this.clinicService.findPossibleDuplicateOf(owner));
+        owner.setIdempotencyKey(idempotencyKey);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={}, customerCode={}, region={}, membershipNumber={}, checkDigit={}, "
                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), ownerMapper.toLocality(owner),
             ownerMapper.toMembershipNumber(owner), ownerMapper.toCheckDigit(owner),
             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        headers.setLocation(UriComponentsBuilder.newInstance()
-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -290,6 +294,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             : AddressNormalizer.normalizeOptional(ownerFieldsDto.getAddressLine2()));
         owner.setAddress(AddressNormalizer.compose(
             ownerFieldsDto.getAddressLine1(), ownerFieldsDto.getAddressLine2(), ownerFieldsDto.getAddress()));
+    }
+
+    private static HttpHeaders ownerLocation(Owner owner) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        return headers;
     }
 
     private static String normalizeEmail(String email) {

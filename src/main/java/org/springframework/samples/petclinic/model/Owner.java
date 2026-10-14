@@ -94,6 +94,9 @@ public class Owner extends Person {
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
+    @Column(name = "idempotency_key", unique = true)
+    private String idempotencyKey;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -251,6 +254,18 @@ public class Owner extends Person {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    /**
+     * The 'Idempotency-Key' the owner was created with, if any; a repeated create with the same key
+     * returns this owner instead of creating a duplicate.
+     */
+    public String getIdempotencyKey() {
+        return this.idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     protected Set<Pet> getPetsInternal() {

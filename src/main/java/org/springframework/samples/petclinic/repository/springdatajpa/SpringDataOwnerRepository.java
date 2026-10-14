@@ -63,6 +63,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     List<Owner> findByTelephone(@Param("telephone") String telephone);
 
     @Override
+    @Query("SELECT owner FROM Owner owner WHERE owner.idempotencyKey = :idempotencyKey")
+    Owner findByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey);
+
+    @Override
     @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName")
     List<Owner> findByLastNameIgnoringCase(@Param("lastName") String lastName);
 

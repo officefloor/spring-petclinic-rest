@@ -100,6 +100,15 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 
     @Override
     @SuppressWarnings("unchecked")
+    public Owner findByIdempotencyKey(String idempotencyKey) {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.idempotencyKey = :idempotencyKey");
+        query.setParameter("idempotencyKey", idempotencyKey);
+        List<Owner> owners = query.getResultList();
+        return owners.isEmpty() ? null : owners.get(0);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
     public List<Owner> findByLastNameIgnoringCase(String lastName) {
         Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = :lastName");
         query.setParameter("lastName", lastName);
