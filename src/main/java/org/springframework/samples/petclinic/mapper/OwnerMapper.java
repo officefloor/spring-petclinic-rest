@@ -37,16 +37,16 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * The region whose postcode range ({@link OwnerPostcode#RANGES_BY_REGION}) contains the owner's postcode;
-     * when the postcode is absent or in no known range, the region of the owner's city from
-     * {@link #CITY_REGIONS}, or 'UNKNOWN' when the city is not listed.
+     * The REGION part of the owner's customer code ('&lt;REGION&gt;-&lt;HASH8&gt;'); for owners without a
+     * customer code, the region derived by {@link OwnerPostcode#regionOf(String, String)}.
      */
     default String toLocality(Owner owner) {
-        String postcodeRegion = OwnerPostcode.regionOf(owner.getPostcode());
-        if (postcodeRegion != null) {
-            return postcodeRegion;
+        String code = owner.getCustomerCode();
+        int dash = code == null ? -1 : code.lastIndexOf('-');
+        if (dash > 0) {
+            return code.substring(0, dash);
         }
-        return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+        return OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
     }
 
     /**

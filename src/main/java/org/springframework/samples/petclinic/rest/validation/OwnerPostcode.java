@@ -18,7 +18,27 @@ public final class OwnerPostcode {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** The region of owners whose postcode and city match no known region. */
+    public static final String UNKNOWN_REGION = "UNKNOWN";
+
     private OwnerPostcode() {
+    }
+
+    /**
+     * The owner's region: the region whose range contains the postcode; when the postcode is absent or
+     * in no known range, the region of the city from {@link OwnerMapper#CITY_REGIONS}, or
+     * {@value #UNKNOWN_REGION} when the city is not listed.
+     *
+     * @param postcode the postcode, may be {@code null}
+     * @param city the city, may be {@code null}
+     * @return the region, never {@code null}
+     */
+    public static String regionOf(String postcode, String city) {
+        String postcodeRegion = regionOf(postcode);
+        if (postcodeRegion != null) {
+            return postcodeRegion;
+        }
+        return city == null ? UNKNOWN_REGION : OwnerMapper.CITY_REGIONS.getOrDefault(city, UNKNOWN_REGION);
     }
 
     /**

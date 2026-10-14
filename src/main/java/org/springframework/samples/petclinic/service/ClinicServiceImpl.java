@@ -22,12 +22,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -237,8 +242,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
-            owner.setCustomerCode(customerCode(owner.getCity(), owner.getLastName(),
-                ownerRepository.countByCityIgnoringCase(lowerCase(owner.getCity())) + 1));
+            owner.setCustomerCode(customerCode(owner));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
             owner.setHouseholdSize(owner.getHouseholdId() == null ? 1
@@ -329,21 +333,24 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds a customer code '&lt;CITY3&gt;-&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of
-     * the city, the upper-cased first three letters of the last name and the zero-padded per-city
-     * sequence number.
+     * Builds a customer code '&lt;REGION&gt;-&lt;HASH8&gt;': the region derived from the postcode (see
+     * {@link OwnerPostcode#regionOf(String, String)}) and the first 8 upper-case hex characters of the
+     * SHA-256 of the UTF-8 bytes of the normalized telephone followed by the last name.
      */
-    private static String customerCode(String city, String lastName, long sequence) {
-        return String.format("%s-%s-%04d", firstThreeLetters(city), firstThreeLetters(lastName), sequence);
+    private static String customerCode(Owner owner) {
+        String region = OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        return region + "-" + sha256Hex(telephone + lastName).substring(0, 8).toUpperCase(Locale.ROOT);
     }
 
-    private static String firstThreeLetters(String value) {
-        String letters = value == null ? "" : value.codePoints()
-            .filter(Character::isLetter)
-            .limit(3)
-            .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
-            .toString();
-        return letters.toUpperCase(Locale.ROOT);
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
     private <T> T findEntityById(Supplier<T> supplier) {
