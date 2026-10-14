@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -232,6 +233,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.isNew()) {
+            owner.setCustomerCode(customerCode(owner.getLastName(), ownerRepository.count() + 1));
+        }
         ownerRepository.save(owner);
 
     }
@@ -258,6 +262,19 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public List<Specialty> findSpecialtiesByNameIn(Set<String> names) {
         return findEntityById(() -> specialtyRepository.findSpecialtiesByNameIn(names));
+    }
+
+    /**
+     * Builds a customer code '&lt;LAST3&gt;-&lt;NNNN&gt;': the upper-cased first three letters of the
+     * last name followed by the zero-padded sequence number.
+     */
+    private static String customerCode(String lastName, long sequence) {
+        String letters = lastName == null ? "" : lastName.codePoints()
+            .filter(Character::isLetter)
+            .limit(3)
+            .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+            .toString();
+        return String.format("%s-%04d", letters.toUpperCase(Locale.ROOT), sequence);
     }
 
     private <T> T findEntityById(Supplier<T> supplier) {
