@@ -193,6 +193,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByCustomerCode(String customerCode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("customerCode", customerCode);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode", params, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Long count = this.namedParameterJdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM owners", new HashMap<String, Object>(), Long.class);

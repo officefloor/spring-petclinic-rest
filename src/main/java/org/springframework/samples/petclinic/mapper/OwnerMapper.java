@@ -65,12 +65,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The REGION part of the owner's customer code ('&lt;REGION&gt;-&lt;HASH8&gt;'); for owners without a
+     * The REGION part of the owner's customer code ('&lt;REGION&gt;-&lt;HASH8&gt;', optionally followed by a
+     * '-&lt;n&gt;' de-duplication suffix); for owners without a
      * customer code, the region derived by {@link OwnerPostcode#regionOf(String, String)}.
      */
     default String toLocality(Owner owner) {
         String code = owner.getCustomerCode();
-        int dash = code == null ? -1 : code.lastIndexOf('-');
+        int dash = code == null ? -1 : code.indexOf('-');
         if (dash > 0) {
             return code.substring(0, dash);
         }

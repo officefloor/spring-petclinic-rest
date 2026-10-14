@@ -108,6 +108,14 @@ public interface OwnerRepository {
     long countByHouseholdId(String householdId) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s that have the given customer code.
+     *
+     * @param customerCode the customer code to search for
+     * @return the number of matching owners
+     */
+    long countByCustomerCode(String customerCode) throws DataAccessException;
+
+    /**
      * Count all <code>Owner</code>s in the data store.
      *
      * @return the number of owners

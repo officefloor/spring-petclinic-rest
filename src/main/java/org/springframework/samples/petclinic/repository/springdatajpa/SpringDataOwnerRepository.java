@@ -83,6 +83,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     long countByHouseholdId(@Param("householdId") String householdId);
 
     @Override
+    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode")
+    long countByCustomerCode(@Param("customerCode") String customerCode);
+
+    @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")
     long count();
 }

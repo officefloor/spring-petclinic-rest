@@ -242,7 +242,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         owner.setHouseholdId(householdIdOf(owner));
         if (owner.isNew()) {
-            owner.setCustomerCode(customerCode(owner));
+            owner.setCustomerCode(uniqueCustomerCode(customerCode(owner)));
             owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
                 lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
             owner.setHouseholdSize(owner.getHouseholdId() == null ? 1
@@ -329,6 +329,21 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public List<Specialty> findSpecialtiesByNameIn(Set<String> names) {
         return findEntityById(() -> specialtyRepository.findSpecialtiesByNameIn(names));
+    }
+
+    /**
+     * De-duplicates a computed customer code: returns it unchanged when no existing owner has it, otherwise
+     * appends '-&lt;n&gt;' with the smallest n &gt;= 2 that makes it unique.
+     */
+    private String uniqueCustomerCode(String code) {
+        if (ownerRepository.countByCustomerCode(code) == 0) {
+            return code;
+        }
+        int n = 2;
+        while (ownerRepository.countByCustomerCode(code + "-" + n) > 0) {
+            n++;
+        }
+        return code + "-" + n;
     }
 
     /**
