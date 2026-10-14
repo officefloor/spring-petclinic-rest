@@ -1,0 +1,153 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 98a0fef2a..2f3599783 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
+ import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -187,4 +188,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidTelephoneException} thrown when an owner's telephone number is invalid.
++     *
++     * @param e The {@link InvalidTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} describing the rejected telephone number, with a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
++        ValidationMessageDto message = new ValidationMessageDto(
++            "Field 'telephone' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
++            .putAdditionalProperty("field", "telephone")
++            .putAdditionalProperty("rejectedValue", rejectedValue)
++            .putAdditionalProperty("defaultMessage", e.getMessage());
++        detail.setProperty("schemaValidationErrors", List.of(message));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a9fc565b9..07dbcad0c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.MissingRequiredFieldsException;
++import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+ import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -107,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(OwnerTelephone.normalize(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -121,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (currentOwner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        OwnerTelephone.requireDigitsOnly(ownerFieldsDto.getTelephone());
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+new file mode 100644
+index 000000000..cbe408828
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's telephone number is not a valid telephone number.
++ */
++public class InvalidTelephoneException extends RuntimeException {
++
++    private final String rejectedValue;
++
++    public InvalidTelephoneException(String rejectedValue) {
++        super("Telephone number must contain exactly " + OwnerTelephone.REQUIRED_DIGITS + " digits");
++        this.rejectedValue = rejectedValue;
++    }
++
++    public String getRejectedValue() {
++        return rejectedValue;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+new file mode 100644
+index 000000000..7028fa55f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Normalizes and validates owner telephone numbers.
++ */
++public final class OwnerTelephone {
++
++    public static final int REQUIRED_DIGITS = 10;
++
++    private OwnerTelephone() {
++    }
++
++    /**
++     * Strips every non-digit character and requires exactly {@value #REQUIRED_DIGITS} digits to remain.
++     *
++     * @param telephone the telephone number as supplied in the request
++     * @return the normalized {@value #REQUIRED_DIGITS}-digit telephone number
++     * @throws InvalidTelephoneException if the number does not contain exactly {@value #REQUIRED_DIGITS} digits
++     */
++    public static String normalize(String telephone) {
++        String digits = telephone.replaceAll("\\D", "");
++        if (digits.length() != REQUIRED_DIGITS) {
++            throw new InvalidTelephoneException(telephone);
++        }
++        return digits;
++    }
++
++    /**
++     * @param telephone the telephone number as supplied in the request
++     * @throws InvalidTelephoneException if the number contains anything other than digits
++     */
++    public static void requireDigitsOnly(String telephone) {
++        if (telephone != null && !telephone.chars().allMatch(Character::isDigit)) {
++            throw new InvalidTelephoneException(telephone);
++        }
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76c..f2524d8c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,12 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create, every non-digit character is
++            removed and exactly 10 digits must remain; the 10-digit value is stored.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
