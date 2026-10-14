@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8ca041472..428df2251 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+ import org.springframework.samples.petclinic.rest.validation.RequiredOwnerFields;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.AddressNormalizer;
++import org.springframework.samples.petclinic.util.BusinessDays;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -66,7 +67,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners a single city may contain; creating another owner there is rejected. */
+     static final int CITY_CAPACITY = 50;
+ 
+-    /** Maximum number of owners that may be created (by registration date) per day; further creates are rejected. */
++    /** Maximum number of owners that may be created per (business-day adjusted) registration date; further creates are rejected. */
+     static final int DAILY_OWNER_LIMIT = 100;
+ 
+     private final ClinicService clinicService;
+@@ -135,7 +136,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.countOwnersInCity(ownerFieldsDto.getCity()) >= CITY_CAPACITY) {
+             throw new CityCapacityExceededException(ownerFieldsDto.getCity(), CITY_CAPACITY);
+         }
+-        if (this.clinicService.countOwnersRegisteredOn(LocalDate.now()) >= DAILY_OWNER_LIMIT) {
++        LocalDate registrationDate = BusinessDays.rollForward(
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
++        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= DAILY_OWNER_LIMIT) {
+             throw new DailyOwnerLimitExceededException(DAILY_OWNER_LIMIT);
+         }
+         if (sharesHousehold) {
+@@ -143,9 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setTelephone(telephone);
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        owner.setRegistrationDate(registrationDate);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -168,7 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setTelephone(telephone);
+         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         if (ownerFieldsDto.getRegistrationDate() != null) {
+-            currentOwner.setRegistrationDate(ownerFieldsDto.getRegistrationDate());
++            currentOwner.setRegistrationDate(BusinessDays.rollForward(ownerFieldsDto.getRegistrationDate()));
+         }
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+new file mode 100644
+index 000000000..affdfc87b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.temporal.TemporalAdjusters;
++
++/**
++ * Business-day calculations for dates such as an owner's registration date.
++ */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /**
++     * Rolls a Saturday or Sunday forward to the following Monday; any other date is returned unchanged.
++     *
++     * @param date the date to adjust
++     * @return the business day on or after {@code date}, or {@code null} if {@code date} is {@code null}
++     */
++    public static LocalDate rollForward(LocalDate date) {
++        if (date == null) {
++            return null;
++        }
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        }
++        return date;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 67dd3cf30..2867b005b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2061,7 +2061,8 @@ components:
+           title: Registration date
+           description: >-
+             The date the owner registered with the clinic. On create, when omitted it defaults to
+-            the server's current date.
++            the server's current date. A Saturday or Sunday (supplied or defaulted) is rolled
++            forward to the following Monday.
+           type: string
+           format: date
+           example: '2020-06-15'
+diff --git a/src/test/java/org/springframework/samples/petclinic/util/BusinessDaysTests.java b/src/test/java/org/springframework/samples/petclinic/util/BusinessDaysTests.java
+new file mode 100644
+index 000000000..caba3fd90
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/util/BusinessDaysTests.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.util;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import java.time.LocalDate;
++
++import org.junit.jupiter.api.Test;
++
++class BusinessDaysTests {
++
++    @Test
++    void weekdaysAreUnchanged() {
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2026-10-12"))).isEqualTo("2026-10-12");
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2026-10-16"))).isEqualTo("2026-10-16");
++    }
++
++    @Test
++    void weekendRollsForwardToMonday() {
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2026-10-17"))).isEqualTo("2026-10-19");
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2026-10-18"))).isEqualTo("2026-10-19");
++    }
++
++    @Test
++    void weekendRollsAcrossYearBoundary() {
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2033-01-01"))).isEqualTo("2033-01-03");
++        assertThat(BusinessDays.rollForward(LocalDate.parse("2034-12-31"))).isEqualTo("2035-01-01");
++    }
++
++    @Test
++    void nullStaysNull() {
++        assertThat(BusinessDays.rollForward(null)).isNull();
++    }
++}
