@@ -28,12 +28,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.audit.AuditEventPublisher;
+import org.springframework.samples.petclinic.audit.OwnerCreatedEvent;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.notify.WelcomeNotifier;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -94,16 +96,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AuditEventPublisher auditEventPublisher;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 AuditEventPublisher auditEventPublisher) {
+                                 AuditEventPublisher auditEventPublisher,
+                                 WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.auditEventPublisher = auditEventPublisher;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -185,7 +191,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 + "registrationDate={}, membershipPoints={}, membershipLevel={}",
             owner.getId(), owner.getMemberId(), ownerMapper.toLocality(owner), ownerMapper.toFiscalYear(owner),
             owner.getRegistrationDate(), ownerMapper.toMembershipPoints(owner), ownerMapper.toMembershipLevel(owner));
-        this.auditEventPublisher.ownerCreated(owner, ownerMapper.toMembershipLevel(owner));
+        OwnerCreatedEvent created = this.auditEventPublisher.ownerCreated(owner, ownerMapper.toMembershipLevel(owner));
+        this.welcomeNotifier.welcome(created);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), ownerLocation(owner), HttpStatus.CREATED);
     }
 
