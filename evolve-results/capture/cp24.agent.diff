@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 33c16be02..a312c5c30 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+@@ -40,20 +40,22 @@ public interface OwnerMapper {
+         return owner.getCity() == null ? "UNKNOWN" : CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
+-    /** The household size at or above which an owner's membership tier is 'GOLD'. */
+-    int GOLD_HOUSEHOLD_SIZE = 3;
++    /** The highest membership level assigned on create; level 4 is reserved for tenure. */
++    int MAX_CREATE_MEMBERSHIP_LEVEL = 3;
+ 
+     /**
+-     * 'GOLD' when the owner's household had at least {@link #GOLD_HOUSEHOLD_SIZE} members once the owner was
+-     * created; otherwise 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'.
++     * Starts at 1, adds 1 when an email is present and 1 when the owner has no namesakes, capped at
++     * {@link #MAX_CREATE_MEMBERSHIP_LEVEL}.
+      */
+-    default String toMembershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= GOLD_HOUSEHOLD_SIZE) {
+-            return "GOLD";
++    default Integer toMembershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
+         }
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        return hasEmail && noNamesakes ? "SILVER" : "BRONZE";
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        return Math.min(level, MAX_CREATE_MEMBERSHIP_LEVEL);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a5610f4b5..cdfd7af3d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -157,8 +157,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setRegistrationDate(registrationDate);
+         owner.setBulkSignupWarning(ownersCreatedToday > BULK_SIGNUP_THRESHOLD);
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("Owner created: id={}, customerCode={}, registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={}, customerCode={}, registrationDate={}, membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.toMembershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fd7fcaf28..9a69e259b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2156,14 +2156,16 @@ components:
+               type: string
+               example: 'MAD-FRA-0002-M20'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                Assigned on create: 'GOLD' when the owner's household (owners sharing the same
+-                'householdId') has 3 or more members after this owner is created; otherwise 'SILVER'
+-                when 'namesakeCount' is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                Assigned on create: starts at 1, plus 1 when an email is present, plus 1 when
++                'namesakeCount' is 0, capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
