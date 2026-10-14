@@ -27,6 +27,11 @@ public interface OwnerMapper {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    Map<String, String> REGION_TIMEZONES = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
@@ -39,6 +44,7 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -76,6 +82,14 @@ public interface OwnerMapper {
             return code.substring(0, dash);
         }
         return OwnerPostcode.regionOf(owner.getPostcode(), owner.getCity());
+    }
+
+    /**
+     * The IANA timezone of the owner's {@link #toLocality(Owner) locality} from {@link #REGION_TIMEZONES};
+     * absent for any other locality.
+     */
+    default String toTimezone(Owner owner) {
+        return REGION_TIMEZONES.get(toLocality(owner));
     }
 
     /**
