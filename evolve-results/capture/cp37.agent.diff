@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index eea0f5249..b805e9bb1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.OwnerPostcode;
++import org.springframework.samples.petclinic.rest.validation.OwnerTelephone;
+ 
+ import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
+@@ -36,9 +37,17 @@ public interface OwnerMapper {
+     @Mapping(target = "bulkSignupWarning", expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The stored E.164 telephone formatted for humans, e.g. '+61 412 345 678'.
++     */
++    default String toTelephoneDisplay(Owner owner) {
++        return OwnerTelephone.format(owner.getTelephone());
++    }
++
+     /**
+      * The owner's age in completed years on the registration date: 'MINOR' under 18, 'ADULT' 18-64,
+      * 'SENIOR' 65 or over. Absent when the owner has no birth date or registration date.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+index a65e24fc3..e919d7aca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerTelephone.java
+@@ -1,6 +1,7 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ import java.util.Map;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ /**
+@@ -24,6 +25,12 @@ public final class OwnerTelephone {
+         "61", 9,
+         "1", 10);
+ 
++    /** Two-digit ITU-T E.164 country codes; '1' and '7' are single-digit, every other code has three digits. */
++    private static final Set<String> TWO_DIGIT_COUNTRY_CODES = Set.of(
++        "20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46", "47",
++        "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63", "64", "65",
++        "66", "81", "82", "84", "86", "90", "91", "92", "93", "94", "95", "98");
++
+     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()\\[\\]]");
+ 
+     private OwnerTelephone() {
+@@ -72,4 +79,39 @@ public final class OwnerTelephone {
+             }
+         }
+     }
++
++    /**
++     * Formats a stored E.164 telephone number for humans: '+', the country code, a space and the
++     * national digits grouped in threes separated by spaces, where a trailing single digit joins the
++     * preceding group, e.g. {@code +61412345678} becomes {@code +61 412 345 678} and
++     * {@code +16085552654} becomes {@code +1 608 555 2654}.
++     *
++     * @param e164 the stored E.164 telephone number
++     * @return the formatted number, or the input unchanged when it is not in E.164 form
++     */
++    public static String format(String e164) {
++        if (e164 == null || !E164.matcher(e164).matches()) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        String countryCode = digits.substring(0, countryCodeLength(digits));
++        String national = digits.substring(countryCode.length());
++        StringBuilder display = new StringBuilder("+").append(countryCode);
++        int start = 0;
++        while (start < national.length()) {
++            int remaining = national.length() - start;
++            int end = remaining == 4 ? national.length() : start + Math.min(3, remaining);
++            display.append(' ').append(national, start, end);
++            start = end;
++        }
++        return display.toString();
++    }
++
++    private static int countryCodeLength(String digits) {
++        char first = digits.charAt(0);
++        if (first == '1' || first == '7') {
++            return 1;
++        }
++        return TWO_DIGIT_COUNTRY_CODES.contains(digits.substring(0, 2)) ? 2 : 3;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 19b296bf1..d5de29ec6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2268,6 +2268,16 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 'telephone' formatted for humans: '+', the country code, a space and
++                the national digits grouped in threes separated by spaces, with a trailing single
++                digit joined to the preceding group, e.g. '+61 412 345 678' or '+1 608 555 2654'.
++                'telephone' itself stays in raw E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
