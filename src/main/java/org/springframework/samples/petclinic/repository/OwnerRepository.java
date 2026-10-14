@@ -74,6 +74,15 @@ public interface OwnerRepository {
     List<Owner> findByLastNameIgnoringCase(String lastName) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s whose first and last names, compared case-insensitively, equal the given names.
+     *
+     * @param firstName the lower-cased first name to search for
+     * @param lastName the lower-cased last name to search for
+     * @return the number of matching owners
+     */
+    long countByFirstNameAndLastNameIgnoringCase(String firstName, String lastName) throws DataAccessException;
+
+    /**
      * Count all <code>Owner</code>s in the data store.
      *
      * @return the number of owners

@@ -237,6 +237,8 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
             owner.setCustomerCode(customerCode(owner.getLastName(), ownerRepository.count() + 1));
+            owner.setNamesakeCount((int) ownerRepository.countByFirstNameAndLastNameIgnoringCase(
+                lowerCase(owner.getFirstName()), lowerCase(owner.getLastName())));
         }
         ownerRepository.save(owner);
 
@@ -289,6 +291,10 @@ public class ClinicServiceImpl implements ClinicService {
     /** Trims the value, collapses runs of whitespace into a single space and lower-cases it. */
     private static String normalizeForComparison(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static String lowerCase(String value) {
+        return value == null ? null : value.toLowerCase(Locale.ROOT);
     }
 
     @Override

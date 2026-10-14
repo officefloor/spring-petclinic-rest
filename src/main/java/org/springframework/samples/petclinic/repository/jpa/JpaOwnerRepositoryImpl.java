@@ -105,6 +105,15 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByFirstNameAndLastNameIgnoringCase(String firstName, String lastName) {
+        Query query = this.em.createQuery(
+            "SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.firstName) = :firstName AND LOWER(owner.lastName) = :lastName");
+        query.setParameter("firstName", firstName);
+        query.setParameter("lastName", lastName);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public long count() {
         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
     }
